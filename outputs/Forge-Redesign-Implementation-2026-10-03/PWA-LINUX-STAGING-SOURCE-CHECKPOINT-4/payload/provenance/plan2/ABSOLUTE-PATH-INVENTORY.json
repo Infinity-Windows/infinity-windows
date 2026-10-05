@@ -1,0 +1,310 @@
+[
+  {
+    "jsonPointer": "/traceReceiptPath",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-A703-ARCHIVED-FAIL-ARTIFACT/infinity-windows/infinity-windows/app/e2e/test-results/upgrade-path.pwa.ts-a-down-bc4ee-sh-doing-nothing-afterwards/browser-engine-receipt.json",
+    "position": "value",
+    "sourceFile": "RUNTIME-PINS.json",
+    "classification": "Historical pin; future execution copy may rebind only playwrightCLI and seven runtimeSources keys."
+  },
+  {
+    "jsonPointer": "/originalSources/playwright.pwa.config.ts/sourcePath",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-pwa-diagnostic/app/playwright.pwa.config.ts",
+    "position": "value",
+    "sourceFile": "RUNTIME-PINS.json",
+    "classification": "Historical pin; future execution copy may rebind only playwrightCLI and seven runtimeSources keys."
+  },
+  {
+    "jsonPointer": "/originalSources/e2e/upgrade-path.pwa.ts/sourcePath",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-pwa-diagnostic/app/e2e/upgrade-path.pwa.ts",
+    "position": "value",
+    "sourceFile": "RUNTIME-PINS.json",
+    "classification": "Historical pin; future execution copy may rebind only playwrightCLI and seven runtimeSources keys."
+  },
+  {
+    "jsonPointer": "/originalSources/e2e/support/pwa.ts/sourcePath",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-pwa-diagnostic/app/e2e/support/pwa.ts",
+    "position": "value",
+    "sourceFile": "RUNTIME-PINS.json",
+    "classification": "Historical pin; future execution copy may rebind only playwrightCLI and seven runtimeSources keys."
+  },
+  {
+    "jsonPointer": "/originalSources/e2e/support/pwaSlowReloadEvidence.ts/sourcePath",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-pwa-diagnostic/app/e2e/support/pwaSlowReloadEvidence.ts",
+    "position": "value",
+    "sourceFile": "RUNTIME-PINS.json",
+    "classification": "Historical pin; future execution copy may rebind only playwrightCLI and seven runtimeSources keys."
+  },
+  {
+    "jsonPointer": "/originalSources/e2e/support/pwaEngineTrace.ts/sourcePath",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-pwa-diagnostic/app/e2e/support/pwaEngineTrace.ts",
+    "position": "value",
+    "sourceFile": "RUNTIME-PINS.json",
+    "classification": "Historical pin; future execution copy may rebind only playwrightCLI and seven runtimeSources keys."
+  },
+  {
+    "jsonPointer": "/originalSources/e2e/support/pwaHarness.ts/sourcePath",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-pwa-diagnostic/app/e2e/support/pwaHarness.ts",
+    "position": "value",
+    "sourceFile": "RUNTIME-PINS.json",
+    "classification": "Historical pin; future execution copy may rebind only playwrightCLI and seven runtimeSources keys."
+  },
+  {
+    "jsonPointer": "/originalSources/package.json/sourcePath",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-pwa-diagnostic/app/package.json",
+    "position": "value",
+    "sourceFile": "RUNTIME-PINS.json",
+    "classification": "Historical pin; future execution copy may rebind only playwrightCLI and seven runtimeSources keys."
+  },
+  {
+    "jsonPointer": "/playwrightCLI",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/cli.js",
+    "position": "value",
+    "sourceFile": "RUNTIME-PINS.json",
+    "classification": "Historical pin; future execution copy may rebind only playwrightCLI and seven runtimeSources keys."
+  },
+  {
+    "jsonPointer": "/runtimeSources//Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/package.json",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/package.json",
+    "position": "key",
+    "sourceFile": "RUNTIME-PINS.json",
+    "classification": "Historical pin; future execution copy may rebind only playwrightCLI and seven runtimeSources keys."
+  },
+  {
+    "jsonPointer": "/runtimeSources//Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright-core/package.json",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright-core/package.json",
+    "position": "key",
+    "sourceFile": "RUNTIME-PINS.json",
+    "classification": "Historical pin; future execution copy may rebind only playwrightCLI and seven runtimeSources keys."
+  },
+  {
+    "jsonPointer": "/runtimeSources//Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/@playwright/test/package.json",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/@playwright/test/package.json",
+    "position": "key",
+    "sourceFile": "RUNTIME-PINS.json",
+    "classification": "Historical pin; future execution copy may rebind only playwrightCLI and seven runtimeSources keys."
+  },
+  {
+    "jsonPointer": "/runtimeSources//Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/cli.js",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/cli.js",
+    "position": "key",
+    "sourceFile": "RUNTIME-PINS.json",
+    "classification": "Historical pin; future execution copy may rebind only playwrightCLI and seven runtimeSources keys."
+  },
+  {
+    "jsonPointer": "/runtimeSources//Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/lib/runner/index.js",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/lib/runner/index.js",
+    "position": "key",
+    "sourceFile": "RUNTIME-PINS.json",
+    "classification": "Historical pin; future execution copy may rebind only playwrightCLI and seven runtimeSources keys."
+  },
+  {
+    "jsonPointer": "/runtimeSources//Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/lib/common/index.js",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/lib/common/index.js",
+    "position": "key",
+    "sourceFile": "RUNTIME-PINS.json",
+    "classification": "Historical pin; future execution copy may rebind only playwrightCLI and seven runtimeSources keys."
+  },
+  {
+    "jsonPointer": "/runtimeSources//Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright-core/lib/coreBundle.js",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright-core/lib/coreBundle.js",
+    "position": "key",
+    "sourceFile": "RUNTIME-PINS.json",
+    "classification": "Historical pin; future execution copy may rebind only playwrightCLI and seven runtimeSources keys."
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/entrypoint",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/run-arm.mjs",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/arms/0/argv/0",
+    "value": "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/arms/0/argv/1",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/run-arm.mjs",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/arms/0/env/IW_PWA_CACHE",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/derived-pairs/baseline",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/arms/0/env/IW_PWA_RUN_DIR",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNS-<unique-id>/01-baseline",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/arms/1/argv/0",
+    "value": "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/arms/1/argv/1",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/run-arm.mjs",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/arms/1/env/IW_PWA_CACHE",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/derived-pairs/blob",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/arms/1/env/IW_PWA_RUN_DIR",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNS-<unique-id>/02-blob",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/arms/2/argv/0",
+    "value": "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/arms/2/argv/1",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/run-arm.mjs",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/arms/2/env/IW_PWA_CACHE",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/derived-pairs/baseline",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/arms/2/env/IW_PWA_RUN_DIR",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNS-<unique-id>/03-baseline",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/arms/3/argv/0",
+    "value": "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/arms/3/argv/1",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/run-arm.mjs",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/arms/3/env/IW_PWA_CACHE",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/derived-pairs/stream",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "RUN-PLAN.json",
+    "jsonPointer": "/arms/3/env/IW_PWA_RUN_DIR",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNS-<unique-id>/04-stream",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "CHECK-COMMANDS.json",
+    "jsonPointer": "/executedNoContact/0/0",
+    "value": "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "CHECK-COMMANDS.json",
+    "jsonPointer": "/executedNoContact/1/0",
+    "value": "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "CHECK-COMMANDS.json",
+    "jsonPointer": "/executedNoContact/2/0",
+    "value": "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "CHECK-COMMANDS.json",
+    "jsonPointer": "/executedNoContact/2/1",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/typescript/bin/tsc",
+    "position": "value",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "SOURCE-EVIDENCE.json",
+    "jsonPointer": "/installedSourcePins/~1Users~1emmatimpson~1Documents~1ChatGPT~1Forge Windows and Doors App~1project-work-configuration~1app~1node_modules~1playwright~1package.json",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/package.json",
+    "position": "key",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "SOURCE-EVIDENCE.json",
+    "jsonPointer": "/installedSourcePins/~1Users~1emmatimpson~1Documents~1ChatGPT~1Forge Windows and Doors App~1project-work-configuration~1app~1node_modules~1playwright-core~1package.json",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright-core/package.json",
+    "position": "key",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "SOURCE-EVIDENCE.json",
+    "jsonPointer": "/installedSourcePins/~1Users~1emmatimpson~1Documents~1ChatGPT~1Forge Windows and Doors App~1project-work-configuration~1app~1node_modules~1@playwright~1test~1package.json",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/@playwright/test/package.json",
+    "position": "key",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "SOURCE-EVIDENCE.json",
+    "jsonPointer": "/installedSourcePins/~1Users~1emmatimpson~1Documents~1ChatGPT~1Forge Windows and Doors App~1project-work-configuration~1app~1node_modules~1playwright~1cli.js",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/cli.js",
+    "position": "key",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "SOURCE-EVIDENCE.json",
+    "jsonPointer": "/installedSourcePins/~1Users~1emmatimpson~1Documents~1ChatGPT~1Forge Windows and Doors App~1project-work-configuration~1app~1node_modules~1playwright~1lib~1runner~1index.js",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/lib/runner/index.js",
+    "position": "key",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "SOURCE-EVIDENCE.json",
+    "jsonPointer": "/installedSourcePins/~1Users~1emmatimpson~1Documents~1ChatGPT~1Forge Windows and Doors App~1project-work-configuration~1app~1node_modules~1playwright~1lib~1common~1index.js",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/lib/common/index.js",
+    "position": "key",
+    "classification": "historical; externally map, never execute"
+  },
+  {
+    "sourceFile": "SOURCE-EVIDENCE.json",
+    "jsonPointer": "/installedSourcePins/~1Users~1emmatimpson~1Documents~1ChatGPT~1Forge Windows and Doors App~1project-work-configuration~1app~1node_modules~1playwright-core~1lib~1coreBundle.js",
+    "value": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright-core/lib/coreBundle.js",
+    "position": "key",
+    "classification": "historical; externally map, never execute"
+  }
+]

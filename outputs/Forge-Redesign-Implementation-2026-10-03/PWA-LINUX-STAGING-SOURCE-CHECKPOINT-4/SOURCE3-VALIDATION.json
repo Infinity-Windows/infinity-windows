@@ -1,0 +1,93 @@
+{
+  "scope": "SOURCE3_OFFLINE_ONLY_NO_PLAYWRIGHT_OR_CONFIG_IMPORT_BROWSER_INSTALL_OR_NETWORK",
+  "checks": [
+    {
+      "argv": [
+        "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+        "--check",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-3/browser-metadata.mjs"
+      ],
+      "exit": 0,
+      "log": "METADATA-SYNTAX.txt"
+    },
+    {
+      "argv": [
+        "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+        "--test",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-3/browser-metadata.test.mjs"
+      ],
+      "exit": 0,
+      "log": "METADATA-TEST-RESULTS.txt"
+    },
+    {
+      "argv": [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "-B",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-3/test_orchestration.py"
+      ],
+      "exit": 0,
+      "log": "ORCHESTRATION-TEST-RESULTS.txt"
+    },
+    {
+      "argv": [
+        "bash",
+        "-n",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-3/SETUP-SHELL.sh.txt"
+      ],
+      "exit": 0,
+      "log": "SETUP-SHELL-SYNTAX.txt"
+    },
+    {
+      "argv": [
+        "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+        "--test",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-3/staging.test.mjs",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-3/adapter-lifecycle.test.mjs",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-3/payload/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/enrollment.test.mjs",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-3/payload/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/corrections.test.mjs"
+      ],
+      "exit": 0,
+      "log": "INHERITED-NODE-TESTS.txt"
+    },
+    {
+      "argv": [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "-B",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-3/test_transport.py"
+      ],
+      "exit": 0,
+      "log": "INHERITED-TRANSPORT-TESTS.txt"
+    },
+    {
+      "argv": [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "-B",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-3/test_reconstruct.py"
+      ],
+      "exit": 0,
+      "log": "INHERITED-RECONSTRUCTION-TESTS.txt"
+    }
+  ],
+  "newNodeTests": 5,
+  "newPythonTests": 10,
+  "inheritedNodeTests": 60,
+  "inheritedPythonTests": 8,
+  "yamlParsed": true,
+  "allWorkflowShellSyntaxPassed": true,
+  "inlineBootstrapByteExactToReviewedSource": true,
+  "source2OriginalEntriesVerified": 803,
+  "source2All804FilesPreservedInCopy": true,
+  "source1OriginalEntriesVerified": 793,
+  "source2DriverAndElevenCorrectionsByteIdentical": true,
+  "payloadTarSha256": "4a4da653a872ddc8dbf3ec1d75e2f5e2b1b2133dd9f641f0af4d3c8c694508af",
+  "payloadTarBytes": 21585920,
+  "payloadEntries": 754,
+  "testScratchRemaining": 0,
+  "newHelperFiles": [
+    "bootstrap.py",
+    "orchestration_gates.py",
+    "orchestrate.py",
+    "browser-metadata.mjs"
+  ],
+  "researchManifestSha256": "eceb4ba581fed9b56363cdb92fc754cab9b52e86c7d70ef3a44ff899b6b6a078"
+}

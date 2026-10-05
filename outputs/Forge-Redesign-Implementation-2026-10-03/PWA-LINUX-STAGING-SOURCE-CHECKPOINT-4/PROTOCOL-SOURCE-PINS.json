@@ -1,0 +1,12 @@
+{
+  "playwright/lib/index.js": {
+    "sha256": "cb793062d359fd495f10e0916523f52c76a47fd0b6c4195451dabcd48638e862",
+    "bytes": 35668,
+    "provenance": "installed1.62 exact-lock tree; additional metadata-only gate, not modified RUNTIME-PINS"
+  },
+  "playwright-core/browsers.json": {
+    "sha256": "f306eed529599b1eaf2f8a85db9de2b23e1a3fe36c2b66434b7c9434fb627a99",
+    "bytes": 1780,
+    "provenance": "installed1.62 exact-lock tree; additional metadata-only gate, not modified RUNTIME-PINS"
+  }
+}

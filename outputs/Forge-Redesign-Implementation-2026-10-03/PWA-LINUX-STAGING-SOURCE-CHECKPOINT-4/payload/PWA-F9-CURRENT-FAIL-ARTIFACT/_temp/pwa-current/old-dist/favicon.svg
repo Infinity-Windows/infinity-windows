@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Infinity Windows app icon (owner pick 17): the product itself — a
+       window, four panes, sunset coral ground. -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff8a3d"/>
+      <stop offset="1" stop-color="#d94400"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#g)"/>
+  <rect x="118" y="104" width="276" height="304" rx="26" fill="none" stroke="#1c1210" stroke-width="34"/>
+  <line x1="256" y1="121" x2="256" y2="391" stroke="#1c1210" stroke-width="26"/>
+  <line x1="135" y1="256" x2="377" y2="256" stroke="#1c1210" stroke-width="26"/>
+  <rect x="118" y="104" width="276" height="304" rx="26" fill="none" stroke="#fff7f0" stroke-opacity="0.35" stroke-width="10"/>
+</svg>

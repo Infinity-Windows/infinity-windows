@@ -1,0 +1,8 @@
+{
+  "source1ManifestSha256": "e525f4e245d12ad9efd8bd300b0996c65c3ceffe6c98e3f68ec1a3b148778628",
+  "entriesVerified": 793,
+  "allOriginalBytesPreserved": true,
+  "payload754AndTarByteIdentical": true,
+  "runtimeSourcePatchByteIdentical": true,
+  "testScratchRemaining": 0
+}

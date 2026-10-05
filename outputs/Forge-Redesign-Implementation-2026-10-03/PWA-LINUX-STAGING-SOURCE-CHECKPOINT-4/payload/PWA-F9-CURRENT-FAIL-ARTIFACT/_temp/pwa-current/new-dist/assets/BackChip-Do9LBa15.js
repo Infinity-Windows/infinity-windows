@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-DKdBMi_L.js";import{u as t}from"./chunk-BV7QT456-BwK42zvx.js";var n=e();function r({fallback:e=`/`,label:r=`Back`}){let i=t();return(0,n.jsx)(`button`,{type:`button`,className:`back-chip`,"aria-label":r,onClick:()=>{(window.history.state?.idx??0)>0?i(-1):i(e,{replace:!0})},children:`‹`})}export{r as t};

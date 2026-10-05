@@ -1,0 +1,41 @@
+{
+  "kind": "source research only; no workflow approval",
+  "files": {
+    "BROWSER-SELECTION-RESEARCH.json": {
+      "bytes": 1068,
+      "sha256": "cfe3710dd84d594ba5a4dddd6eaace8015480129b881c32dc93fea94dc1f2458"
+    },
+    "OFFICIAL-NODE-CHOICE.json": {
+      "bytes": 388,
+      "sha256": "a535783126b80c3175086c2e2df708911f926c06e16c1e749eac97b2de419ffc"
+    },
+    "OFFICIAL-NODE-SHASUMS256.txt": {
+      "bytes": 3777,
+      "sha256": "158f2e2c580c610b9cef2853f3444c7369b84cc23e7ad764e3c40e9d60d82ea0"
+    },
+    "PINNED-CHROMIUM-SELECTION.txt": {
+      "bytes": 502,
+      "sha256": "c1961fb97e9a62b02a6196de6897eae345d937275a51157647b4045457043bd8"
+    },
+    "ROOT-RESEARCH-RECEIPT.json": {
+      "bytes": 1062,
+      "sha256": "d08e4356ed643166eb7b08a847eb12538942603022b8ddb5f82a5bba5e4a5772"
+    },
+    "checkout-commit.json": {
+      "bytes": 2221,
+      "sha256": "be605ea955157544a76aac446c8e9d0c346799c981842416f5db6af96c45a8bb"
+    },
+    "checkout-v4-ref.json": {
+      "bytes": 329,
+      "sha256": "b4be54231ed94c642aaca0da52e6aa598a58f041b39bb887da8efa6e9e9c5826"
+    },
+    "upload-artifact-commit.json": {
+      "bytes": 2776,
+      "sha256": "a3aedb127e04649ace96baa94580460333037129c39de41f70a955e404c92101"
+    },
+    "upload-artifact-v4-ref.json": {
+      "bytes": 343,
+      "sha256": "11d527e9dd398225cfa3ccd343842edafe56f865982da11ac358e77eb6a472cf"
+    }
+  }
+}

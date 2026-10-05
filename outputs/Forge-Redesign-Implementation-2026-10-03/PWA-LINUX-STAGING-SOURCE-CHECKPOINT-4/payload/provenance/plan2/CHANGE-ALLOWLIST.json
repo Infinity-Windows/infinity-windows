@@ -1,0 +1,72 @@
+{
+  "status": "PROPOSAL_ONLY_REQUIRES_ROOT_AND_ACTUAL_PEERS",
+  "frozenSource": "PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2",
+  "pathOnlyExecutionCopyChanges": [
+    {
+      "file": "RUNTIME-PINS.json",
+      "jsonPointers": [
+        "/playwrightCLI",
+        "/runtimeSources (keys only)"
+      ],
+      "invariant": "same seven hash values; Linux actual resolved dependency roots; no other pin values changed"
+    },
+    {
+      "artifact": "new LINUX-RUN-PLAN.json",
+      "bindings": [
+        "Node executable path",
+        "execution entrypoint",
+        "IW_PWA_CACHE",
+        "IW_PWA_RUN_DIR"
+      ],
+      "invariant": "same four arms/seven flags/port/time/identity/spec; original run plan unchanged"
+    },
+    {
+      "artifact": "new LINUX-PATH-BINDINGS.json",
+      "bindings": [
+        "traceReceiptPath",
+        "originalSources.*.sourcePath",
+        "sibling original/derived archive roots",
+        "derivative manifest locations"
+      ],
+      "invariant": "historical original strings retained; exact content hashes; no Mac paths spoofed"
+    },
+    {
+      "path": "execution-copy/app/node_modules",
+      "kind": "explicit symlink to separately installed pinned dependency root",
+      "invariant": "no symlink in frozen source or archived asset trees"
+    }
+  ],
+  "separateProposedCodeWhitelist": [
+    {
+      "file": "app/playwright.pwa.config.ts",
+      "change": "Prefix current shell-quoted node/adapter command with POSIX exec",
+      "invariant": "same executable/args/cwd, reuseExistingServer false, SIGTERM timeout60000"
+    },
+    {
+      "file": "start-verified-harness.mjs",
+      "change": "In exit handler compute interrupted = parentSignalObserved || childExitSignal===SIGTERM; preserve each fact in receipt",
+      "invariant": "attest(after) before harness-exit; no wait loop/extra signal; missing receipts INVALID"
+    }
+  ],
+  "newReviewRequiredHelpers": [
+    "transport validator and independent-copy reconstruction",
+    "Linux source/path binding and resolution assertion probe",
+    "four-arm bounded driver preserving originalTestExit versus validation/setup failure"
+  ],
+  "mustRemainByteExact": [
+    "original 660 archive files",
+    "four DERIVED manifests",
+    "four replacement worker bytes",
+    "original strict verifier",
+    "unchanged interrupted test and assertions",
+    "all other runtime2 source except separately approved code/pin whitelist"
+  ],
+  "mustRemainValueExact": [
+    "all five Browser.getVersion fields",
+    "12 ordered trace categories",
+    "Node v22.23.1",
+    "PW1.62.0 and original runtime hash values",
+    "worker/archive/manifest/verifier/spec pins",
+    "four-arm order/seven flags/zero retries"
+  ]
+}

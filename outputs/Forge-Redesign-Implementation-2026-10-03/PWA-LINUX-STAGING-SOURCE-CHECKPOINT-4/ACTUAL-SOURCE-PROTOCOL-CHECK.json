@@ -1,0 +1,19 @@
+{
+  "scope": "Exact source text only; no package/config import or browser",
+  "hashes": {
+    "config": "e1418c2680f3050ca96dc64e1e29e21d1cb5cc1cef1cee7a989587d5ac141ef2",
+    "spec": "46055937677d5711c79812185283432630b742c213e80c19c88a103edd63c448",
+    "runner": "d621926605920e38601ad0586cd1ceaf2df1ff584c919e5ed28337089bf5438f",
+    "fixture": "cb793062d359fd495f10e0916523f52c76a47fd0b6c4195451dabcd48638e862",
+    "core": "3258d1cf334c6afc95f22aa9c292436cb976b391e0437f1359c83b84f0cb9d66"
+  },
+  "result": {
+    "browserName": "chromium",
+    "headless": true,
+    "channel": null,
+    "executablePathOverride": null,
+    "connectOptions": null,
+    "executableName": "chromium-headless-shell",
+    "proof": "exact pinned config/spec/runner + exact fixture defaults + core registry selector; hostile environment refused"
+  }
+}

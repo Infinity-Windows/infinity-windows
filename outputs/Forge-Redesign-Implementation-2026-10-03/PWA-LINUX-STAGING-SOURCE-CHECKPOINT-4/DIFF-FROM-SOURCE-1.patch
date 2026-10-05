@@ -1,0 +1,360 @@
+--- source1/bindings.mjs
++++ source2/bindings.mjs
+@@ -10,8 +10,8 @@
+  return root;
+ }
+ export function cleanEnvironment(env){
+- for(const k of ['NODE_PATH','NODE_OPTIONS'])assert(!(k in env),k+' must be unset');
+- return {NODE_PATH:null,NODE_OPTIONS:null,preserveSymlinks:false,preserveSymlinksMain:false};
++ for(const k of ['NODE_PATH','NODE_OPTIONS','NODE_PRESERVE_SYMLINKS'])assert(!(k in env),k+' must be unset');
++ return {NODE_PATH:null,NODE_OPTIONS:null,NODE_PRESERVE_SYMLINKS:null,preserveSymlinks:false,preserveSymlinksMain:false};
+ }
+ export function rebindPins(original,scratch){
+  cleanRoot(scratch);const root=join(scratch,'dependencies/app/node_modules');const next=structuredClone(original);const diffs=[];
+--- source1/bind-execution.mjs
++++ source2/bind-execution.mjs
+@@ -20,7 +20,7 @@
+ const historical=read(join(scratch,'provenance/plan2/ABSOLUTE-PATH-INVENTORY.json'));assert.equal(historical.length,44);
+ // These 44 occurrences remain in original historical files. Only 8 executable pin fields change.
+ write(join(scratch,'provenance/LINUX-PATH-BINDINGS.json'),{historicalOccurrences:historical,evidence,pinDiff:bound.diffs,originalRoot:join(scratch,'PWA-F9-CURRENT-FAIL-ARTIFACT/_temp/pwa-current'),derivedRoot:join(scratch,P),allHistoricalDocumentsEvidenceOnly:['RUN-PLAN.json','CHECK-COMMANDS.json','SOURCE-EVIDENCE.json']});
+-write(join(scratch,'provenance/LINUX-RUN-PLAN.json'),linuxPlan(read(join(runtime,'RUN-PLAN.json')),scratch,node,unique));
++write(join(scratch,'provenance/LINUX-RUN-PLAN.json'),linuxPlan(read(join(runtime,'RUN-PLAN.json')),scratch,realpathSync(node),unique));
+ // Existing path is the single expressly permitted pin mutation, after full source check.
+ chmodSync(join(runtime,'RUNTIME-PINS.json'),0o644);
+ writeFileSync(join(runtime,'RUNTIME-PINS.json'),JSON.stringify(bound.pins,null,2)+'\n');
+--- source1/resolution-probe.mjs
++++ source2/resolution-probe.mjs
+@@ -9,7 +9,7 @@
+ const app=dirname(fileURLToPath(import.meta.url)),runtime=dirname(app),scratch=dirname(runtime);
+ assert.equal(runtime,join(scratch,'PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2'));
+ assert.equal(process.platform,'linux');assert.equal(process.arch,'x64');assert.equal(process.version,'v22.23.1');
+-for(const k of ['NODE_OPTIONS','NODE_PATH'])assert(!(k in process.env),k+' must be unset');
++for(const k of ['NODE_OPTIONS','NODE_PATH','NODE_PRESERVE_SYMLINKS'])assert(!(k in process.env),k+' must be unset');
+ assert(!process.execArgv.some(a=>a.includes('preserve-symlinks')));
+ const hash=p=>createHash('sha256').update(readFileSync(p)).digest('hex');
+ const dep=join(scratch,'dependencies/app/node_modules');assert.equal(realpathSync(dep),dep);assert(lstatSync(join(app,'node_modules')).isSymbolicLink());assert.equal(realpathSync(join(app,'node_modules')),dep);
+@@ -31,5 +31,5 @@
+ }
+ for(const [file,want]of Object.entries(pins.runtimeSources)){assert.equal(realpathSync(file),file);assert(file.startsWith(dep+'/'));assert.equal(hash(file),want);}
+ const cli=join(dep,'playwright/cli.js');assert.equal(pins.playwrightCLI,cli);assert.equal(realpathSync(cli),cli);
+-const result={node:binary,environment:{NODE_PATH:null,NODE_OPTIONS:null,preserveSymlinks:false},resolutions,playwrightCLI:cli,runtimeSources:pins.runtimeSources,platform:process.platform,arch:process.arch};
++const result={node:binary,environment:{NODE_PATH:null,NODE_OPTIONS:null,NODE_PRESERVE_SYMLINKS:null,preserveSymlinks:false},resolutions,playwrightCLI:cli,runtimeSources:pins.runtimeSources,platform:process.platform,arch:process.arch};
+ writeFileSync(join(scratch,'provenance/RESOLUTION-RECEIPT.json'),JSON.stringify(result,null,2),{flag:'wx'});
+--- source1/driver.mjs
++++ source2/driver.mjs
+@@ -1,6 +1,6 @@
+ // Bounded four-arm controller; import is pure. Future invocation needs source enrollment.
+ import assert from 'node:assert/strict';
+-import {spawn,spawnSync} from 'node:child_process';
++import {spawn} from 'node:child_process';
+ import {readFileSync,writeFileSync,mkdirSync,existsSync,realpathSync} from 'node:fs';
+ import {join,dirname} from 'node:path';
+ import {fileURLToPath,pathToFileURL} from 'node:url';
+@@ -19,22 +19,47 @@
+  if(!((originalTestExit===0&&child.code===0&&r.status==='passed')||(originalTestExit===1&&child.code===1&&r.status==='failed'&&assertion)))return {continue:false,reason:'non-assertion failure or exit inconsistency',originalTestExit};
+  return {continue:true,reason:originalTestExit?'complete assertion failure':'complete pass',originalTestExit};
+ }
+-export async function runBlock({arms,invoke,readResult,save,now=()=>performance.now(),budgetMs=25*60*1000}){
+- assert.equal(budgetMs,25*60*1000);assert.deepEqual(arms.map(a=>a.mode),['baseline','blob','baseline','stream']);
+- const start=now(),deadline=start+budgetMs,results=[];let stopReason=null;
++// performance.now() is measured from the Node process timeOrigin, including main preflight.
++// Inner deadline1470s precedes outer watchdog1495s TERM /1500s KILL by25/30s.
++export const INNER_BUDGET_MS=1470000;
++export function createLifecycle({write,now=()=>performance.now(),originMs=0,signals=process,onStop=()=>{}}){
++ let latest={originMs,elapsedMs:now()-originMs,results:[],completed:false,phase:'driver-start',stopReason:null},terminal=null;
++ const snapshot=value=>({...value,originMs,elapsedMs:now()-originMs});
++ const save=value=>{if(terminal)return terminal;latest=snapshot({...latest,...value});write(latest);return latest;};
++ const abort=(reason='watchdog',signal='SIGTERM')=>{if(terminal)return terminal;terminal=snapshot({...latest,completed:false,stopReason:reason,signal,terminal:true});write(terminal);onStop(terminal);return terminal;};
++ const term=()=>abort('watchdog','SIGTERM'),interrupt=()=>abort('interrupted','SIGINT');
++ signals.on('SIGTERM',term);signals.on('SIGINT',interrupt);
++ save(latest);
++ return {save,abort,get stopped(){return terminal!==null;},get receipt(){return terminal??latest;},dispose(){signals.removeListener('SIGTERM',term);signals.removeListener('SIGINT',interrupt);}};
++}
++export async function runBlock({arms,invoke,readResult,save,now=()=>performance.now(),originMs=0,budgetMs=INNER_BUDGET_MS,lifecycle}){
++ assert.equal(budgetMs,INNER_BUDGET_MS);assert.deepEqual(arms.map(a=>a.mode),['baseline','blob','baseline','stream']);
++ const start=originMs,deadline=originMs+budgetMs,results=[];let stopReason=null;
++ const persist=value=>lifecycle?lifecycle.save(value):save(value);
++ const stopped=()=>lifecycle?.stopped;
++ const checkStop=()=>{if(stopped()){stopReason=lifecycle.receipt.stopReason;return true;}if(now()>=deadline){stopReason='block budget exhausted';return true;}return false;};
+  try{
+   for(const arm of arms){
+-   // 100 seconds remain reserved: 65 for process teardown and 35 for evidence checks.
++   if(checkStop())break;
++   //100 seconds reserved:65 teardown +35 validation, all from process origin.
+    if(now()>=deadline-100000){stopReason='block budget exhausted before arm';break;}
++   persist({start,elapsedMs:now()-start,deadline,results,completed:false,phase:'invoking',armIndex:arm.index,stopReason:null});
+    let child;try{child=await invoke(arm,deadline);}catch(error){child={code:null,error:String(error)};}
++   if(stopped()){stopReason=lifecycle.receipt.stopReason;break;}
++   persist({start,elapsedMs:now()-start,deadline,results,completed:false,phase:'validating',armIndex:arm.index,stopReason:null});
+    let evidence;try{evidence=await readResult(arm);}catch(error){evidence={readError:String(error)};}
++   // Give pending process signals an event-loop turn before any acceptance/final write.
++   await new Promise(resolve=>setImmediate(resolve));
++   if(stopped()){stopReason=lifecycle.receipt.stopReason;break;}
+    const verdict=classifyArm({child,...evidence});results.push({index:arm.index,mode:arm.mode,child,...verdict});
+-   save({start,elapsedMs:now()-start,results,stopReason:verdict.continue?null:verdict.reason});
++   if(checkStop())break;
++   persist({start,elapsedMs:now()-start,deadline,results,completed:false,phase:'arm-complete',stopReason:verdict.continue?null:verdict.reason});
+    if(!verdict.continue){stopReason=verdict.reason;break;}
+-   if(now()>=deadline){stopReason='block budget exhausted';break;}
+   }
+- }finally{save({start,elapsedMs:now()-start,budgetMs,results,stopReason,completed:results.length===4&&!stopReason});}
+- return {results,stopReason,completed:results.length===4&&!stopReason};
++ }finally{
++  checkStop();persist({start,elapsedMs:now()-start,deadline,budgetMs,results,stopReason,completed:results.length===4&&!stopReason,phase:'final'});
++ }
++ return {results,stopReason,completed:results.length===4&&!stopReason&&!stopped()};
+ }
+ export function spawnBounded(node,args,{cwd,env,deadline,logBase}){
+  return new Promise(resolveResult=>{
+@@ -50,25 +75,37 @@
+   child.once('close',(code,signal)=>{if(done)return;done=true;clearTimeout(term);clearTimeout(kill);process.removeListener('SIGTERM',abort);process.removeListener('SIGINT',abort);for(const key of ['stdout','stderr'])writeFileSync(logBase+'.'+key+'.txt',Buffer.concat(output[key]),{flag:'wx'});resolveResult({code,signal,error,timedOut});});
+  });
+ }
++// Async source-only gate keeps the process-level watchdog listener live during validation.
++function gateCommand(executable,args){return new Promise((ok,reject)=>{
++ const child=spawn(executable,args,{stdio:['ignore','pipe','pipe']});let stdout='',stderr='',error=null;
++ const timer=setTimeout(()=>{error=Error('preflight timeout');child.kill('SIGKILL');},30000);
++ child.stdout.on('data',b=>{stdout+=b;if(stdout.length>1024*1024){error=Error('preflight output overflow');child.kill('SIGKILL');}});
++ child.stderr.on('data',b=>{stderr+=b;if(stderr.length>1024*1024){error=Error('preflight stderr overflow');child.kill('SIGKILL');}});
++ child.once('error',e=>{error=e;});child.once('close',(code,signal)=>{clearTimeout(timer);if(error||code!==0||signal)reject(error??Error('preflight failed '+stderr));else ok(stdout.trim());});
++});}
+ async function main(){
+- const [scratch,unique]=process.argv.slice(2);cleanRoot(scratch);cleanEnvironment(process.env);assert.equal(process.platform,'linux');assert.equal(process.arch,'x64');assert.equal(process.version,'v22.23.1');
+- const read=p=>JSON.parse(readFileSync(p));const runtime=join(scratch,R);const expected=linuxPlan(read(join(runtime,'RUN-PLAN.json')),scratch,realpathSync(process.execPath),unique);const plan=read(join(scratch,'provenance/LINUX-RUN-PLAN.json'));assert.deepEqual(plan,expected);
+- const resolution=read(join(scratch,'provenance/RESOLUTION-RECEIPT.json'));assert.equal(resolution.node.nodePath,realpathSync(process.execPath));
+- // Setup probe precedes list; stage and resolution receipt are rechecked before every arm.
+- const ready=read(join(scratch,'provenance/READY.json'));assert.equal(ready.unique,unique);assert.equal(ready.ready,true);assert.equal(ready.setupCompleted,true);
+- const hash=p=>createHash('sha256').update(readFileSync(p)).digest('hex');
+- assert.equal(ready.resolutionSha256,hash(join(scratch,'provenance/RESOLUTION-RECEIPT.json')));
+- const python=resolution.node.python3Path;assert.equal(realpathSync(python),python);
+- const pathPython=spawnSync('python3',['-c','import os,sys;print(os.path.realpath(sys.executable))'],{encoding:'utf8'});assert.equal(pathPython.status,0);assert.equal(pathPython.stdout.trim(),python);
+- assert.equal(spawnSync(python,['--version'],{encoding:'utf8'}).stdout.trim(),resolution.node.python3Version);
+- const preflight=()=>{const r=spawnSync(python,[join(dirname(fileURLToPath(import.meta.url)),'verify-stage.py'),scratch],{encoding:'utf8',timeout:30000,maxBuffer:1024*1024});assert.equal(r.status,0,r.stderr);assert.equal(ready.resolutionSha256,hash(join(scratch,'provenance/RESOLUTION-RECEIPT.json')));};
+- preflight();
+- const runs=dirname(plan.arms[0].env.IW_PWA_RUN_DIR);assert(!existsSync(runs));mkdirSync(runs);
+- const {collectEvidence,validateEvidence}=await import(pathToFileURL(join(runtime,'postrun-validation.mjs')));const pins=read(join(runtime,'RUNTIME-PINS.json'));
+- const result=await runBlock({arms:plan.arms,save:r=>writeFileSync(join(runs,'BLOCK-RECEIPT.json'),JSON.stringify({...r,setup:ready},null,2)),invoke:(arm,deadline)=>{preflight();return spawnBounded(process.execPath,[plan.entrypoint],{cwd:runtime,env:{...process.env,...arm.env},deadline,logBase:join(runs,String(arm.index).padStart(2,'0')+'-runner')});},readResult:arm=>{preflight();
+-  const rd=arm.env.IW_PWA_RUN_DIR,validation=validateEvidence(collectEvidence(rd),pins,{index:arm.index,mode:arm.mode,runDir:rd});
+-  return {outcome:read(join(rd,'RUN-OUTCOME.json')),testExit:read(join(rd,'test-exit.json')),validation,report:read(join(rd,'test-report.json'))};
+- }});process.exitCode=result.completed?0:1;
++ const [scratch,unique]=process.argv.slice(2);cleanRoot(scratch);assert(/^[A-Za-z0-9_-]+$/.test(unique));
++ const runs=join(scratch,'PWA-RESPONSE-EXPERIMENT-RUNS-'+unique);assert(!existsSync(runs));mkdirSync(runs);
++ // Installed before environment, plan, Python, source or postrun validation. Kept until process exit.
++ const lifecycle=createLifecycle({write:r=>writeFileSync(join(runs,'BLOCK-RECEIPT.json'),JSON.stringify(r,null,2)),onStop:()=>{process.exitCode=1;}});
++ try{
++  cleanEnvironment(process.env);assert.equal(process.platform,'linux');assert.equal(process.arch,'x64');assert.equal(process.version,'v22.23.1');
++  const read=p=>JSON.parse(readFileSync(p));const runtime=join(scratch,R);const expected=linuxPlan(read(join(runtime,'RUN-PLAN.json')),scratch,realpathSync(process.execPath),unique);const plan=read(join(scratch,'provenance/LINUX-RUN-PLAN.json'));assert.deepEqual(plan,expected);
++  const resolution=read(join(scratch,'provenance/RESOLUTION-RECEIPT.json'));assert.equal(resolution.node.nodePath,realpathSync(process.execPath));
++  const ready=read(join(scratch,'provenance/READY.json'));assert.equal(ready.unique,unique);assert.equal(ready.ready,true);assert.equal(ready.setupCompleted,true);
++  lifecycle.save({...lifecycle.receipt,setup:ready,phase:'preflight'});
++  const hash=p=>createHash('sha256').update(readFileSync(p)).digest('hex');assert.equal(ready.resolutionSha256,hash(join(scratch,'provenance/RESOLUTION-RECEIPT.json')));
++  const python=resolution.node.python3Path;assert.equal(realpathSync(python),python);
++  assert.equal(await gateCommand('python3',['-c','import os,sys;print(os.path.realpath(sys.executable))']),python);
++  assert.equal(await gateCommand(python,['--version']),resolution.node.python3Version);
++  const preflight=async()=>{assert(!lifecycle.stopped,'watchdog stopped driver');await gateCommand(python,[join(dirname(fileURLToPath(import.meta.url)),'verify-stage.py'),scratch]);assert.equal(ready.resolutionSha256,hash(join(scratch,'provenance/RESOLUTION-RECEIPT.json')));assert(!lifecycle.stopped,'watchdog stopped driver');};
++  await preflight();
++  const {collectEvidence,validateEvidence}=await import(pathToFileURL(join(runtime,'postrun-validation.mjs')));const pins=read(join(runtime,'RUNTIME-PINS.json'));
++  const result=await runBlock({arms:plan.arms,lifecycle,invoke:async(arm,deadline)=>{await preflight();assert(!lifecycle.stopped,'watchdog stopped driver');return spawnBounded(process.execPath,[plan.entrypoint],{cwd:runtime,env:{...process.env,...arm.env},deadline,logBase:join(runs,String(arm.index).padStart(2,'0')+'-runner')});},readResult:async arm=>{await preflight();
++   const rd=arm.env.IW_PWA_RUN_DIR,validation=validateEvidence(collectEvidence(rd),pins,{index:arm.index,mode:arm.mode,runDir:rd});
++   return {outcome:read(join(rd,'RUN-OUTCOME.json')),testExit:read(join(rd,'test-exit.json')),validation,report:read(join(rd,'test-report.json'))};
++  }});process.exitCode=result.completed&&!lifecycle.stopped?0:1;
++ }catch(error){lifecycle.abort(lifecycle.stopped?lifecycle.receipt.stopReason:'driver setup/validation failure',lifecycle.stopped?lifecycle.receipt.signal:null);process.exitCode=1;process.stderr.write(String(error)+'\n');}
+ }
+ if(process.argv[1]&&resolvePath(process.argv[1])===fileURLToPath(import.meta.url))await main();
+ function resolvePath(p){return fileURLToPath(pathToFileURL(p));}
+--- source1/transport.py
++++ source2/transport.py
+@@ -1,5 +1,5 @@
+ """No-contact transport validation. Importing this module has no side effects."""
+-import hashlib,json,os,re,stat,tarfile
++import hashlib,json,os,re,stat,tarfile,io
+ from pathlib import Path,PurePosixPath
+ MAX_BYTES=25_000_000
+ sha=lambda b:hashlib.sha256(b).hexdigest()
+@@ -41,23 +41,36 @@
+  require(inventory(root)==expected,'missing/extra/hash/size tree mismatch')
+ def load_manifest(path,expected_sha):
+  raw=Path(path).read_bytes();require(sha(raw)==expected_sha,'untrusted manifest');m=json.loads(raw);check_names(list(m));require(sum(x['bytes'] for x in m.values())<MAX_BYTES,'payload too large');return m
+-def validate_tar(path,manifest,archive_sha):
+- require(Path(path).stat().st_size<MAX_BYTES,'tar too large')
+- require(sha(Path(path).read_bytes())==archive_sha,'tar digest mismatch')
+- with tarfile.open(path,'r:') as tf:
++def validated_tar_bytes(path,manifest,archive_sha):
++ # Read a single bounded byte snapshot from one handle. Renaming/replacing the
++ # path after this read cannot swap the bytes subsequently parsed or extracted.
++ with Path(path).open('rb') as f:
++  require(os.fstat(f.fileno()).st_size<MAX_BYTES,'tar too large')
++  raw=f.read(MAX_BYTES)
++ require(len(raw)<MAX_BYTES,'tar too large');require(sha(raw)==archive_sha,'tar digest mismatch')
++ with tarfile.open(fileobj=io.BytesIO(raw),mode='r:') as tf:
+   members=tf.getmembers();check_names([m.name for m in members]);require(set(m.name for m in members)==set(manifest),'tar extra/missing entries')
+   for m in members:
+    require(m.type==tarfile.REGTYPE and not m.pax_headers and not m.linkname,'nonregular or extended tar entry')
+    pin=manifest[m.name];require(m.size==pin['bytes'],'tar size mismatch')
+    require(sha(tf.extractfile(m).read())==pin['sha256'],'tar content mismatch')
++ return raw
++
++def validate_tar(path,manifest,archive_sha):
++ validated_tar_bytes(path,manifest,archive_sha)
++
+ def extract_fresh(path,dest,manifest,archive_sha):
+  dest=no_link_ancestors(dest);require(not dest.exists(),'destination already exists');disjoint(path,dest)
+- validate_tar(path,manifest,archive_sha) # Entire archive checked before creating destination.
++ raw=validated_tar_bytes(path,manifest,archive_sha) # Immutable snapshot, full validation before any writes.
+  dest.mkdir()
+- with tarfile.open(path,'r:') as tf:
++ with tarfile.open(fileobj=io.BytesIO(raw),mode='r:') as tf:
+   for member in tf:
++   # Defense in depth: even each buffered entry is checked before creating its path.
++   safe_name(member.name);require(member.name in manifest,'unexpected write member')
++   data=tf.extractfile(member).read();pin=manifest[member.name]
++   require(len(data)==pin['bytes'] and sha(data)==pin['sha256'],'changed write member')
+    p=dest/member.name;p.parent.mkdir(parents=True,exist_ok=True)
+-   with p.open('xb') as f:f.write(tf.extractfile(member).read())
++   with p.open('xb') as f:f.write(data)
+    p.chmod(0o444)
+  verify_tree(dest,manifest)
+  return dest
+--- source1/staging.test.mjs
++++ source2/staging.test.mjs
+@@ -1,12 +1,19 @@
+-import test from 'node:test';import assert from 'node:assert/strict';
+-import {readFileSync,mkdtempSync,symlinkSync,mkdirSync} from 'node:fs';import {join,dirname} from 'node:path';import {fileURLToPath} from 'node:url';import {performance} from 'node:perf_hooks';
+-import {rebindPins,linuxPlan,cleanRoot,cleanEnvironment,R} from './bindings.mjs';import {classifyArm,runBlock,spawnBounded} from './driver.mjs';
++import test,{after} from 'node:test';import {EventEmitter} from 'node:events';import assert from 'node:assert/strict';
++import {readFileSync,writeFileSync,mkdtempSync,symlinkSync,mkdirSync,rmSync} from 'node:fs';import {join,dirname} from 'node:path';import {fileURLToPath,pathToFileURL} from 'node:url';import {performance} from 'node:perf_hooks';
++import {rebindPins,linuxPlan,cleanRoot,cleanEnvironment,R} from './bindings.mjs';import {classifyArm,runBlock,spawnBounded,createLifecycle,INNER_BUDGET_MS} from './driver.mjs';
+ const O=dirname(fileURLToPath(import.meta.url));const source=join(O,'payload',R);const pins=JSON.parse(readFileSync(join(source,'RUNTIME-PINS.json')));const plan=JSON.parse(readFileSync(join(source,'RUN-PLAN.json')));
++const scratch=[];const temp=prefix=>{const d=mkdtempSync(join(O,prefix));scratch.push(d);return d;};after(()=>{for(const d of scratch)rmSync(d,{recursive:true,force:true});});
+ function valid(exit=0){return {child:{code:exit,signal:null},outcome:{originalTestExit:exit,originalSignal:null,validationExit:0,validRuntimeEvidence:true},testExit:{status:exit,signal:null,error:null},validation:{captureValid:true,invalid:[]},report:{errors:[],suites:[{specs:[{tests:[{results:[{retry:0,status:exit?'failed':'passed',errors:exit?[{message:'Error: expect(received).toBe(expected)'}]:[]}]}]}]}]}};}
+ test('Linux bindings preserve all non-path values and seven source hashes',()=>{const x=rebindPins(pins,'/private/tmp/pwa-source-test');assert.equal(x.diffs.length,8);assert.deepEqual(Object.values(x.pins.runtimeSources),Object.values(pins.runtimeSources));for(const k of Object.keys(pins))if(!['runtimeSources','playwrightCLI'].includes(k))assert.deepEqual(x.pins[k],pins[k]);assert.equal(x.pins.traceReceiptPath,pins.traceReceiptPath);const p=linuxPlan(plan,'/private/tmp/pwa-source-test','/opt/node/bin/node','unique_1');for(let i=0;i<4;i++){const a=p.arms[i];for(const [k,v]of Object.entries(plan.arms[i].env))if(!['IW_PWA_CACHE','IW_PWA_RUN_DIR'].includes(k))assert.equal(a.env[k],v);}});
+-test('root/unique/environment refusal before dependency resolution',()=>{for(const p of ['/Users/alias','relative','/tmp/a/../b'])assert.throws(()=>rebindPins(pins,p));assert.throws(()=>linuxPlan(plan,'/tmp/good','/opt/node','../escape'));for(const env of [{NODE_OPTIONS:''},{NODE_PATH:''},{NODE_OPTIONS:'--preserve-symlinks'}])assert.throws(()=>cleanEnvironment(env));const d=mkdtempSync(join(O,'.test-root-'));mkdirSync(join(d,'real'));symlinkSync(join(d,'real'),join(d,'alias'));assert.throws(()=>cleanRoot(join(d,'alias','future')));});
++test('root/unique/environment refusal before dependency resolution',()=>{for(const p of ['/Users/alias','relative','/tmp/a/../b'])assert.throws(()=>rebindPins(pins,p));assert.throws(()=>linuxPlan(plan,'/tmp/good','/opt/node','../escape'));for(const env of [{NODE_OPTIONS:''},{NODE_PATH:''},{NODE_OPTIONS:'--preserve-symlinks'},{NODE_PRESERVE_SYMLINKS:''},{NODE_PRESERVE_SYMLINKS:'1'}])assert.throws(()=>cleanEnvironment(env));const d=temp('.test-root-');mkdirSync(join(d,'real'));symlinkSync(join(d,'real'),join(d,'alias'));assert.throws(()=>cleanRoot(join(d,'alias','future')));});
+ test('complete assertion failure continues; setup, timeout, overflow, missing and invalid capture stop',()=>{assert.equal(classifyArm(valid()).continue,true);assert.equal(classifyArm(valid(1)).continue,true);for(const mutate of [v=>v.child.error='maxBuffer',v=>v.child.signal='SIGTERM',v=>v.child.timedOut=true,v=>v.outcome=null,v=>v.testExit.error='spawn fail',v=>v.validation.captureValid=false,v=>v.report.errors.push({message:'launch failed'}),v=>v.report.suites[0].specs[0].tests[0].results[0].status='timedOut',v=>v.report.suites[0].specs[0].tests[0].results[0].retry=1,v=>v.outcome.originalTestExit=4,v=>v.report.suites[0].specs[0].tests[0].results[0].errors=[{message:'socket closed'}]]){const v=valid(1);mutate(v);assert.equal(classifyArm(v).continue,false);}});
+ test('four fixed fresh arm invocations continue after assertion failure and persist separate outcomes',async()=>{const seen=[],saved=[];const x=await runBlock({arms:plan.arms,invoke:async a=>{seen.push(a.index);return valid(a.index===2?1:0).child;},readResult:async a=>valid(a.index===2?1:0),save:r=>saved.push(structuredClone(r))});assert.equal(x.completed,true);assert.deepEqual(seen,[1,2,3,4]);assert.equal(saved.at(-1).results[1].originalTestExit,1);});
+ test('incomplete evidence aborts further arms and always saves terminal reason',async()=>{const seen=[],saved=[];const x=await runBlock({arms:plan.arms,invoke:async a=>{seen.push(a.index);return valid().child;},readResult:async()=>{throw Error('missing after receipt');},save:r=>saved.push(r)});assert.deepEqual(seen,[1]);assert.equal(x.completed,false);assert.match(saved.at(-1).stopReason,/missing/);});
+-test('block clock excludes prior setup and refuses arm with teardown reserve exhausted',async()=>{let time=7000000,calls=0;const x=await runBlock({arms:plan.arms,now:()=>time,invoke:async()=>{calls++;time+=1500000;return valid().child;},readResult:async()=>valid(),save:()=>{}});assert.equal(calls,1);assert.equal(x.stopReason,'block budget exhausted');});
+-test('fake child launch and signal refusal without importing config/browser',async()=>{const d=mkdtempSync(join(O,'.test-child-'));const a=await spawnBounded(process.execPath,['-e','process.exit(1)'],{cwd:d,env:{},deadline:performance.now()+135000,logBase:join(d,'failure')});assert.equal(a.code,1);const b=await spawnBounded('/nonexistent/pwa-node',[],{cwd:d,env:{},deadline:performance.now()+135000,logBase:join(d,'missing')});assert.match(b.error,/ENOENT/);const c=await spawnBounded(process.execPath,['-e','setInterval(()=>{},1000)'],{cwd:d,env:{},deadline:performance.now()+100001,logBase:join(d,'timeout')});assert.equal(c.timedOut,true);assert.equal(c.signal,'SIGTERM');});
++test('deadline includes startup/preflight from process origin and refuses late first arm',async()=>{let time=INNER_BUDGET_MS-90000,calls=0;const saved=[];const x=await runBlock({arms:plan.arms,now:()=>time,originMs:0,invoke:async()=>{calls++;return valid().child;},readResult:async()=>valid(),save:r=>saved.push(r)});assert.equal(calls,0);assert.equal(x.stopReason,'block budget exhausted before arm');assert.equal(saved.at(-1).deadline,1470000);assert(saved.at(-1).deadline<1495000);});
++test('four apparently complete arms cannot pass after validation exceeds process deadline',async()=>{let time=20000,calls=0;const saved=[];const x=await runBlock({arms:plan.arms,now:()=>time,originMs:0,invoke:async()=>{calls++;return valid().child;},readResult:async()=>{if(calls===4)time=INNER_BUDGET_MS+1;return valid();},save:r=>saved.push(r)});assert.equal(calls,4);assert.equal(x.completed,false);assert.equal(x.stopReason,'block budget exhausted');assert.equal(saved.at(-1).completed,false);});
++test('watchdog during validation latches truthful final receipt and refuses later success/finally writes',async()=>{const signals=new EventEmitter(),saved=[];let time=100000,invocations=0;const life=createLifecycle({signals,now:()=>time,originMs:0,write:r=>saved.push(structuredClone(r))});try{const x=await runBlock({arms:plan.arms,lifecycle:life,now:()=>time,invoke:async()=>{invocations++;return valid().child;},readResult:async()=>{assert.equal(life.receipt.phase,'validating');time=1495000;signals.emit('SIGTERM');return valid();}});assert.equal(invocations,1);assert.equal(x.completed,false);assert.equal(x.stopReason,'watchdog');const receipt=saved.at(-1),count=saved.length;assert.equal(receipt.completed,false);assert.equal(receipt.signal,'SIGTERM');assert.equal(receipt.phase,'validating');assert.equal(receipt.elapsedMs,1495000);life.save({completed:true,stopReason:null});signals.emit('SIGTERM');assert.equal(saved.length,count);assert.deepEqual(saved.at(-1),receipt);}finally{life.dispose();}});
++test('watchdog before block prevents every arm and completed receipt remains immutable',async()=>{const signals=new EventEmitter(),saved=[];const life=createLifecycle({signals,write:r=>saved.push(structuredClone(r))});let calls=0;try{signals.emit('SIGTERM');const x=await runBlock({arms:plan.arms,lifecycle:life,invoke:async()=>{calls++;},readResult:async()=>valid()});assert.equal(calls,0);assert.equal(x.completed,false);assert.equal(saved.at(-1).stopReason,'watchdog');}finally{life.dispose();}});
++test('environment receipt explicitly records preserve-symlinks variable as unset',()=>assert.equal(cleanEnvironment({}).NODE_PRESERVE_SYMLINKS,null));
++test('fake child launch and signal refusal without importing config/browser',async()=>{const d=temp('.test-child-');const a=await spawnBounded(process.execPath,['-e','process.exit(1)'],{cwd:d,env:{},deadline:performance.now()+135000,logBase:join(d,'failure')});assert.equal(a.code,1);const b=await spawnBounded('/nonexistent/pwa-node',[],{cwd:d,env:{},deadline:performance.now()+135000,logBase:join(d,'missing')});assert.match(b.error,/ENOENT/);const c=await spawnBounded(process.execPath,['-e','setInterval(()=>{},1000)'],{cwd:d,env:{},deadline:performance.now()+100001,logBase:join(d,'timeout')});assert.equal(c.timedOut,true);assert.equal(c.signal,'SIGTERM');});
++
++test('real self-SIGTERM during fake validation writes watchdog receipt which finally cannot replace',async()=>{const d=temp('.test-child-');const file=join(d,'watchdog.json');const code=`import {createLifecycle,runBlock} from ${JSON.stringify(pathToFileURL(join(O,'driver.mjs')).href)};import {writeFileSync} from 'node:fs';const lifecycle=createLifecycle({write:r=>writeFileSync(${JSON.stringify(file)},JSON.stringify(r))});const result=await runBlock({arms:${JSON.stringify(plan.arms)},lifecycle,invoke:async()=>({code:0,signal:null}),readResult:async()=>{await new Promise(resolve=>{setTimeout(()=>{process.kill(process.pid,'SIGTERM');setTimeout(resolve,20);},5);});return {};}});lifecycle.save({completed:true,stopReason:null});if(result.completed)process.exitCode=7;`;const child=await spawnBounded(process.execPath,['--input-type=module','-e',code],{cwd:d,env:{},deadline:performance.now()+135000,logBase:join(d,'watchdog-child')});assert.equal(child.code,0);const receipt=JSON.parse(readFileSync(file));assert.equal(receipt.completed,false);assert.equal(receipt.stopReason,'watchdog');assert.equal(receipt.phase,'validating');assert.equal(receipt.terminal,true);});
+--- source1/test_transport.py
++++ source2/test_transport.py
+@@ -1,9 +1,12 @@
+-import io,json,tarfile,tempfile,unittest,os
++import io,json,tarfile,tempfile,unittest,os,shutil
+ from pathlib import Path
+ from transport import *
++import transport
++from unittest.mock import patch
+ O=Path(__file__).resolve().parent
+ class Boundaries(unittest.TestCase):
+- def setUp(self):self.root=Path(tempfile.mkdtemp(prefix='.test-transport-',dir=O))
++ def setUp(self):
++  self.root=Path(tempfile.mkdtemp(prefix='.test-transport-',dir=O));self.addCleanup(shutil.rmtree,self.root)
+  def tar(self,members):
+   p=self.root/'test.tar'
+   with tarfile.open(p,'w',format=tarfile.USTAR_FORMAT) as t:
+@@ -23,6 +26,20 @@
+    p=self.tar(rows)
+    with self.assertRaises(ValueError):extract_fresh(p,self.root/'dest',m,sha(p.read_bytes()))
+    self.assertFalse((self.root/'dest').exists())
++ def test_path_replacement_after_validation_uses_only_original_snapshot(self):
++  p=self.tar([('a/b',b'original',tarfile.REGTYPE)]);original=p.read_bytes();m={'a/b':{'bytes':8,'sha256':sha(b'original')}}
++  validated=transport.validated_tar_bytes
++  def swap(*args):
++   snapshot=validated(*args)
++   self.tar([('../escaped',b'attack',tarfile.REGTYPE)]) # Replace path contents after full validation.
++   return snapshot
++  with patch.object(transport,'validated_tar_bytes',side_effect=swap):extract_fresh(p,self.root/'new',m,sha(original))
++  self.assertEqual((self.root/'new/a/b').read_bytes(),b'original');self.assertFalse((self.root/'escaped').exists());self.assertEqual(inventory(self.root/'new'),m)
++ def test_inplace_data_change_before_snapshot_hash_refuses_all_writes(self):
++  p=self.tar([('a',b'original',tarfile.REGTYPE)]);digest=sha(p.read_bytes());m={'a':{'bytes':8,'sha256':sha(b'original')}}
++  self.tar([('a',b'attacked',tarfile.REGTYPE)])
++  with self.assertRaisesRegex(ValueError,'digest'):extract_fresh(p,self.root/'new',m,digest)
++  self.assertFalse((self.root/'new').exists())
+  def test_root_overlap_symlink_empty_directory_and_hardlink(self):
+   with self.assertRaises(ValueError):disjoint(self.root,self.root/'nested')
+   (self.root/'alias').symlink_to(self.root,target_is_directory=True)
+--- source1/test_reconstruct.py
++++ source2/test_reconstruct.py
+@@ -1,11 +1,11 @@
+-import json,sys,tempfile,unittest
++import json,sys,tempfile,unittest,shutil
+ from pathlib import Path
+ from transport import sha,inventory,write_json
+ from reconstruct import reconstruct,R,P
+ O=Path(__file__).resolve().parent
+ class Reconstruction(unittest.TestCase):
+  def fixture(self,invalid=False):
+-  s=Path(tempfile.mkdtemp(prefix='.test-reconstruct-',dir=O));r=s/R;r.mkdir()
++  s=Path(tempfile.mkdtemp(prefix='.test-reconstruct-',dir=O));self.addCleanup(shutil.rmtree,s);r=s/R;r.mkdir()
+   # Synthetic strict-verifier stand-in only: reconstruction's real invocation contract is exercised.
+   verifier=b'import pathlib,sys\npathlib.Path(sys.argv[2]).write_text("{}")\n'
+   (r/'verify-original-archives.py').write_bytes(verifier);write_json(r/'RUNTIME-PINS.json',{'originalVerifierSha256':sha(verifier)})
+@@ -24,6 +24,11 @@
+  def test_four_pairs_independent_no_mutation_and_refuse_reuse(self):
+   s,original=self.fixture();before=inventory(original);result=reconstruct(s,s/'receipts',sys.executable)
+   self.assertEqual(list(result),['off','baseline','blob','stream']);self.assertEqual(inventory(original),before)
++  for mode in result:
++   actual=inventory(s/P/'derived-pairs'/mode);self.assertEqual(actual,result[mode]);self.assertEqual(len(actual),660)
++   expected=dict(before);worker=('worker '+mode).encode();expected['new-dist/sw.js']={'bytes':len(worker),'sha256':sha(worker)}
++   self.assertEqual(actual,expected) # Exact old330 and new329 nonworkers, plus selected new worker.
++   self.assertEqual((s/P/'derived-pairs'/mode/'new-dist/sw.js').read_bytes(),worker)
+   f='new-dist/f0.js';a=original/f;b=s/P/'derived-pairs/off'/f;self.assertNotEqual(a.stat().st_ino,b.stat().st_ino);self.assertEqual(b.stat().st_nlink,1);self.assertEqual(b.stat().st_mode&0o222,0)
+   with self.assertRaises((ValueError,FileExistsError)):reconstruct(s,s/'again',sys.executable)
+  def test_nonworker_change_refuses_no_fallback(self):
+--- source1/validate-checkpoint.py
++++ source2/validate-checkpoint.py
+@@ -21,5 +21,12 @@
+ # Clean only explicitly named disposable fixtures created by this checkpoint's tests.
+ for p in O.iterdir():
+  if p.name.startswith(('.test-root-','.test-child-','.test-transport-','.test-reconstruct-')) and p.is_dir():shutil.rmtree(p)
+-write_json(O/'VALIDATION.json',{'status':'HELD_SOURCE_CHECKS_PASS_NOT_EXECUTION_ENROLLMENT','checks':checks,'nodeTestsPassed':55,'pythonTestsPassed':6,'pythonSyntaxFiles':len(list(O.glob('*.py'))),'runtimeFrozenFiles':33,'sourceChangedFiles':['app/playwright.pwa.config.ts','start-verified-harness.mjs'],'originalFilesPreserved':660,'existingDerivedFilesPreserved':2640,'sourceAndArchiveBeforeAfterExact':True,'transport':pins,'configListServerBrowserInvoked':False,'installed':False,'runtimePinRebindPerformed':False,'nodeForLocalTests':node,'pythonForLocalTests':sys.executable})
+-print('55 Node + 6 Python tests, syntax, original strict verification, tar validation and all preservation checks passed.')
++write_json(O/'VALIDATION.json',{'status':'HELD_SOURCE_CHECKS_PASS_NOT_EXECUTION_ENROLLMENT','checks':checks,'nodeTestsPassed':60,'pythonTestsPassed':8,'pythonSyntaxFiles':len(list(O.glob('*.py'))),'runtimeFrozenFiles':33,'sourceChangedFiles':['app/playwright.pwa.config.ts','start-verified-harness.mjs'],'originalFilesPreserved':660,'existingDerivedFilesPreserved':2640,'sourceAndArchiveBeforeAfterExact':True,'transport':pins,'configListServerBrowserInvoked':False,'installed':False,'runtimePinRebindPerformed':False,'nodeForLocalTests':node,'pythonForLocalTests':sys.executable})
++old=B/'PWA-LINUX-STAGING-SOURCE-CHECKPOINT-1';old_manifest=json.loads((old/'MANIFEST.json').read_text())
++old_actual={p.relative_to(old).as_posix():{'bytes':p.stat().st_size,'sha256':sha(p.read_bytes())} for p in old.rglob('*') if p.is_file() and p!=old/'MANIFEST.json'}
++assert old_actual==old_manifest['files'];assert sha((old/'MANIFEST.json').read_bytes())=='e525f4e245d12ad9efd8bd300b0996c65c3ceffe6c98e3f68ec1a3b148778628'
++assert inventory(old/'payload')==inventory(O/'payload')
++for name in ['payload.tar','PACKAGE-PINS.json','TRANSPORT-MANIFEST.json','RUNTIME-SOURCE-DIFF.patch']:assert (old/name).read_bytes()==(O/name).read_bytes()
++assert not any(p.name.startswith('.test-') for p in O.iterdir())
++write_json(O/'SOURCE-1-PRESERVATION.json',{'source1ManifestSha256':sha((old/'MANIFEST.json').read_bytes()),'entriesVerified':len(old_actual),'allOriginalBytesPreserved':True,'payload754AndTarByteIdentical':True,'runtimeSourcePatchByteIdentical':True,'testScratchRemaining':0})
++print('60 Node + 8 Python tests, syntax, original verification, transport and source1 preservation all passed.')
+--- source1/PACKAGE-RECIPE.md
++++ source2/PACKAGE-RECIPE.md
+@@ -6,15 +6,15 @@
+ 
+ ## Exact future sequence
+ 
+-1. Establish the proposed isolated Ubuntu x64 job with contents:read/actions:read, no secrets, no deployments, no provider/DB access. Checkout only the separately approved source commit and verify the reviewed root MANIFEST.json SHA supplied out of band. Verify every listed file, including transport, helpers and PACKAGE-PINS.json. Stop on any extra/missing/hash/symlink/case error. Record runner image and uname identity, job/setup start time. Leave NODE_PATH, NODE_OPTIONS and preserve-symlinks flags unset; do not silently clear a conflicting environment.
+-2. Create a unique canonical scratch path under realpath($RUNNER_TEMP), distinct from checkout, payload and tools roots. Destination must not exist. Use `transport.load_manifest(manifestPath, PACKAGE-PINS.manifestSha256)` then `transport.extract_fresh(tarPath, scratch, manifest, PACKAGE-PINS.archiveSha256)`. This validates the whole tar before writes, uses exclusive regular-file creation and rechecks the extracted inventory. Never use generic tar extraction for the source payload. Keep the separate frozen runtime2 copy unchanged.
++1. Establish the proposed isolated Ubuntu x64 job with contents:read/actions:read, no secrets, no deployments, no provider/DB access. Checkout only the separately approved source commit and verify the reviewed root MANIFEST.json SHA supplied out of band. Verify every listed file, including transport, helpers and PACKAGE-PINS.json. Stop on any extra/missing/hash/symlink/case error. Record runner image and uname identity, job/setup start time. Leave NODE_PATH, NODE_OPTIONS, NODE_PRESERVE_SYMLINKS and preserve-symlinks flags unset; do not silently clear a conflicting environment.
++2. Create a unique canonical scratch path under realpath($RUNNER_TEMP), distinct from checkout, payload and tools roots. Destination must not exist. Use `transport.load_manifest(manifestPath, PACKAGE-PINS.manifestSha256)` then `transport.extract_fresh(tarPath, scratch, manifest, PACKAGE-PINS.archiveSha256)`. This reads one bounded immutable byte snapshot, validates it completely before writes, extracts only that same snapshot with per-entry name/membership/hash checks, uses exclusive regular-file creation and rechecks the extracted inventory. Replacing the archive path after validation cannot replace extracted bytes. Never use generic tar extraction for the source payload. Keep the separate frozen runtime2 copy unchanged.
+ 3. Cloud-only setup budget: at most 30 minutes. Download `https://nodejs.org/dist/v22.23.1/node-v22.23.1-linux-x64.tar.xz` and `https://nodejs.org/dist/v22.23.1/SHASUMS256.txt` via HTTPS with curl --fail --show-error --location and save both. Check exactly the matching filename and its SHA-256 before extracting the official distribution into a separate new toolchain directory. Do not use a cached/major-only Node. Record the immutable chosen official checksum in the setup receipt; download failure is a stop, not permission to choose another Node. The official distribution extraction is toolchain setup, not source/archive transport. Put that bin directory first in PATH. Run `node-receipt.py <real-node-bin> <saved-official-tar.xz> <saved-SHASUMS256.txt> $S/provenance/NODE-BINARY-RECEIPT.json`. It independently compares the executing binary with the tar member, checks Linux/x64/v22.23.1, records Python3 realpath/version and executes only the Node strip-types flag check. Record npm version and all PLAYWRIGHT_* variables. A703's Node patch remains UNKNOWN; this exact Node patch is a documented protocol difference.
+-4. Cloud-only dependencies: from `$S/dependencies/app`, verify exact package.json SHA ca24a5be... and lock SHA b7373009... against COMMITTED-DEPENDENCY-PINS, then normal `npm ci` with that official Node. Capture install exit/log and do not retry or change lock/resolution. The complete A703 committed lock is transported with Git object receipts; no reduced lock or local installation. Record npm version. `NODE_PATH`/`NODE_OPTIONS` remain unset. Resolve `python3` from PATH and require its realpath to equal the Node receipt's python3Path. Use that exact Python for all staging helpers.
++4. Cloud-only dependencies: from `$S/dependencies/app`, verify exact package.json SHA ca24a5be... and lock SHA b7373009... against COMMITTED-DEPENDENCY-PINS, then normal `npm ci` with that official Node. Capture install exit/log and do not retry or change lock/resolution. The complete A703 committed lock is transported with Git object receipts; no reduced lock or local installation. Record npm version. `NODE_PATH`/`NODE_OPTIONS`/`NODE_PRESERVE_SYMLINKS` remain unset. Resolve `python3` from PATH and require its realpath to equal the Node receipt's python3Path. Use that exact Python for all staging helpers.
+ 5. Run `reconstruct.py "$S" "$S/reconstruction-receipts" "<exact-python3>"`. This runs the unchanged original verifier before and after, creates independent byte copies for off/baseline/blob/stream, replaces only each new sw.js and checks all 330+330 hashes per pair. OFF is pinned using TRANSPORT-INVENTORY; it is never added to RUNTIME-PINS or executed as an arm. Missing input or existing destination means stop; no rebuild/fallback/reuse. Files are read-only; set all original/derived directories read-only after successful reconstruction too.
+ 6. Run official Node on `bind-execution.mjs "$S" "<real-node-bin>" "$UNIQUE"`. Before writing it checks all 33 frozen and 33 source files. It alters only /playwrightCLI and the seven /runtimeSources keys, preserving every other JSON value and all seven hash values. It creates LINUX-PATH-BINDINGS and LINUX-RUN-PLAN externally. The original RUN-PLAN/CHECK-COMMANDS/SOURCE-EVIDENCE remain evidence-only. Source addition lifetime is explicit: exactly one dependency link at runtime/app/node_modules and one exact-byte resolution-probe.mjs at runtime/app/resolution-probe.mjs, retained through postflight and inventoried in EXECUTION-ADDITIONS. No other runtime additions. The probe is a new helper, not one of the two existing-file source changes.
+ 7. Run the staged app/resolution-probe.mjs with official Node. It uses import.meta.resolve and createRequire from inside app to check all three Playwright 1.62.0 package roots and ESM/CJS entries, package.json hashes, seven original runtime hashes, and the Node binary receipt. It never imports the config or Playwright runtime. Save RESOLUTION-RECEIPT. Then install Chromium only via that receipt's exact staged playwright/cli.js: `<node> <staged-cli> install --with-deps chromium`. Do not use npx, a channel, latest browser or another package. Stop on any install failure. Record PLAYWRIGHT_BROWSERS_PATH/all PLAYWRIGHT_* variables and the package browser registry version. Before block, use a separate reviewed metadata-only helper/command to record the actual executable path/hash selected by that same staged package without launching it; five-field Browser.getVersion remains required inside every arm. This metadata receipt source is intentionally not authored here and is a remaining source gate, not permission to skip the check.
+ 8. Run `verify-stage.py "$S"`. It validates frozen source, original/delta/derived payload, exact runtime source and only permitted additions/pin changes; it rejects extra files, directories, links, hardlinks, case collisions and changed source. No config/list yet. Record setup elapsed time, toolchain/dependency/Chromium receipts and RESOLUTION-RECEIPT SHA into a new READY.json with unique, ready:true, setupCompleted:true, setupStartedAt, setupCompletedAt and setupElapsedMs. This READY creation is a reviewed orchestration step, not a self-issued authorization.
+-9. Invoke official Node on `driver.mjs "$S" "$UNIQUE"` under Linux GNU `timeout --signal=TERM --kill-after=5s 1495s`. This outer watchdog caps the whole process group at25 minutes including synchronous evidence checks; a watchdog kill is always an invalid/incomplete stop. The 25-minute monotonic block clock begins inside runBlock after setup. Before/after each arm the source/archive gate runs; the frozen runner owns list, exactly one unchanged case, fresh browser/context/server and original/derived attestations. Four arms are baseline/blob/baseline/stream, seven unchanged flags, port5196, zero retries. All Browser.getVersion/category/assertion gates are unchanged. 100 seconds are reserved: 65 for teardown and 35 for evidence checks, with process-group SIGTERM then SIGKILL only on budget exhaustion; invalid/missing shutdown evidence stops later arms. Aggregate runner status is insufficient: driver independently validates collected evidence, test exit, report retry/status, and assertion errors. A complete assertion failure is recorded and can continue; timeout, launch, overflow, pin/setup/validation failure or missing receipt stops. The final block receipt separates normal test outcome from evidence completeness and stop reason.
++9. Invoke official Node on `driver.mjs "$S" "$UNIQUE"` under Linux GNU `timeout --signal=TERM --kill-after=5s 1495s`. This outer watchdog caps the whole process group at25 minutes including synchronous evidence checks; a watchdog kill is always an invalid/incomplete stop. The driver uses performance.now() from Node process timeOrigin, including its own startup/preflight. Cloud installation setup happens before the driver. The inner deadline is1470 seconds from process origin,25 seconds before the outer1495-second TERM and30 before its1500-second KILL. Before/after each arm the source/archive gate runs; the frozen runner owns list, exactly one unchanged case, fresh browser/context/server and original/derived attestations. Four arms are baseline/blob/baseline/stream, seven unchanged flags, port5196, zero retries. All Browser.getVersion/category/assertion gates are unchanged. 100 seconds before the inner deadline are reserved:65 for teardown and35 for evidence checks, with process-group SIGTERM at1370s then SIGKILL at1435s from process origin only on budget exhaustion; invalid/missing shutdown evidence stops later arms. A driver-level SIGTERM handler remains installed during asynchronous preflight/postrun validation. It latches completed:false/stopReason:watchdog immediately; later success/finally writes are ignored. Aggregate runner status is insufficient: driver independently validates collected evidence, test exit, report retry/status, and assertion errors. A complete assertion failure is recorded and can continue; timeout, launch, overflow, pin/setup/validation failure or missing receipt stops. The final block receipt separates normal test outcome from evidence completeness and stop reason.
+ 10. Always preserve/upload all existing scratch evidence, source inventories, before/after checks, stdout/stderr, setup/block clocks and stop reason, including failed setup. Artifact upload uses a separately pinned reviewed upload action with a 10-minute step budget; job timeout 70 minutes exceeds setup30 + block25 + upload10. Do not overwrite or retry the experiment. A watchdog fallback beyond the driver's block is a stop and incomplete evidence, not a valid arm. No mechanism conclusion is implied by four arms.
+ 
+ ## Remaining gates
+--- source1/PROPOSED-WORKFLOW.yml.txt
++++ source2/PROPOSED-WORKFLOW.yml.txt
+@@ -26,6 +26,7 @@
+         timeout-minutes: 26 # Outer step ceiling; GNU timeout below caps block at exactly25.
+         run: |
+           # Official exact Node and S/UNIQUE must come from verified setup receipts.
++          # Internal deadline1470s from process origin; outer TERM1495s/KILL1500s.
+           timeout --signal=TERM --kill-after=5s 1495s "$NODE_BIN" "$REVIEWED_HELPERS/driver.mjs" "$S" "$UNIQUE"
+       - name: Always retain existing setup and experiment evidence
+         if: always()

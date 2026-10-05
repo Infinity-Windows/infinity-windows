@@ -1,0 +1,40 @@
+# HELD SOURCE SKETCH — NOT ENROLLED, NOT VALID FOR DISPATCH.
+# Resolve reviewed immutable action/source pins and authored setup/READY/browser metadata
+# orchestration before converting this document into any workflow.
+name: proposed-pwa-response-linux
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  proposed-four-arms:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@<REVIEWED_IMMUTABLE_CHECKOUT_SHA>
+        with:
+          ref: <REVIEWED_SOURCE_COMMIT>
+          persist-credentials: false
+      - name: Verify root source and stage exact bytes; cloud setup only
+        timeout-minutes: 30
+        run: |
+          # PACKAGE-RECIPE.md steps 1–8; source orchestration not yet enrolled.
+          echo 'HELD: missing reviewed root pin, setup/READY and browser metadata orchestration' >&2
+          exit 1
+      - name: One fixed four-arm block including teardown
+        timeout-minutes: 26 # Outer step ceiling; GNU timeout below caps block at exactly25.
+        run: |
+          # Official exact Node and S/UNIQUE must come from verified setup receipts.
+          # Internal deadline1470s from process origin; outer TERM1495s/KILL1500s.
+          timeout --signal=TERM --kill-after=5s 1495s "$NODE_BIN" "$REVIEWED_HELPERS/driver.mjs" "$S" "$UNIQUE"
+      - name: Always retain existing setup and experiment evidence
+        if: always()
+        timeout-minutes: 10
+        uses: actions/upload-artifact@<REVIEWED_IMMUTABLE_UPLOAD_SHA>
+        with:
+          name: pwa-response-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/pwa-response-*/
+          if-no-files-found: warn
+          overwrite: false

@@ -1,0 +1,31 @@
+{
+  "unmodifiedWorkerExact": true,
+  "originalArchivesUnchanged": 660,
+  "proposalsPreserved": true,
+  "variants": {
+    "off": {
+      "workerSha256": "02fe2120103fc753276fd9fcabece712e9d40bd6c7a7406e05691fbdcb65d482",
+      "oldFilesUnchanged": 330,
+      "newNonworkerFilesUnchanged": 329,
+      "orderedManifestEntries": 322
+    },
+    "baseline": {
+      "workerSha256": "45e16118ba470d4a006b41855c1f8918637a6bfdafb2c2fa58c256de31ff0ea2",
+      "oldFilesUnchanged": 330,
+      "newNonworkerFilesUnchanged": 329,
+      "orderedManifestEntries": 322
+    },
+    "blob": {
+      "workerSha256": "50dff85554ab38cbbbb8f218c9a8a42c7ee26ea3f3e370681f0b91426aac0914",
+      "oldFilesUnchanged": 330,
+      "newNonworkerFilesUnchanged": 329,
+      "orderedManifestEntries": 322
+    },
+    "stream": {
+      "workerSha256": "594431901fce6129124c61e633f8d10664c2c4c710d3e63cd23ab44e9a40aa49",
+      "oldFilesUnchanged": 330,
+      "newNonworkerFilesUnchanged": 329,
+      "orderedManifestEntries": 322
+    }
+  }
+}

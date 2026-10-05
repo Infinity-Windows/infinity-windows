@@ -1,0 +1,27 @@
+--- frozen/app/playwright.pwa.config.ts
++++ source/app/playwright.pwa.config.ts
+@@ -69,7 +69,7 @@
+     serviceWorkers: "allow",
+   },
+   webServer: {
+-    command: `${shellQuote(process.execPath)} ${shellQuote(resolve(enrollmentRoot, "start-verified-harness.mjs"))}`,
++    command: `exec ${shellQuote(process.execPath)} ${shellQuote(resolve(enrollmentRoot, "start-verified-harness.mjs"))}`,
+     gracefulShutdown: { signal: "SIGTERM", timeout: 60_000 },
+     cwd: enrollmentRoot,
+     url: `http://localhost:${PORT}/`,
+--- frozen/start-verified-harness.mjs
++++ source/start-verified-harness.mjs
+@@ -27,10 +27,10 @@
+ }
+ attest('before');
+ const child=spawn(process.execPath,['--experimental-strip-types',join(here,'app/e2e/support/pwaHarness.ts')],{cwd:join(here,'app'),env:process.env,stdio:'inherit'});
+-let interrupted=false;
+-for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{interrupted=true;child.kill(signal);});
++let parentSignalObserved=false;
++for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{parentSignalObserved=true;child.kill(signal);});
+ child.once('error',error=>{writeFileSync(join(arm.runDir,'harness-error.txt'),String(error));process.exitCode=1;});
+ child.once('exit',(code,signal)=>{
+- try{attest('after');writeFileSync(join(arm.runDir,'harness-exit.json'),JSON.stringify({code,signal,interrupted}));process.exitCode=interrupted?0:(code??1);}
++ try{attest('after');const childExitSignal=signal;const interrupted=parentSignalObserved||childExitSignal==='SIGTERM';writeFileSync(join(arm.runDir,'harness-exit.json'),JSON.stringify({code,signal,interrupted,parentSignalObserved,childExitSignal}));process.exitCode=interrupted?0:(code??1);}
+  catch(error){writeFileSync(join(arm.runDir,'after-failure.txt'),String(error));process.exitCode=1;}
+ });

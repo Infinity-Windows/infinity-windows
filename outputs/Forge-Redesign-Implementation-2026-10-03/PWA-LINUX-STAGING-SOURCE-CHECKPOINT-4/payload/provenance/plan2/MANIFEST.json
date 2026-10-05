@@ -1,0 +1,41 @@
+{
+  "scope": "OUTPUT_ONLY_HELD_PLAN_2_NO_EXECUTION",
+  "files": {
+    "ABSOLUTE-PATH-INVENTORY.json": {
+      "bytes": 17592,
+      "sha256": "2b73410c5a106b501710aafa2e9a51d8ae70fdae5f388c1c239847240ae9ab9b"
+    },
+    "CHANGE-ALLOWLIST.json": {
+      "bytes": 2700,
+      "sha256": "5dff5b9b8c64d8df921159361361b4cc738d51b5ccde3b9257613bf70ca43dbd"
+    },
+    "COMMITTED-DEPENDENCY-PINS.json": {
+      "bytes": 4203,
+      "sha256": "8f843d77e7db1fe9db49dd1f86b2788b665e4eeb9a8665a7bfc649b7b6bcb9ba"
+    },
+    "HANDOFF.md": {
+      "bytes": 1262,
+      "sha256": "92029ebe50b05b947a757483d1808cc0434858e34d6c2608f3e98cbf2750d654"
+    },
+    "IMPORT-CLOSURE.json": {
+      "bytes": 12242,
+      "sha256": "625ceb8dfb690765ad2d59e4ab60835a723447346f8a63ec7a71e39da97f61d6"
+    },
+    "PROPOSAL.md": {
+      "bytes": 16852,
+      "sha256": "7796f64834b59b36cc277b5498bfb44f898c1d274db872728bf7d60b344aa440"
+    },
+    "READ-AND-PRESERVATION-RECEIPT.json": {
+      "bytes": 1479,
+      "sha256": "4bcbc6c5c132c44e1982f8f9960e363fbd73692c2bbd77506c5728299bfccecd"
+    },
+    "TRANSPORT-INVENTORY.json": {
+      "bytes": 2680,
+      "sha256": "d41687d7d7ef3d7f3704c41edd14cd5ae19a2f342b9c2fca1991d8a767073309"
+    },
+    "inspect-imports.mjs": {
+      "bytes": 1412,
+      "sha256": "a05ef29b4acb82f720e65a22ae2240634b185eac78bad717651fd9669cce83ce"
+    }
+  }
+}

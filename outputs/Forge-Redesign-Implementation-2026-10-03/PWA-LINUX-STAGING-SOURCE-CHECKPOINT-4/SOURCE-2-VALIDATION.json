@@ -1,0 +1,134 @@
+{
+  "status": "HELD_SOURCE_CHECKS_PASS_NOT_EXECUTION_ENROLLMENT",
+  "checks": [
+    {
+      "argv": [
+        "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+        "--check",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/bind-execution.mjs"
+      ],
+      "exit": 0,
+      "output": "SYNTAX-bind-execution.mjs.txt"
+    },
+    {
+      "argv": [
+        "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+        "--check",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/staging.test.mjs"
+      ],
+      "exit": 0,
+      "output": "SYNTAX-staging.test.mjs.txt"
+    },
+    {
+      "argv": [
+        "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+        "--check",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/bindings.mjs"
+      ],
+      "exit": 0,
+      "output": "SYNTAX-bindings.mjs.txt"
+    },
+    {
+      "argv": [
+        "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+        "--check",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/resolution-probe.mjs"
+      ],
+      "exit": 0,
+      "output": "SYNTAX-resolution-probe.mjs.txt"
+    },
+    {
+      "argv": [
+        "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+        "--check",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/adapter-lifecycle.test.mjs"
+      ],
+      "exit": 0,
+      "output": "SYNTAX-adapter-lifecycle.test.mjs.txt"
+    },
+    {
+      "argv": [
+        "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+        "--check",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/driver.mjs"
+      ],
+      "exit": 0,
+      "output": "SYNTAX-driver.mjs.txt"
+    },
+    {
+      "argv": [
+        "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+        "--test",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/staging.test.mjs",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/adapter-lifecycle.test.mjs",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/payload/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/enrollment.test.mjs",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/payload/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/corrections.test.mjs"
+      ],
+      "exit": 0,
+      "output": "NODE-TEST-RESULTS.txt"
+    },
+    {
+      "argv": [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/test_transport.py"
+      ],
+      "exit": 0,
+      "output": "TRANSPORT-TEST-RESULTS.txt"
+    },
+    {
+      "argv": [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/test_reconstruct.py"
+      ],
+      "exit": 0,
+      "output": "RECONSTRUCTION-TEST-RESULTS.txt"
+    },
+    {
+      "argv": [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/payload/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/verify-original-archives.py",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-CURRENT-FAIL-ARTIFACT/_temp/pwa-current",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/ORIGINAL-STRICT-FINAL.json",
+        "current-f9"
+      ],
+      "exit": 0,
+      "output": "ORIGINAL-STRICT-FINAL.txt"
+    },
+    {
+      "argv": [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/payload/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/verify-original-archives.py",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/payload/PWA-F9-CURRENT-FAIL-ARTIFACT/_temp/pwa-current",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/STAGED-ORIGINAL-STRICT.json",
+        "current-f9"
+      ],
+      "exit": 0,
+      "output": "STAGED-ORIGINAL-STRICT.txt"
+    }
+  ],
+  "nodeTestsPassed": 60,
+  "pythonTestsPassed": 8,
+  "pythonSyntaxFiles": 9,
+  "runtimeFrozenFiles": 33,
+  "sourceChangedFiles": [
+    "app/playwright.pwa.config.ts",
+    "start-verified-harness.mjs"
+  ],
+  "originalFilesPreserved": 660,
+  "existingDerivedFilesPreserved": 2640,
+  "sourceAndArchiveBeforeAfterExact": true,
+  "transport": {
+    "archiveSha256": "4a4da653a872ddc8dbf3ec1d75e2f5e2b1b2133dd9f641f0af4d3c8c694508af",
+    "manifestSha256": "d0a8a7fee0c0d88e770d39371b7037210bde52cae7a9461f21507bc32c0ad5c0",
+    "archiveBytes": 21585920,
+    "regularFiles": 754,
+    "payloadBytes": 21006386,
+    "format": "USTAR sorted files only; uid/gid/mtime zero; mode0444",
+    "published": false
+  },
+  "configListServerBrowserInvoked": false,
+  "installed": false,
+  "runtimePinRebindPerformed": false,
+  "nodeForLocalTests": "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+  "pythonForLocalTests": "/Applications/Xcode.app/Contents/Developer/usr/bin/python3"
+}

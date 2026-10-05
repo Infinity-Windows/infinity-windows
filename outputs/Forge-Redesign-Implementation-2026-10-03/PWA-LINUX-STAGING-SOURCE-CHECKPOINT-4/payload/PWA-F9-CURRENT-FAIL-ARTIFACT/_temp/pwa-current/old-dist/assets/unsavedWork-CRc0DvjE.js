@@ -1,0 +1,1 @@
+var e=0,t=new Set;function n(){for(let e of t)try{e()}catch{}}function r(){e+=1,n();let t=!1;return()=>{t||(t=!0,--e,n())}}function i(){return e>0}export{i as n,r as t};

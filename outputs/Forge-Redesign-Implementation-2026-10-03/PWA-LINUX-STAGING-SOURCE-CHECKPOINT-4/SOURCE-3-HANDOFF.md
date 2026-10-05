@@ -1,0 +1,38 @@
+# Linux staging source checkpoint3 — complete proposed orchestration, held
+
+Outcome: the missing root bootstrap, cloud setup, selected-browser metadata, READY construction, outer final classification and workflow proposal are now authored in this new folder. No app build, install, config/list, server, browser, network download, repository mutation, workflow publication/dispatch, provider/DB action or peer contact occurred. Source2 driver and every existing correction remain byte-identical.
+
+Plain summary: this adds the instructions and checks for a future isolated Linux machine to verify the exact package, install the exact tools, identify the headless browser it would actually use, and run the four diagnostic attempts. If setup, timing, capture or final receipts fail, the result stays incomplete. Later files cannot turn an incomplete run into a successful one.
+
+## New source ownership
+
+- bootstrap.py: trusted stdlib-only verification, embedded byte-for-byte in the proposed workflow. It creates control evidence before verifying the root; validates externally supplied exact source commit and manifest SHA plus every file/type/name; records failures before any package helper can execute.
+- orchestration_gates.py: chosen official Node/checksum pins, safe official toolchain extraction, environment/dependency/READY gates and immutable final classifier.
+- orchestrate.py: cumulative30-minute setup with bounded one-attempt command logs, exact npm/Chromium commands, reviewed reconstruction/binding/resolution sequence, nine-gate READY, unchanged source2 driver dispatch and final hash/source checks.
+- browser-metadata.mjs: metadata-only mechanical default launch proof and exact staged coreBundle registry selection for chromium-headless-shell. It never imports config/spec or launches a browser.
+- PROPOSED-WORKFLOW.yml.txt and matching SETUP-SHELL.sh.txt: fully authored source outside .github/workflows; official checkout/upload action commits are pinned. No placeholder failing setup step remains. Future exact publication commit and independently reviewed root manifest are required external inputs, not invented values.
+- Tests, additional metadata-only protocol pins, actual source-text proof receipt, PACKAGE-RECIPE and validation receipts support those helpers. SOURCE3-ADDITIONS.json lists the additions and historical file-name mapping.
+
+The copied original source2 HANDOFF/VALIDATION/MANIFEST/recipe/workflow are named SOURCE-2-* to distinguish historical receipts. Every byte is preserved, along with all other source2 files. Source1 remains untouched too.
+
+## Protocol and refusal details
+
+The metadata helper proves the fixture's default chromium/headless=true/no-channel launch from exact source text, verifies no config/spec/CLI override and refuses debug, remote and context-reuse environment variables, including npm aliases. It allows only the explicitly controlled PLAYWRIGHT_BROWSERS_PATH and five inert PWA orchestration variables. The actual extra source pins are playwright/lib/index.js cb793062d359fd495f10e0916523f52c76a47fd0b6c4195451dabcd48638e862 and browsers.json f306eed529599b1eaf2f8a85db9de2b23e1a3fe36c2b66434b7c9434fb627a99; RUNTIME-PINS is unchanged. CoreBundle remains3258d1cf334c6afc95f22aa9c292436cb976b391e0437f1359c83b84f0cb9d66. Only after hash checks may a future Linux helper import that exact absolute bundle and resolve registry.registry.findExecutable('chromium-headless-shell').executablePath('javascript'). It rejects a full Chromium path. Browser.getVersion's five fields inside every unchanged arm remain the runtime identity gate.
+
+Official Node22.23.1 Linuxx64 is pinned to9749e988f437343b7fa832c69ded82a312e41a03116d766797ac14f6f9eee578 and the exact official checksum file to158f2e2c580c610b9cef2853f3444c7369b84cc23e7ad764e3c40e9d60d82ea0. Official action commits and source research are copied with research manifest eceb4ba581fed9b56363cdb92fc754cab9b52e86c7d70ef3a44ff899b6b6a078. The archive was not downloaded here.
+
+READY requires root/toolchain/dependencies/reconstruction/binding/resolution/browserInstall/metadata/stage success, exact receipt hashes and current Node/Python/platform evidence. Setup1795TERM+5KILL is bounded30 minutes. Driver remains inner1470s from process origin, outer1495TERM/1500KILL. Final source/setup/Node/browser/stage checks precede the first outer completion decision. Missing/nonfinal/terminal:true/completed:false driver receipt, driver error/124/137, pin failure or exhausted budget stays INCOMPLETE. The finalizer never rescans late orphan files to salvage an incomplete result. Complete assertion failures remain separate original outcomes. Evidence upload always runs with10-minute allowance under job70; node_modules are excluded from the upload, while receipts/logs/source/archive/derived evidence remain.
+
+## Actual validation
+
+**83 offline tests passed:65 Node +18 Python** (15 new controls plus68 inherited). All new Python AST/Node syntax checks, YAML parse and every proposed shell's bash -n passed. Inline bootstrap equals the independently listed bootstrap.py source bytes. Tests use fake download/process/registry/platform boundaries; no Playwright package/config import or browser was used. PyYAML was used only as the local YAML parser.
+
+New controls cover wrong source/root pins, extra/case/link/missing files, reused/overlapping scratch roots, debug/remote/npm environment aliases, bad Node checksum, changed dependency lock, failed install, premature/expired READY, full fake successful setup requiring all nine gates, incorrect full-browser selection, missing/symlinked executable, timeout/missing/terminal/nonfinal receipts and immutable incomplete decisions despite later valid-looking orphan evidence. A failed-bootstrap test proves control evidence and requested pin/error are recorded without any helper execution; Git HEAD was faked in that test. Exact current pinned config/spec/runner/fixture/core source TEXT also passed the mechanical default protocol proof, without importing those packages.
+
+SOURCE3-VALIDATION.json records commands and exits. Source2 original803 manifest entries plus manifest are rehashed unchanged and all804 bytesets are preserved in this copy. Source1 original793 entries plus manifest remain unchanged. Payload remains754 files; tar remains21,585,920 bytes, SHA4a4da653a872ddc8dbf3ec1d75e2f5e2b1b2133dd9f641f0af4d3c8c694508af. Runtime source33/frozen33 and both runtime fixes are unchanged. Test scratch was removed. Read scope stayed within24 relevant input files, excluding inventory/hash operations; no broad discovery was used. Latest live Codex meter was3% used/97% remaining.
+
+## Remaining gates and recommendation
+
+Recommend bounded independent review of these new source3 helpers and fully authored workflow, then root reconciliation. Source2 approvals do not approve this new source. Actual Opus/Fable source3 review and root approval remain PENDING; this worker did not contact peers or delegate.
+
+No required orchestration source gap remains identified in this checkpoint. What remains is approval and observation: exact reviewed publication commit, workflow enrollment/publication authorization, and actual Linux download/install/resolution/browser/runtime receipts. Fake/source checks do not establish real Linux success, download availability, setup duration or selected binary identity. A703's exact Node patch stays UNKNOWN; early-worker/public-worker identity, response lifetime confounds and mechanism stay UNKNOWN. Four exploratory arms do not establish causal closure or a failure rate. Parent owns review, publication decisions and any later authorized execution.

@@ -1,0 +1,9 @@
+43099:       getExecutableName(options) {
+43100:         if (options.channel && registry.isChromiumAlias(options.channel))
+43101:           return "chromium";
+43102:         if (options.channel === "chromium-tip-of-tree")
+43103:           return options.headless ? "chromium-tip-of-tree-headless-shell" : "chromium-tip-of-tree";
+43104:         if (options.channel)
+43105:           return options.channel;
+43106:         return options.headless ? "chromium-headless-shell" : "chromium";
+43107:       }

@@ -1,0 +1,307 @@
+--- enrollment-1/app/e2e/support/pwaEngineTrace.ts
++++ enrollment-2/app/e2e/support/pwaEngineTrace.ts
+@@ -1,5 +1,5 @@
+ import { readFileSync } from "node:fs";
+-import { assertBrowserAndCategories } from "../../../experiment-gates.mjs";
++import { assertBrowserAndCategories, readPinnedManifest, observationOnly } from "../../../experiment-gates.mjs";
+ import { createWorkerConsoleRecorder } from "../../../worker-console-records.mjs";
+ import { open, writeFile } from "node:fs/promises";
+ import type { CDPSession, Page, TestInfo } from "@playwright/test";
+@@ -16,7 +16,7 @@
+   const selected = assertBrowserAndCategories(version, inventory.categories, pins);
+   const mode = process.env.IW_PWA_RESPONSE_MODE;
+   if (!mode || !["baseline", "blob", "stream"].includes(mode)) throw new Error("Missing reviewed response arm");
+-  const pair = JSON.parse(readFileSync(new URL(`../../../../PWA-F9-WORKER-PARITY-REHEARSAL-1/DERIVED-${mode}-MANIFEST.json`, import.meta.url), "utf8"));
++  const pair = readPinnedManifest(new URL(`../../../../PWA-F9-WORKER-PARITY-REHEARSAL-1/DERIVED-${mode}-MANIFEST.json`, import.meta.url), pins.variants[mode]);
+   const recorder = createWorkerConsoleRecorder({ mode, fileHashes: pair.new.sha256 });
+   const receiveConsole = (message: import("@playwright/test").ConsoleMessage) => recorder.receive(message);
+   page.context().on("console", receiveConsole); // Before old-worker registration; adds NO attachment or pause.
+@@ -37,6 +37,8 @@
+     async finish() {
+       const receipt: Record<string, unknown> = { version, inventory, selected, started, lifecycle,
+         scope, responseExperimentMode: mode, baselineIsInstrumentedControl: true };
++      const errors: string[] = [];
++      await observationOnly(async () => {
+       if (started) {
+         let timer: ReturnType<typeof setTimeout> | undefined;
+         try {
+@@ -70,11 +72,22 @@
+       const consolePath = info.outputPath("worker-console-records.json");
+       await writeFile(consolePath, JSON.stringify(recorder.finish(), null, 2));
+       await info.attach("worker-console-records", { path: consolePath, contentType: "application/json" });
+-      const receiptPath = info.outputPath("browser-engine-receipt.json");
+-      await writeFile(receiptPath, JSON.stringify(receipt, null, 2));
+-      await info.attach("browser-engine-receipt", { path: receiptPath, contentType: "application/json" });
+-      await session.detach();
+-      if (!receipt.complete) throw new Error("Complete lossless engine trace required; arm invalid");
++      }, async error => { receipt.complete = false; errors.push(String(error)); });
++      // Always try detach; finish never throws through the unchanged spec's finally.
++      await observationOnly(async () => { await session.detach(); }, async error => { receipt.complete = false; errors.push('detach: '+String(error)); });
++      receipt.observationErrors = errors;
++      await observationOnly(async () => {
++        const receiptPath = info.outputPath("browser-engine-receipt.json");
++        await writeFile(receiptPath, JSON.stringify(receipt, null, 2));
++        await info.attach("browser-engine-receipt", { path: receiptPath, contentType: "application/json" });
++      }, async error => { receipt.complete = false; errors.push('receipt: '+String(error)); });
++      if (!receipt.complete || errors.length) {
++        await observationOnly(async () => {
++          const invalidPath = info.outputPath("ARM-INVALID.json");
++          await writeFile(invalidPath, JSON.stringify({ valid: false, reason: "Incomplete or failed observation; original test outcome preserved", receipt, errors }, null, 2));
++          await info.attach("ARM-INVALID", { path: invalidPath, contentType: "application/json" });
++        }, async () => {}); // Missing evidence is independently invalidated after teardown.
++      }
+     },
+   };
+ }
+--- enrollment-1/app/playwright.pwa.config.ts
++++ enrollment-2/app/playwright.pwa.config.ts
+@@ -2,7 +2,7 @@
+ import { readFileSync } from "node:fs";
+ import { dirname, resolve } from "node:path";
+ import { fileURLToPath } from "node:url";
+-import { assertRunEnvironment } from "../experiment-gates.mjs";
++import { assertRunEnvironment, CASE_GREP, shellQuote } from "../experiment-gates.mjs";
+ const enrollmentRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+ const runtimePins = JSON.parse(readFileSync(resolve(enrollmentRoot, "RUNTIME-PINS.json"), "utf8"));
+ const arm = assertRunEnvironment(process.env, runtimePins);
+@@ -48,7 +48,7 @@
+   testDir: "./e2e",
+   testMatch: /\.pwa\.ts$/,
+   outputDir: resolve(arm.runDir, "evidence"),
+-  grep: /^a download that broke halfway does not leave Refresh doing nothing afterwards$/,
++  grep: CASE_GREP,
+   retries: 0,
+   repeatEach: 1,
+   maxFailures: 1,
+@@ -69,7 +69,8 @@
+     serviceWorkers: "allow",
+   },
+   webServer: {
+-    command: "node start-verified-harness.mjs",
++    command: `${shellQuote(process.execPath)} ${shellQuote(resolve(enrollmentRoot, "start-verified-harness.mjs"))}`,
++    gracefulShutdown: { signal: "SIGTERM", timeout: 60_000 },
+     cwd: enrollmentRoot,
+     url: `http://localhost:${PORT}/`,
+     // Never reuse by default: a production build does not hot-reload, so a
+--- enrollment-1/corrections.test.mjs
++++ enrollment-2/corrections.test.mjs
+@@ -0,0 +1,24 @@
++import test from 'node:test';import assert from 'node:assert/strict';
++import {readFileSync,writeFileSync,mkdirSync,mkdtempSync,rmSync,symlinkSync}from'node:fs';
++import{join,dirname}from'node:path';import{fileURLToPath}from'node:url';import{createHash}from'node:crypto';
++import{CASE_TITLE,CASE_GREP,assertSingleListedCase,assertOutputPath,acquireExclusiveLock,readPinnedManifest,observationOnly,shellQuote}from'./experiment-gates.mjs';
++import{validateEvidence}from'./postrun-validation.mjs';
++const root=dirname(fileURLToPath(import.meta.url)),pins=JSON.parse(readFileSync(join(root,'RUNTIME-PINS.json')));
++const listed=()=>({suites:[{suites:[{specs:[{title:CASE_TITLE,file:'e2e/upgrade-path.pwa.ts',tests:[{projectId:''}]}]}]}]});
++test('grep matches actual joined titlePath, including empty root/project prefixes',()=>{for(const path of [['','','upgrade-path.pwa.ts',CASE_TITLE],['','chromium','upgrade-path.pwa.ts',CASE_TITLE]])assert.ok(CASE_GREP.test(path.join(' ')));});
++test('grep refuses other files, title suffixes, other cases and bare title',()=>{for(const title of [CASE_TITLE,'other.pwa.ts '+CASE_TITLE,'upgrade-path.pwa.ts '+CASE_TITLE+' extra','upgrade-path.pwa.ts different case'])assert.equal(CASE_GREP.test(title),false);});
++test('list preflight refuses zero/two cases, different title/file and report errors',()=>{assert.equal(assertSingleListedCase(listed()).title,CASE_TITLE);for(const mutate of [r=>r.suites=[],r=>r.suites.push(...r.suites),r=>r.suites[0].suites[0].specs[0].title='other',r=>r.suites[0].suites[0].specs[0].file='other.ts',r=>r.errors=[{message:'error'}]]){const r=listed();mutate(r);assert.throws(()=>assertSingleListedCase(r));}});
++function fixture(fn){const temp=mkdtempSync(join(root,'unit-only-'));try{return fn(temp);}finally{rmSync(temp,{recursive:true,force:true});}}
++test('output shape enforces sibling/run basename/index and rejects protected overlap',()=>fixture(temp=>{const here=join(temp,'enrollment');mkdirSync(here);const arm={index:1,mode:'baseline',runDir:join(temp,'PWA-RESPONSE-EXPERIMENT-RUNS-unit','01-baseline')};assert.equal(assertOutputPath(here,arm,[here]),arm.runDir);for(const bad of [join(temp,'other','01-baseline'),join(temp,'PWA-RESPONSE-EXPERIMENT-RUNS-unit','02-baseline'),join(here,'01-baseline')])assert.throws(()=>assertOutputPath(here,{...arm,runDir:bad},[here]));assert.throws(()=>assertOutputPath(here,arm,[dirname(arm.runDir)]));assert.throws(()=>assertOutputPath(here,arm,[join(arm.runDir,'child')]));}));
++test('output path rejects existing symlink to protected archive',()=>fixture(temp=>{const here=join(temp,'enrollment'),archive=join(temp,'archive');mkdirSync(here);mkdirSync(archive);symlinkSync(archive,join(temp,'PWA-RESPONSE-EXPERIMENT-RUNS-unit'));assert.throws(()=>assertOutputPath(here,{index:1,mode:'baseline',runDir:join(temp,'PWA-RESPONSE-EXPERIMENT-RUNS-unit','01-baseline')},[archive]));}));
++test('exclusive harness and runner locks cannot be reused',()=>fixture(temp=>{for(const name of ['owned-harness.lock','owned-runner.lock']){acquireExclusiveLock(temp,name);assert.throws(()=>acquireExclusiveLock(temp,name));}assert.throws(()=>acquireExclusiveLock(temp,'../other'));}));
++test('manifest helper independently refuses changed bytes and wrong worker pin',()=>fixture(temp=>{const file=join(temp,'manifest.json'),body=JSON.stringify({new:{sha256:{'sw.js':'abc'}}});writeFileSync(file,body);const pin={manifestSha256:createHash('sha256').update(body).digest('hex'),workerSha256:'abc'};assert.equal(readPinnedManifest(file,pin).new.sha256['sw.js'],'abc');assert.throws(()=>readPinnedManifest(file,{...pin,workerSha256:'wrong'}));writeFileSync(file,body+' ');assert.throws(()=>readPinnedManifest(file,pin));}));
++test('shell quoting pins execPath including spaces and shell metacharacters',()=>{assert.equal(shellQuote("/some node/$(`whoami`)'bin"),"'/some node/$(`whoami`)'\"'\"'bin'");});
++test('observation failure in finally preserves original assertion and reaches following detach',async()=>{const original=Error('original assertion');let detached=false,reported=false;await assert.rejects(async()=>{try{throw original;}finally{await observationOnly(async()=>{throw Error('trace incomplete');},async()=>{reported=true;throw Error('attachment failed');});detached=true;}},e=>e===original);assert.ok(detached&&reported);});
++const arm={index:1,mode:'baseline',runDir:'/unit-fixture'};
++function valid(){const e={list:listed(),report:listed(),testExit:{status:1},'harness-exit':{code:null,signal:'SIGTERM',interrupted:true},trace:{complete:true,started:true,bytes:12,completion:{dataLossOccurred:false},responseExperimentMode:'baseline',selected:pins.traceCategories,version:pins.browser,inventory:{categories:pins.traceCategories}},traceFileBytes:12,console:{records:[],gaps:[]}};for(const phase of ['before','after']){e['original-'+phase]={profile:'current-f9',bundles:Object.fromEntries(['old','new'].map(side=>[side,{files:330,manifestSha256:pins.originalCompact[side]}]))};e['derived-'+phase]={arm,expectedOldWorker:pins.originalOldWorkerSha256,expectedNewWorker:pins.variants.baseline.workerSha256,derived:{old:{files:330,workerSha256:pins.originalOldWorkerSha256},new:{files:330,workerSha256:pins.variants.baseline.workerSha256}}};}return e;}
++test('complete fixture keeps original failing test outcome separate; no mechanism claim',()=>{const v=validateEvidence(valid(),pins,arm);assert.equal(v.captureValid,true);assert.equal(v.originalTestExit.status,1);assert.equal(v.mechanism,'UNASSESSED');});
++for(const key of ['original-before','original-after','derived-before','derived-after','harness-exit'])test('missing '+key+' invalidates arm',()=>{const e=valid();delete e[key];assert.equal(validateEvidence(e,pins,arm).captureValid,false);});
++for(const loss of [true,undefined])test('incomplete/loss flag '+loss+' invalidates without altering original outcome',()=>{const e=valid();e.trace.completion.dataLossOccurred=loss;const v=validateEvidence(e,pins,arm);assert.equal(v.captureValid,false);assert.equal(v.originalTestExit.status,1);});
++test('trace truncation, ARM-INVALID, wrong category, console fallback and SIGKILL refuse',()=>{for(const mutate of [e=>e.traceFileBytes=11,e=>e.armInvalid=true,e=>e.trace.selected=[],e=>e.console.records=[{validation:'INVALID_POST_CLONE'}],e=>e['harness-exit'].signal='SIGKILL',e=>e.trace.complete=false,e=>e.collectionError='symlink',e=>e.console={}]){const e=valid();mutate(e);assert.equal(validateEvidence(e,pins,arm).captureValid,false);}});
++test('future runner really invokes validator after test; config graceful timeout and pinned Node',()=>{const runner=readFileSync(join(root,'run-arm.mjs'),'utf8'),config=readFileSync(join(root,'app/playwright.pwa.config.ts'),'utf8');assert.ok(runner.indexOf("join(here,'validate-run.mjs')")>runner.indexOf("const test=call(base,'test-report')"));assert.match(config,/gracefulShutdown: \{ signal: "SIGTERM", timeout: 60_000 \}/);assert.match(config,/shellQuote\(process.execPath\)/);});
+--- enrollment-1/experiment-gates.d.mts
++++ enrollment-2/experiment-gates.d.mts
+@@ -4,3 +4,9 @@
+ export declare function assertRunEnvironment(env:Record<string,string|undefined>,pins:RuntimePins):{index:number;mode:string;runDir:string};
+ export declare function fileMap(root:string):Record<string,string>;
+ export declare function verifyPair(pair:string,manifest:Record<'old'|'new',{sha256:Record<string,string>}>):Record<'old'|'new',{files:number;workerSha256:string;path:string}>;
++
++export declare const CASE_TITLE:string;
++export declare const CASE_GREP:RegExp;
++export declare function shellQuote(value:string):string;
++export declare function readPinnedManifest(path:string|URL,pin:{manifestSha256:string;workerSha256:string}):{old:{sha256:Record<string,string>};new:{sha256:Record<string,string>}};
++export declare function observationOnly<T>(action:()=>Promise<T>,onError:(error:unknown)=>Promise<unknown>):Promise<T|undefined>;
+--- enrollment-1/experiment-gates.mjs
++++ enrollment-2/experiment-gates.mjs
+@@ -1,6 +1,6 @@
+ // Read-only predicates/verification, safe to import for no-contact tests.
+-import { readFileSync, readdirSync, lstatSync, realpathSync } from 'node:fs';
+-import { join, resolve, isAbsolute } from 'node:path';
++import { readFileSync, readdirSync, lstatSync, realpathSync, openSync, closeSync, existsSync } from 'node:fs';
++import { join, resolve, isAbsolute, relative, sep, dirname } from 'node:path';
+ import { createHash } from 'node:crypto';
+ export function assertBrowserAndCategories(version, available, pins) {
+   for (const field of ['protocolVersion','product','revision','userAgent','jsVersion'])
+@@ -35,3 +35,37 @@
+   result[side]={files:330,workerSha256:map['sw.js'],path:realpathSync(join(pair,side+'-dist'))};
+  }return result;
+ }
++
++export const CASE_TITLE='a download that broke halfway does not leave Refresh doing nothing afterwards';
++export const CASE_GREP=/(?:^|\s)upgrade-path\.pwa\.ts a download that broke halfway does not leave Refresh doing nothing afterwards$/;
++export function shellQuote(value){return "'"+String(value).replaceAll("'", "'\"'\"'")+"'";}
++export function assertSingleListedCase(report){
++ const entries=[];
++ function walk(suite){for(const spec of suite.specs??[])for(const test of spec.tests??[])entries.push({title:spec.title,file:spec.file,projectId:test.projectId});for(const child of suite.suites??[])walk(child);}
++ for(const suite of report.suites??[])walk(suite);
++ if(report.errors?.length||entries.length!==1||entries[0].title!==CASE_TITLE||!/(?:^|[/\\])upgrade-path\.pwa\.ts$/.test(entries[0].file??''))throw Error('Preflight must list exactly one unchanged interrupted-download case');
++ return entries[0];
++}
++export function readPinnedManifest(path,pin){
++ const bytes=readFileSync(path);
++ if(createHash('sha256').update(bytes).digest('hex')!==pin.manifestSha256)throw Error('Derivative manifest transport hash mismatch');
++ const manifest=JSON.parse(bytes.toString('utf8'));
++ if(manifest.new.sha256['sw.js']!==pin.workerSha256)throw Error('Variant worker hash mismatch');
++ return manifest;
++}
++function canonicalFuture(path){let ancestor=resolve(path),tail=[];while(!existsSync(ancestor)){tail.unshift(ancestor.slice(dirname(ancestor).length+1));ancestor=dirname(ancestor);}return resolve(realpathSync(ancestor),...tail);}
++function within(parent,child){const r=relative(parent,child);return r===''||(!r.startsWith('..'+sep)&&r!=='..'&&!isAbsolute(r));}
++export function assertOutputPath(here,arm,protectedRoots){
++ const outputParts=relative(dirname(here),arm.runDir).split(sep);
++ if(outputParts.length!==2||!/^PWA-RESPONSE-EXPERIMENT-RUNS-[A-Za-z0-9_-]+$/.test(outputParts[0])||outputParts[1]!==String(arm.index).padStart(2,'0')+'-'+arm.mode)throw Error('Run directory must be a fresh named run sibling with fixed arm basename');
++ const target=canonicalFuture(arm.runDir);
++ for(const root of protectedRoots){const protectedPath=canonicalFuture(root);if(within(protectedPath,target)||within(target,protectedPath))throw Error('Output overlaps protected artifacts');}
++ if(target!==resolve(arm.runDir))throw Error('Symlinked output path refused');
++ return target;
++}
++export function acquireExclusiveLock(runDir,name='owned-harness.lock'){
++ if(!['owned-harness.lock','owned-runner.lock'].includes(name))throw Error('Unexpected lock');
++ closeSync(openSync(join(runDir,name),'wx')); // Deliberately retained; no run reuse.
++}
++// Instrumentation errors never replace the unchanged test's own exception.
++export async function observationOnly(action,onError){try{return await action();}catch(error){try{await onError(error);}catch{}return undefined;}}
+--- enrollment-1/postrun-validation.mjs
++++ enrollment-2/postrun-validation.mjs
+@@ -0,0 +1,46 @@
++// Read-only post-run gate. This does not classify the engine failure mechanism.
++import {readFileSync,readdirSync,lstatSync} from 'node:fs';
++import {join} from 'node:path';
++import {assertBrowserAndCategories,assertSingleListedCase} from './experiment-gates.mjs';
++export function validateEvidence(e,pins,arm){
++ const invalid=[];const require=(ok,reason)=>{if(!ok)invalid.push(reason);};
++ require(!e.collectionError,'evidence collection failure');
++ for(const phase of ['before','after']){
++  const original=e['original-'+phase],derived=e['derived-'+phase];
++  require(!!original,'missing original-'+phase);require(!!derived,'missing derived-'+phase);
++  for(const side of ['old','new']){
++   require(original?.profile==='current-f9'&&original?.bundles?.[side]?.files===330&&original?.bundles?.[side]?.manifestSha256===pins.originalCompact[side],'invalid original-'+phase+' '+side);
++   require(derived?.derived?.[side]?.files===330,'invalid derivative count '+phase+' '+side);
++  }
++  require(derived?.arm?.index===arm.index&&derived?.arm?.mode===arm.mode&&derived?.arm?.runDir===arm.runDir,'derived arm mismatch '+phase);
++  require(derived?.derived?.new?.workerSha256===pins.variants[arm.mode].workerSha256&&derived?.expectedNewWorker===pins.variants[arm.mode].workerSha256,'derived worker mismatch '+phase);
++  require(derived?.derived?.old?.workerSha256===pins.originalOldWorkerSha256&&derived?.expectedOldWorker===pins.originalOldWorkerSha256,'old worker mismatch '+phase);
++ }
++ require(!!e['harness-exit'],'missing harness-exit');
++ require(e['harness-exit']?.interrupted===true&&[null,0].includes(e['harness-exit']?.code)&&[null,'SIGTERM'].includes(e['harness-exit']?.signal),'unexpected harness exit');
++ try{assertSingleListedCase(e.list);}catch(error){invalid.push(String(error));}
++ require(e.testExit?.status!==undefined&&Number.isInteger(e.testExit.status),'missing normal test exit');
++ try{assertSingleListedCase(e.report);}catch(error){invalid.push('executed selection: '+String(error));}
++ const trace=e.trace;
++ require(!!trace,'missing engine receipt');
++ require(trace?.complete===true&&trace?.started===true&&trace?.completion?.dataLossOccurred===false&&trace?.bytes>0&&e.traceFileBytes===trace?.bytes,'incomplete or lossy engine trace');
++ require(trace?.responseExperimentMode===arm.mode,'engine arm mismatch');
++ require(JSON.stringify(trace?.selected)===JSON.stringify(pins.traceCategories),'trace category order mismatch');
++ try{assertBrowserAndCategories(trace?.version??{},trace?.inventory?.categories??[],pins);}catch(error){invalid.push(String(error));}
++ require(!trace?.observationErrors?.length,'observation failed');
++ require(!e.armInvalid,'ARM-INVALID artifact present');
++ require(!!e.console&&Array.isArray(e.console.records)&&Array.isArray(e.console.gaps),'missing or malformed worker console receipt');
++ require(!e.console?.records?.some(r=>r.validation==='INVALID_POST_CLONE'),'post-clone fallback invalidates arm');
++ require(!e.console?.gaps?.length,'worker console gaps require invalid/inconclusive handling');
++ return {captureValid:invalid.length===0,status:invalid.length?'ARM_INVALID':'CAPTURE_COMPLETE_MECHANISM_UNASSESSED',invalid,originalTestExit:e.testExit??null,mechanism:'UNASSESSED',engineRequestIdentity:'UNKNOWN',earlyRecordCoverage:'UNKNOWN',baselineSignature:'UNASSESSED'};
++}
++export function collectEvidence(runDir){
++ const e={};const read=(name)=>{try{return JSON.parse(readFileSync(join(runDir,name),'utf8'));}catch{return null;}};
++ for(const key of ['original-before','original-after','derived-before','derived-after','harness-exit'])e[key]=read(key+'.json');
++ e.list=read('list-preflight.json');e.report=read('test-report.json');e.testExit=read('test-exit.json');
++ const found={};function walk(dir){for(const name of readdirSync(dir)){const path=join(dir,name),stat=lstatSync(path);if(stat.isSymbolicLink())throw Error('Evidence symlink refused');if(stat.isDirectory())walk(path);else(found[name]??=[]).push(path);}}
++ try{walk(join(runDir,'evidence'));}catch(error){e.collectionError=String(error);}
++ for(const [key,name]of Object.entries({trace:'browser-engine-receipt.json',console:'worker-console-records.json'})){const paths=found[name]??[];if(paths.length===1)try{e[key]=JSON.parse(readFileSync(paths[0],'utf8'));}catch{};}
++ const traces=found['browser-engine-trace.json']??[];if(traces.length===1)e.traceFileBytes=lstatSync(traces[0]).size;
++ e.armInvalid=(found['ARM-INVALID.json']??[]).length>0;return e;
++}
+--- enrollment-1/run-arm.mjs
++++ enrollment-2/run-arm.mjs
+@@ -0,0 +1,29 @@
++// HELD: no invocation until actual peers enroll this exact frozen package.
++import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
++import {dirname,join,resolve} from 'node:path';
++import {fileURLToPath} from 'node:url';
++import {spawnSync} from 'node:child_process';
++import {createHash} from 'node:crypto';
++import {assertRunEnvironment,assertOutputPath,acquireExclusiveLock,assertSingleListedCase} from './experiment-gates.mjs';
++const here=dirname(fileURLToPath(import.meta.url));
++const pins=JSON.parse(readFileSync(join(here,'RUNTIME-PINS.json'),'utf8'));
++const arm=assertRunEnvironment(process.env,pins);
++if(process.version!==pins.nodeVersion)throw Error('Wrong pinned Node version');
++const rehearsal=resolve(here,'../PWA-F9-WORKER-PARITY-REHEARSAL-1');
++assertOutputPath(here,arm,[here,rehearsal,resolve(here,'../PWA-F9-CURRENT-FAIL-ARTIFACT')]);
++mkdirSync(arm.runDir,{recursive:true});acquireExclusiveLock(arm.runDir,'owned-runner.lock');
++for(const [path,hash] of Object.entries(pins.runtimeSources))if(createHash('sha256').update(readFileSync(path)).digest('hex')!==hash)throw Error('Pinned Playwright source changed: '+path);
++const cli=pins.playwrightCLI;const base=[cli,'test','--config',join(here,'app/playwright.pwa.config.ts'),'--reporter=json'];
++const childEnv={...process.env};delete childEnv.PLAYWRIGHT_JSON_OUTPUT_NAME;delete childEnv.PLAYWRIGHT_JSON_OUTPUT_DIR;delete childEnv.PLAYWRIGHT_JSON_OUTPUT_FILE;
++function call(args,name){const r=spawnSync(process.execPath,args,{cwd:join(here,'app'),env:childEnv,encoding:'utf8',maxBuffer:32*1024*1024});writeFileSync(join(arm.runDir,name+'.json'),r.stdout??'');writeFileSync(join(arm.runDir,name+'.stderr.txt'),r.stderr??'');writeFileSync(join(arm.runDir,name+'-exit.json'),JSON.stringify({status:r.status,signal:r.signal,error:r.error?String(r.error):null}));return r;}
++// --list loads config only during an approved future run. Its saved JSON must show one case.
++const listing=call([...base,'--list'],'list-preflight');
++if(listing.status!==0)throw Error('List preflight failed; no browser arm');
++assertSingleListedCase(JSON.parse(listing.stdout));
++const test=call(base,'test-report');
++writeFileSync(join(arm.runDir,'test-exit.json'),JSON.stringify({status:test.status,signal:test.signal,error:test.error?String(test.error):null}));
++// Always validate after normal Playwright exit, including assertion failure. Never replace its report.
++const validation=spawnSync(process.execPath,[join(here,'validate-run.mjs')],{cwd:here,env:childEnv,encoding:'utf8'});
++writeFileSync(join(arm.runDir,'postrun-validation.stdout.txt'),validation.stdout??'');writeFileSync(join(arm.runDir,'postrun-validation.stderr.txt'),validation.stderr??'');
++writeFileSync(join(arm.runDir,'RUN-OUTCOME.json'),JSON.stringify({originalTestExit:test.status,originalSignal:test.signal,validationExit:validation.status,validRuntimeEvidence:validation.status===0},null,2));
++process.exitCode=test.status===0&&validation.status===0?0:1;
+--- enrollment-1/start-verified-harness.mjs
++++ enrollment-2/start-verified-harness.mjs
+@@ -1,30 +1,22 @@
+ // PROPOSED LAUNCH ADAPTER — NOT EXECUTED. Requires actual source enrollment review.
+-import { readFileSync,writeFileSync,mkdirSync,openSync,closeSync,realpathSync } from 'node:fs';
++import { readFileSync,writeFileSync,mkdirSync,realpathSync } from 'node:fs';
+ import { dirname,join,resolve,relative,sep } from 'node:path';
+ import { fileURLToPath } from 'node:url';
+ import { createHash } from 'node:crypto';
+ import { spawn,spawnSync } from 'node:child_process';
+-import { assertRunEnvironment,verifyPair } from './experiment-gates.mjs';
++import { assertRunEnvironment,verifyPair,assertOutputPath,acquireExclusiveLock,readPinnedManifest } from './experiment-gates.mjs';
+ const here=dirname(fileURLToPath(import.meta.url));
+ const pins=JSON.parse(readFileSync(join(here,'RUNTIME-PINS.json'),'utf8'));
+ const arm=assertRunEnvironment(process.env,pins);
+-const outputParts=relative(dirname(here),arm.runDir).split(sep);
+-if(outputParts.length!==2||!/^PWA-RESPONSE-EXPERIMENT-RUNS-[A-Za-z0-9_-]+$/.test(outputParts[0])||outputParts[1]!==String(arm.index).padStart(2,'0')+'-'+arm.mode)throw Error('Run directory must be a fresh named run sibling with fixed arm basename');
+ const rehearsal=resolve(here,'../PWA-F9-WORKER-PARITY-REHEARSAL-1');
+ const pair=join(rehearsal,'derived-pairs',arm.mode);
+-const manifestBytes=readFileSync(join(rehearsal,`DERIVED-${arm.mode}-MANIFEST.json`));
+-if(createHash('sha256').update(manifestBytes).digest('hex')!==pins.variants[arm.mode].manifestSha256)throw Error('Derivative manifest transport hash mismatch');
+-const manifest=JSON.parse(manifestBytes.toString('utf8'));
+-if(manifest.new.sha256['sw.js']!==pins.variants[arm.mode].workerSha256)throw Error('Variant worker hash mismatch');
++const manifest=readPinnedManifest(join(rehearsal,`DERIVED-${arm.mode}-MANIFEST.json`),pins.variants[arm.mode]);
+ if(createHash('sha256').update(readFileSync(join(here,'verify-original-archives.py'))).digest('hex')!==pins.originalVerifierSha256)throw Error('Original strict verifier changed');
+ const originals=resolve(here,'../PWA-F9-CURRENT-FAIL-ARTIFACT/_temp/pwa-current');
+-for(const protectedRoot of [here,rehearsal,originals]){
+- const rel=relative(protectedRoot,arm.runDir);
+- if(!rel||(!rel.startsWith('..'+sep)&&rel!=='..'&&!rel.startsWith(sep)))throw Error('Output overlaps protected artifacts');
+-}
++assertOutputPath(here,arm,[here,rehearsal,originals]);
+ if(realpathSync(process.env.IW_PWA_CACHE??'')!==realpathSync(pair))throw Error('IW_PWA_CACHE is not fixed arm pair');
+ mkdirSync(arm.runDir,{recursive:true});
+-closeSync(openSync(join(arm.runDir,'owned-harness.lock'),'wx')); // A run directory cannot be reused.
++acquireExclusiveLock(arm.runDir); // A run directory cannot be reused.
+ function attest(phase){
+  const derived=verifyPair(pair,manifest);
+  const command=['verify-original-archives.py',originals,join(arm.runDir,`original-${phase}.json`),'current-f9'];
+--- enrollment-1/validate-run.mjs
++++ enrollment-2/validate-run.mjs
+@@ -0,0 +1,12 @@
++// Actual post-run entrypoint, called by run-arm.mjs after Playwright/server teardown.
++import {readFileSync,writeFileSync} from 'node:fs';
++import {dirname,join} from 'node:path';
++import {fileURLToPath} from 'node:url';
++import {assertRunEnvironment} from './experiment-gates.mjs';
++import {collectEvidence,validateEvidence} from './postrun-validation.mjs';
++const here=dirname(fileURLToPath(import.meta.url));
++const pins=JSON.parse(readFileSync(join(here,'RUNTIME-PINS.json'),'utf8'));
++const arm=assertRunEnvironment(process.env,pins);
++const result=validateEvidence(collectEvidence(arm.runDir),pins,arm);
++writeFileSync(join(arm.runDir,'ARM-VALIDATION.json'),JSON.stringify(result,null,2));
++console.log(JSON.stringify(result));process.exitCode=result.captureValid?0:1;

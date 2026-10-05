@@ -1,0 +1,1 @@
+import{i as e}from"./rolldown-runtime-aKtaBQYM.js";import{t}from"./react-lCSYwAWP.js";import{a as n,i as r}from"./translate-BSQAfpdy.js";var i=e(t(),1),a=(0,i.createContext)(null),o=(e,t)=>r(n,`en`,e,t),s={lang:`en`,t:o,setLang:()=>{},needsChoice:!1};function c(){let e=(0,i.useContext)(a);return e?e.t:o}function l(){return(0,i.useContext)(a)??s}export{l as n,c as r,a as t};

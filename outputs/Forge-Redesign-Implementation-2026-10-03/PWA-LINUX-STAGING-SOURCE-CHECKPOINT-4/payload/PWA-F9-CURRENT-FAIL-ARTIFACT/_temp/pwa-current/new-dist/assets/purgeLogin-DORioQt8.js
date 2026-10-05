@@ -1,0 +1,1 @@
+function e(e){return Object.values(e).some(e=>Number(e)>0)}function t(e){return/@removed\.invalid$/i.test((e??``).trim())}export{t as n,e as t};
