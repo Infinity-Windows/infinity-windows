@@ -38,6 +38,41 @@ class SourceAndPlan(unittest.TestCase):
         self.assertEqual(len(m.FIELDS),15);self.assertEqual(self.inert['functions'].__len__(),self.active['functions'].__len__())
         m.authored_delta(self.inert,self.active,self.profile['allowedCatalogDelta'])
         self.assertEqual(self.profile['sourcePins'][m.CANDIDATE],'c0eaccc11ca212853a3950bb64d47805990a2b4af824755a04d92b3fdf170c07')
+    def test_observation_query_uses_only_fixture_actors_without_extra_closing_token(self):
+        class Capture:
+            def json(self,sql):self.sql=sql;return {'count':0,'ids':[]}
+        capture=Capture();fixture=m.Fixture(capture,None,self.profile,self.inert,self.active)
+        self.assertEqual(fixture.observations(),{'count':0,'ids':[]})
+        prefix="select jsonb_build_object('count',count(*),'ids',coalesce(jsonb_agg(id order by id),'[]'::jsonb)) from work_activity_observations where actor_id in("
+        actors=','.join("'"+m.uid(i)+"'::uuid" for i in (1,2,3,4,5))
+        self.assertEqual(capture.sql,prefix+actors+')')
+
+    def test_generated_inspector_queries_have_balanced_unquoted_parentheses(self):
+        # Lexical regression check on actual generated SQL, not a SQL parser or
+        # PostgreSQL execution claim. JSON strings can contain parentheses.
+        class Capture:
+            def __init__(self):self.queries=[]
+            def json(self,sql):self.queries.append(sql);return {k:None for k in m.FIELDS}
+            def run(self,sql):self.queries.append(sql);return 't'
+        capture=Capture();fixture=m.Fixture(capture,None,self.profile,self.inert,self.active)
+        fixture.times={'checked':'2026-10-05T06:01:00.000000Z'}
+        fixture.rows();fixture.observations();fixture.paid(m.uid(1));fixture.retained(m.uid(2));fixture.request_proof(m.uid(3));fixture.census()
+        fixture.compare_paid_wire({'note':"quoted ' ) ("},{'note':'other )'})
+        capture.queries.append(fixture.clock_sql(m.uid(4),2,'2026-10-05T06:00:00.123456Z'))
+        self.assertEqual(len(capture.queries),8)
+        for sql in capture.queries:
+            with self.subTest(sql=sql):
+                depth=0;quoted=False;i=0
+                while i<len(sql):
+                    char=sql[i]
+                    if char=="'":
+                        if quoted and i+1<len(sql) and sql[i+1]=="'":i+=2;continue
+                        quoted=not quoted
+                    elif not quoted:
+                        if char=='(':depth+=1
+                        elif char==')':depth-=1;self.assertGreaterEqual(depth,0)
+                    i+=1
+                self.assertFalse(quoted);self.assertEqual(depth,0)
     def test_settings_reordered_maps_equal_without_losing_values(self):
         rows=[{'setdatabase':42,'setrole':7,'setconfig':['TimeZone=UTC','extra_float_digits=1','app.test=a=b']},{'setdatabase':0,'setrole':9,'setconfig':['search_path=public, pg_temp']}]
         reordered=copy.deepcopy(rows[::-1]);reordered[1]['setconfig'].reverse()

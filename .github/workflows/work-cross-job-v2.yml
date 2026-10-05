@@ -39,8 +39,8 @@ jobs:
           python-version: '3.12'
       - name: Verify reviewed source and no-contact controls before construction
         run: |
-          echo "35875f8e60ca286406802525f553658e40d2cb13b11ea99491f2a796627efa78  scripts/verify-work-cross-job-v2-postgres.py" | sha256sum -c -
-          echo "84dd29c26577d1ba2a56a6d80bbfedac0370711f5bc6dbc51da99d0d759ba487  scripts/test_work_cross_job_v2_postgres.py" | sha256sum -c -
+          echo "3511e001f80cbb341ce991b9f6de4bae76135ab05a97acea601abcb1d17b0e49  scripts/verify-work-cross-job-v2-postgres.py" | sha256sum -c -
+          echo "1be1b172a55e61a40f87c5f3a9bf392846e72ed6e544c06abbf0f356d63a7c79  scripts/test_work_cross_job_v2_postgres.py" | sha256sum -c -
           echo "017b0f73cd252987d464e8917f8b892de98fdabcefd6ce3411b4dd480a6223ae  docs/work-cross-job-v2-postgres.md" | sha256sum -c -
           echo "758eabd8ee539a25696d0d39576fe3721671b3baa8bec2206f1d85a83f3864d5  scripts/work-cross-job-v2-authored-inert-catalog.json" | sha256sum -c -
           echo "763ff370f8c0e6c0733856e6bbd3e20ca3a63f84ae55bf5270f5145caf60ce13  scripts/work-cross-job-v2-authored-active-catalog.json" | sha256sum -c -

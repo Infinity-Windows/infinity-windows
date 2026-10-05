@@ -342,7 +342,7 @@ class Fixture:
         pieces.extend(["'heads'","(select coalesce(jsonb_agg(to_jsonb(t) order by shift_id),'[]'::jsonb) from work_cross_job_heads t where shift_id in(select id from time_shifts where profile_id in("+actors+")))"])
         return self.r.json('select jsonb_build_object('+','.join(pieces)+')')
     def observations(self):
-        return self.r.json('select jsonb_build_object(\'count\',count(*),\'ids\',coalesce(jsonb_agg(id order by id),\'[]\'::jsonb)) from work_activity_observations where actor_id in('+','.join(q(a)+'::uuid' for a in self.actors)+'))')
+        return self.r.json('select jsonb_build_object(\'count\',count(*),\'ids\',coalesce(jsonb_agg(id order by id),\'[]\'::jsonb)) from work_activity_observations where actor_id in('+','.join(q(a)+'::uuid' for a in self.actors)+')')
     def paid(self,shift):
         return self.r.json("select jsonb_build_object('row',to_jsonb(s),'xmin',xmin::text,'ctid',ctid::text,'actions',(select count(*) from time_clock_actions a where a.shift_id=s.id),'retainedReceipts',(select count(*) from work_activity_clock_receipts r where r.shift_id=s.id)) from time_shifts s where id="+q(shift)+'::uuid')
     def retained(self,key):
