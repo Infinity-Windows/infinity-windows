@@ -46,6 +46,14 @@ class SourceAndPlan(unittest.TestCase):
             changed=copy.deepcopy(rows);key=mutation.split('=')[0];changed[0]['setconfig']=[v for v in changed[0]['setconfig'] if not v.startswith(key+'=')]+[mutation]
             with self.assertRaisesRegex(RuntimeError,'settings changed'):m.validate_settings_restored(m.normalize_settings(rows),changed)
         self.assertNotEqual(m.normalize_settings(rows),m.normalize_settings(rows[:1]))
+    def test_settings_projected_uint32_identities_and_string_oid_refusal(self):
+        # OIDs are unsigned32 identifiers, including the valid all-database zero.
+        rows=[{'setdatabase':0,'setrole':4294967295,'setconfig':None},{'setdatabase':4294967295,'setrole':0,'setconfig':['app.test=a=b']}]
+        self.assertTrue(m.validate_settings_restored(m.normalize_settings(rows),rows[::-1]))
+        for key in ('setdatabase','setrole'):
+            with self.subTest(key=key),self.assertRaisesRegex(RuntimeError,'identity'):
+                m.normalize_settings([{**rows[0],key:str(rows[0][key])}])
+
     def test_settings_reject_duplicate_and_invalid_keys_rows_or_fields(self):
         row={'setdatabase':42,'setrole':7,'setconfig':['TimeZone=UTC']}
         for config in [['TimeZone=UTC','timezone=UTC'],['bad key=x'],['=x'],['missing_equals'],[None],'TimeZone=UTC']:

@@ -278,7 +278,7 @@ class Fixture:
         old=json.loads((ROOT/'scripts/work-cross-job-old-catalog.json').read_text())['metadata'];self.catalog_equal(old,'Whole authored old catalog before predecessor install')
         out=self.report.path.parent/'predecessors';out.mkdir(exist_ok=False)
         env=dict(self.r.env,WORK_ACTIVITY_ROLE_TEST_DB_URL=urlunparse(self.r.target),WORK_CROSS_JOB_POSTGRES_OUT=str(out/'work-cross-job-postgres.json'),WORK_CROSS_JOB_FRESH_SESSIONS_OUT=str(out/'work-cross-job-fresh-sessions.json'))
-        settings_sql="select coalesce(jsonb_agg(to_jsonb(s) order by setdatabase,setrole),'[]'::jsonb) from pg_db_role_setting s"
+        settings_sql="select coalesce(jsonb_agg(jsonb_build_object('setdatabase',setdatabase::bigint,'setrole',setrole::bigint,'setconfig',setconfig) order by setdatabase,setrole),'[]'::jsonb) from pg_db_role_setting"
         for kind,name,args in [('inert','verify-work-cross-job-postgres.py',[]),('fresh','verify-work-cross-job-fresh-sessions.py',['--execute-fixture'])]:
             before=self.instance();same_instance(identity,before);settings=normalize_settings(self.r.json(settings_sql,user='supabase_admin'))
             self.report.value['predecessorInstanceBefore']=before;self.report.persist()
