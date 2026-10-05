@@ -24,6 +24,7 @@ import random
 import sys
 import unittest
 import uuid
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -40,6 +41,7 @@ from supabase_merge_lib import (
     SURROGATE_ONLY,
     VALUES_MANUAL_RECONCILIATION_TABLES,
     WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES,
+    WORK_UNIT_METADATA_IDENTITIES,
     IdRemapper,
     compare_inventories,
     dedup_key_enforcement,
@@ -53,6 +55,25 @@ from supabase_merge_lib import (
     total_rows,
 )
 from supabase_merge_plan import Plan, insert_statement, main as merge_plan_main, render, sql_literal
+from supabase_merge_plan import Plan as RealPlan, METADATA_CENSUS_SQL, load_side, metadata_refusals
+
+
+def legacy_absence(inventory):
+    """Explicit synthetic proof for fixture databases predating metadata v1."""
+    inventory = copy.deepcopy(inventory)
+    inventory.setdefault("tables", {})
+    inventory["metadata_census"] = {
+        "version": 1, "complete": True,
+        "tables": {name: None for name in WORK_UNIT_METADATA_IDENTITIES},
+    }
+    return inventory
+
+
+def Plan(schema, source, target, source_rows, target_rows, limit):
+    # Existing fixture assertions exercise the pre-metadata planner under an
+    # explicit both-side absence claim. Refusal tests below use RealPlan.
+    return RealPlan(schema, legacy_absence(source), legacy_absence(target),
+                    source_rows, target_rows, limit)
 
 # supabase-compare.py is not an importable module name, so load it by path.
 _compare_spec = importlib.util.spec_from_file_location(
@@ -210,7 +231,7 @@ class TestSchemaParsing(unittest.TestCase):
         # 20261035000000 to land after the bill-to migrations).
         # +10 monthly-values tables: private policy, immutable reviews and
         # frozen accounting/provenance, plus reserved reminder claims.
-        self.assertEqual(len(SCHEMA.tables), 233)  # plus seven retained unit-review/source-history tables
+        self.assertEqual(len(SCHEMA.tables), 242)  # nine retained metadata relations
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
@@ -725,7 +746,7 @@ class TestPlan(unittest.TestCase):
         self.assertNotIn("insert into public.values_periods", output.getvalue())
 
     def test_capture_graph_never_generates_private_insert_sql(self):
-        tables = sorted(WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES)
+        tables = sorted(WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES - set(WORK_UNIT_METADATA_IDENTITIES))
         self.assertTrue({"work_configuration_commands", "work_configuration_draft_revisions", "work_configuration_draft_pointers"}.issubset(WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES))
         private = "sentinel-private-capture-payload"
         source = {"project_ref": "source", "tables": {name: {"rows": 1} for name in tables}}
@@ -909,7 +930,7 @@ class TestPlan(unittest.TestCase):
         plan = self._plan(other_project(), RAW_BACKUP)
         text = "\n".join(plan.verification())
         for table, key in DEDUP_KEYS.items():
-            if key:
+            if key and table not in WORK_UNIT_METADATA_IDENTITIES:
                 self.assertIn(f"from public.{table}\n", text)
 
     def test_preflight_asks_about_advisory_keys_and_auth(self):
@@ -918,6 +939,204 @@ class TestPlan(unittest.TestCase):
         self.assertIn("from public.cost_codes", text)
         self.assertIn("auth.users", text)
         self.assertIn("SLOT-", text)
+
+
+class TestMetadataMergeCensus(unittest.TestCase):
+    def inventory(self, project, census=None, tables=None):
+        return {"project_ref": project, "tables": tables or {},
+                "metadata_census": census}
+
+    def census(self, **counts):
+        result = {name: None for name in WORK_UNIT_METADATA_IDENTITIES}
+        result.update(counts)
+        return {"version": 1, "complete": True, "tables": result}
+
+    def plan(self, source=None, target=None, source_rows=None, target_rows=None):
+        source = source or self.inventory("source", self.census())
+        target = target or self.inventory("target", self.census())
+        return RealPlan(SCHEMA, source, target, source_rows or {}, target_rows or {}, 0)
+
+    def assert_refused_without_learning(self, plan):
+        with mock.patch.object(IdRemapper, "learn", side_effect=AssertionError("learn called")):
+            self.assertEqual(plan.statements(), [])
+            self.assertEqual(plan.deferred_updates(), [])
+            self.assertEqual(plan.remapper._map, {})
+            self.assertEqual(plan.remapper.collisions, [])
+            output = render(plan, "source.json", "target.json")
+        self.assertTrue(plan.metadata_blockers)
+        self.assertNotIn("insert into public.", output)
+        self.assertNotIn("update public.", output)
+        self.assertNotIn("private-payload", output)
+
+    def test_exact_names_identities_and_privileged_query(self):
+        expected = {
+            "_work_unit_metadata_commands": ("command_id",),
+            "_work_unit_metadata_contract": ("proof_key",),
+            "_work_unit_metadata_current": ("unit_id",),
+            "_work_unit_metadata_floor_current": ("unit_id",),
+            "_work_unit_metadata_definitions": ("id",),
+            "_work_unit_metadata_versions": ("id",),
+            "_work_unit_metadata_proposals": ("id",),
+            "_work_unit_metadata_revisions": ("id",),
+            "_work_unit_metadata_floors": ("id",),
+        }
+        self.assertEqual(WORK_UNIT_METADATA_IDENTITIES, expected)
+        for name, key in expected.items():
+            self.assertEqual(DEDUP_KEYS[name], key)
+            self.assertIn(name, WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES)
+            self.assertIn("('%s')" % name, METADATA_CENSUS_SQL)
+        self.assertIn("rolbypassrls", METADATA_CENSUS_SQL)
+        self.assertIn("has_table_privilege", METADATA_CENSUS_SQL)
+        self.assertIn("query_to_xml", METADATA_CENSUS_SQL)
+        self.assertNotIn("work_cross_job", METADATA_CENSUS_SQL)
+
+    def test_each_relation_blocks_on_both_sides_with_non_fk_payload_hidden(self):
+        for name in WORK_UNIT_METADATA_IDENTITIES:
+            for side in ("source", "target"):
+                for count in (0, 1):
+                    with self.subTest(name=name, side=side, count=count):
+                        census = self.census(**{name: count})
+                        inv = self.inventory(side, census)
+                        kwargs = {side: inv}
+                        plan = self.plan(**kwargs)
+                        self.assert_refused_without_learning(plan)
+                        self.assertIn(name, " ".join(plan.metadata_blockers) if count else name)
+
+    def test_missing_partial_malformed_error_and_contradictory_proofs(self):
+        name = "_work_unit_metadata_commands"
+        malformed = [None, {}, {"version": True, "complete": True, "tables": self.census()["tables"]},
+                     {"version": 1, "complete": False, "tables": self.census()["tables"]},
+                     {"version": 1, "complete": True, "tables": {}},
+                     {"version": 1, "complete": True, "tables": self.census()["tables"], "error": "denied"}]
+        for census in malformed:
+            for side in ("source", "target"):
+                with self.subTest(census=census, side=side):
+                    self.assert_refused_without_learning(self.plan(**{side: self.inventory(side, census)}))
+        for bad in (-1, True, "0", 1.0):
+            with self.subTest(bad=bad):
+                self.assert_refused_without_learning(self.plan(source=self.inventory("source", self.census(**{name: bad}))))
+        for entry in ({"rows": 0}, {"rows": None}, {"rows": -1}, {"rows": 1},
+                      {"rows": 0, "error": "denied"}):
+            with self.subTest(entry=entry):
+                self.assert_refused_without_learning(self.plan(source=self.inventory("source", self.census(), {name: entry})))
+        all_zero = self.census()
+        all_zero["tables"] = {n: 0 for n in WORK_UNIT_METADATA_IDENTITIES}
+        self.assert_refused_without_learning(self.plan(target=self.inventory("target", all_zero)))
+
+    def test_raw_backup_loader_preserves_census_and_malformed_export_refuses(self):
+        import tempfile
+        name = "_work_unit_metadata_contract"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "source.json"
+            for export in ([], [{"proof_key": "private-payload"}], ["private-payload"],
+                           {"error": "denied"}, "bad"):
+                with self.subTest(export=export):
+                    path.write_text(json.dumps({"project_id": "source", "metadata_census": self.census(), name: export}))
+                    inventory, rows = load_side(str(path))
+                    self.assertEqual(inventory["metadata_census"], self.census())
+                    self.assertIn(name, rows)
+                    self.assert_refused_without_learning(self.plan(source=inventory, source_rows=rows))
+            path.write_text(json.dumps({"project_ref": "source", "tables": {},
+                                        "metadata_census": self.census(),
+                                        name: ["private-payload"]}))
+            inventory, rows = load_side(str(path))
+            self.assertIn(name, rows)
+            self.assert_refused_without_learning(self.plan(source=inventory, source_rows=rows))
+
+    def test_absent_proof_keeps_legacy_plans_and_skips_only_nine_queries(self):
+        plan = self.plan()
+        self.assertEqual(plan.metadata_blockers, [])
+        text = "\n".join(plan.verification())
+        for name in WORK_UNIT_METADATA_IDENTITIES:
+            self.assertNotIn("from public." + name, text)
+            self.assertNotIn("join public." + name, text)
+        self.assertIn("from public.window_types", text)
+
+    def test_cli_missing_proof_refuses_without_payload_or_mutation_sql(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.json"
+            target = Path(directory) / "target.json"
+            source.write_text(json.dumps({"project_id": "source", "window_types": [
+                {"id": "private-payload", "type_code": "PRIVATE"}]}))
+            target.write_text(json.dumps({"project_ref": "target", "tables": {}}))
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = merge_plan_main(["--source", str(source), "--target", str(target)])
+        self.assertEqual(code, 2)
+        self.assertIn("complete privileged nine-table metadata census required", output.getvalue())
+        self.assertNotIn("private-payload", output.getvalue())
+        self.assertNotIn("insert into public.", output.getvalue())
+        self.assertNotIn("update public.", output.getvalue())
+
+    def test_malformed_inventory_maps_entries_and_counts_render_without_writes(self):
+        malformed = [
+            ["private-payload"],
+            {"window_types": "private-payload"},
+            {"window_types": ["private-payload"]},
+            {"window_types": {"rows": "private-payload"}},
+            {"window_types": {"rows": True}},
+            {"window_types": {"rows": 1.5}},
+            {"window_types": {"rows": None}},
+            {"window_types": {"rows": -1}},
+            {"window_types": {"rows": 0, "error": "private-payload"}},
+        ]
+        for side in ("source", "target"):
+            for tables in malformed:
+                with self.subTest(side=side, tables=tables):
+                    inventory = {"project_ref": side, "tables": tables,
+                                 "metadata_census": self.census()}
+                    plan = self.plan(**{side: inventory})
+                    self.assert_refused_without_learning(plan)
+                    self.assertIn("inventory table", " ".join(plan.metadata_blockers))
+                    rendered = render(plan, "source.json", "target.json")
+                    self.assertIn("Expected upper bound unavailable", rendered)
+
+    def test_cli_malformed_inventory_and_raw_backup_exit_two(self):
+        import tempfile
+        malformed = [
+            ["private-payload"],
+            {"window_types": "private-payload"},
+            {"window_types": {"rows": "private-payload"}},
+            {"window_types": {"rows": True}},
+            {"window_types": {"rows": -1}},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.json"
+            target = Path(directory) / "target.json"
+            for side in ("source", "target"):
+                for tables in malformed:
+                    with self.subTest(side=side, tables=tables):
+                        good = {"project_ref": "target" if side == "source" else "source",
+                                "tables": {}, "metadata_census": self.census()}
+                        bad = {"project_ref": side, "tables": tables,
+                               "metadata_census": self.census()}
+                        source.write_text(json.dumps(bad if side == "source" else good))
+                        target.write_text(json.dumps(bad if side == "target" else good))
+                        output = io.StringIO()
+                        with contextlib.redirect_stdout(output):
+                            code = merge_plan_main(["--source", str(source), "--target", str(target)])
+                        self.assertEqual(code, 2)
+                        self.assertIn("inventory table", output.getvalue())
+                        self.assertIn("Expected upper bound unavailable", output.getvalue())
+                        self.assertNotIn("private-payload", output.getvalue())
+                        self.assertNotIn("insert into public.", output.getvalue())
+                        self.assertNotIn("update public.", output.getvalue())
+            for side in ("source", "target"):
+                raw = {"project_id": side, "metadata_census": self.census(),
+                       "_work_unit_metadata_commands": ["private-payload"]}
+                good = {"project_ref": "target" if side == "source" else "source",
+                        "tables": {}, "metadata_census": self.census()}
+                source.write_text(json.dumps(raw if side == "source" else good))
+                target.write_text(json.dumps(raw if side == "target" else good))
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    code = merge_plan_main(["--source", str(source), "--target", str(target)])
+                self.assertEqual(code, 2)
+                self.assertIn("malformed metadata export", output.getvalue())
+                self.assertNotIn("private-payload", output.getvalue())
+                self.assertNotIn("insert into public.", output.getvalue())
+                self.assertNotIn("update public.", output.getvalue())
 
 
 if __name__ == "__main__":
