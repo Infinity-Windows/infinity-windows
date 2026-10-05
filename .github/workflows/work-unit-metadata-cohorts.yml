@@ -1,0 +1,83 @@
+name: Held unit metadata PostgreSQL proof
+
+on:
+  push:
+    branches: [codex/work-cohort-20261004]
+    paths:
+      - .github/workflows/work-unit-metadata-cohorts.yml
+      - scripts/verify-work-unit-metadata-cohorts-postgres.py
+      - supabase/migrations/20261108480000_work_unit_metadata_cohorts.sql
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  genuine-metadata:
+    name: Genuine PostgreSQL17 held metadata roles and volume
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: supabase_admin
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: forge_work_activity_role_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U supabase_admin -d forge_work_activity_role_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pin the reviewed candidate before any fixture construction
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          pins = {
+              'supabase/migrations/20261108480000_work_unit_metadata_cohorts.sql': '0af8c571d6d571dff926a0ecff8bb29db55fd72f8498e85146243ab7a5850997',
+              'scripts/verify-work-unit-metadata-cohorts-postgres.py': '08c32edb80d6ebbf2dd9416d02357ed0ea2889e306a123eb2e62918fbf70ebbc',
+          }
+          for name, expected in pins.items():
+              assert hashlib.sha256(Path(name).read_bytes()).hexdigest() == expected, name
+          PY
+          python3 scripts/verify-work-unit-metadata-cohorts-postgres.py --check-plan
+      - name: Build unchanged genuine role and source fixture
+        run: python3 scripts/verify-work-activity-engine-role-parity.py
+      - name: Verify unchanged authority and source concurrency
+        run: python3 scripts/verify-work-activity-catalog-concurrency.py
+      - name: Build unchanged review proof fixture
+        run: python3 scripts/verify-work-unit-review-concurrency.py
+      - name: Preserve unchanged review volume and payroll baseline
+        env:
+          WORK_UNIT_REVIEW_VOLUME_OUT: ${{ runner.temp }}/work-unit-review-volume.json
+        run: python3 scripts/verify-work-unit-review-volume.py
+      - name: Build unchanged totals proof fixture
+        env:
+          WORK_ACTIVITY_TOTALS_VOLUME_OUT: ${{ runner.temp }}/work-activity-totals-volume.json
+        run: python3 scripts/verify-work-activity-totals-postgres.py
+      - name: Build unchanged contributor proof fixture
+        env:
+          WORK_UNIT_CONTRIBUTORS_VOLUME_OUT: ${{ runner.temp }}/work-unit-contributors-volume.json
+        run: python3 scripts/verify-work-unit-contributors-postgres.py
+      - name: Test held metadata roles races active payroll wait and bounded volume
+        env:
+          WORK_UNIT_METADATA_COHORTS_PG_OUT: ${{ runner.temp }}/work-unit-metadata-cohorts-postgres.json
+        run: python3 scripts/verify-work-unit-metadata-cohorts-postgres.py
+      - name: Preserve complete or partial genuine receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-unit-metadata-cohorts-postgres
+          path: |
+            ${{ runner.temp }}/work-unit-metadata-cohorts-postgres.json
+            ${{ runner.temp }}/work-unit-review-volume.json
+            ${{ runner.temp }}/work-activity-totals-volume.json
+            ${{ runner.temp }}/work-unit-contributors-volume.json
+          if-no-files-found: ignore
