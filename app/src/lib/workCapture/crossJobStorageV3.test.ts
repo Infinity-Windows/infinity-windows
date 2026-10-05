@@ -1,3 +1,4 @@
+import { complete as fixtureComplete, census as fixtureCensus, diagnostics as fixtureDiagnostics } from '../../../e2e/support/crossJobStorageV3Harness';
 import { describe, expect, it, vi } from 'vitest';
 import { freezeCrossJobOriginal, parseCrossJobRecord, openCrossJobJournalV3, settleCrossJobClaim, claimCrossJobOriginal, type AdmissionV3 } from './crossJobStorageV3';
 import { genesis, handoff, row, id, child, queuedChild, admissionAt, timedGenesis, actionHandoff, virginGenesis, withoutObservation, fences, snapshot } from './crossJobStorageV3.fixtures';
@@ -91,4 +92,19 @@ it('protected checker rejects the null-observation diagnostic at its parser inst
   const plan=planActivityV2({original:{ownerId:o.command.ownerId,deviceId:p.deviceId,commandId:o.command.commandId,action:{kind:'establish_stream',newGeneration:p.clientGeneration},stamp:{tappedAt:p.tappedAt,clockCheckedAt:p.clockCheckedAt,clockSkewMs:p.clockSkewMs}},snapshot:o.anchor,sourceFences:o.fences,currentFences:o.fences,elapsedMs:0,serverNow:o.anchor.asOf,chain:[]});expect(plan.kind).toBe('ready');
   const snapshot=withoutObservation(o.anchor),args={snapshot,parents:[],currentFences:o.fences,elapsedMs:0,serverNow:o.anchor.asOf};expect(checkV2SendPrerequisites(plan,args)).toMatchObject({kind:'held',reason:'needs_reaffirmation'});
   snapshot.state!.actions.canEstablishStream=true;expect(()=>checkV2SendPrerequisites(plan,args)).toThrow();
+});
+
+describe('fixture transaction evidence and terminal boundaries',()=>{
+  it('retains the request DOMException when bubbling tx.error is null and waits for abort',async()=>{
+    const tx={db:{name:'synthetic',version:2},mode:'readwrite',durability:'default',error:null,onerror:null,onabort:null,oncomplete:null} as unknown as IDBTransaction;
+    let settled=false;const promise=fixtureComplete(tx,'controlled.write');const outcome=promise.catch(e=>{settled=true;return e as Error;});
+    tx.onerror!.call(tx,{target:{source:{name:'commands'},error:new DOMException('duplicate fixture key','ConstraintError')}} as unknown as Event);await Promise.resolve();expect(settled).toBe(false);expect(tx.error).toBeNull();
+    tx.onabort!.call(tx,{} as Event);const error=await outcome;expect(error).toBeInstanceOf(Error);expect((error as Error).message).toContain('ConstraintError');expect((error as Error).message).toContain('controlled.write');expect((error as Error).message).toContain('commands');expect(fixtureDiagnostics()).toContainEqual(expect.objectContaining({stage:'controlled.write',event:'error',transactionError:null}));
+  });
+  it('does not return a census at getAll success before transaction complete',async()=>{
+    const request={result:[],onsuccess:null,onerror:null} as unknown as IDBRequest<unknown[]>;
+    const store={keyPath:'id',indexNames:[],getAll:()=>request};const tx={db:{name:'synthetic',version:2},mode:'readonly',durability:'default',error:null,objectStore:()=>store,onerror:null,onabort:null,oncomplete:null} as unknown as IDBTransaction;
+    const db={name:'synthetic',version:2,objectStoreNames:['commands'],transaction:()=>tx} as unknown as IDBDatabase;
+    let returned=false;const promise=fixtureCensus(db).then(value=>{returned=true;return value;});request.onsuccess!.call(request,{} as Event);await Promise.resolve();await Promise.resolve();expect(returned).toBe(false);tx.oncomplete!.call(tx,{} as Event);expect(await promise).toMatchObject({version:2,stores:[{name:'commands',rows:[]}]});expect(returned).toBe(true);
+  });
 });

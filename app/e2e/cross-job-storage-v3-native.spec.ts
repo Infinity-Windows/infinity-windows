@@ -14,6 +14,11 @@ async function fixture(page:Page){
     window.crossJobV3Fixture=await import('/e2e/support/crossJobStorageV3Harness.ts');
   });
 }
+test.afterEach(async({page},testInfo)=>{
+  if(testInfo.status===testInfo.expectedStatus)return;
+  let evidence:unknown;try{evidence=await page.evaluate(()=>window.crossJobV3Fixture?.diagnostics()??{stage:'fixture_not_loaded'});}catch(error){evidence={stage:'diagnostics_read_failed',error:error instanceof Error?error.message:String(error)};}
+  await retain('native-fixture-failure-details.json',evidence);
+});
 for(const version of [1,2] as const)test(`native ${version}→3 preserves original keys indexes rows and blob bytes`,async({page})=>{
   await fixture(page);const result=await page.evaluate(async version=>{const f=window.crossJobV3Fixture,old=await f.seedLegacy(version,true),before=await f.census(old);old.close();const db=await f.open(),after=await f.census(db);db.close();return {before,after};},version);
   await retain('native-legacy-census.json',{...result,beforeSha256:digest(result.before.stores),preservedAfterSha256:digest(result.after.stores.filter(s=>result.before.stores.some(old=>old.name===s.name)))});
@@ -274,4 +279,11 @@ for(const shape of ['incoherent_head','half_null_pointers'] as const)test(`nativ
 });
 test('native missing observation defers expiry classification until a complete later read proves the original lease expired',async({page})=>{
   await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const before=await f.census(db),a=f.values.admissionAt(o,undefined,10000);a.snapshot=f.values.withoutObservation(a.snapshot);const first=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),a),after=await f.census(db),later=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.values.admissionAt(o,undefined,10001)),saved=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context());db.close();return {first,before,after,later,saved,bytes:o.commandBytes};});expect(result.first).toBeNull();expect(result.after).toEqual(result.before);expect(result.later).toBeNull();expect(result.saved).toMatchObject({hold:'expired_observation',everAttempted:false});expect(result.saved!.original.commandBytes).toBe(result.bytes);
+});
+
+test('native fixture request error retains source and DOMException while preserving transaction rollback',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),before=await f.census(db),tx=db.transaction('heads','readwrite'),done=f.complete(tx,'controlled.duplicate');const store=tx.objectStore('heads');store.add({streamKey:'duplicate'});store.add({streamKey:'duplicate'});let error='';try{await done;}catch(e){error=(e as Error).message;}const after=await f.census(db),events=f.diagnostics();db.close();return {before,after,error,events};});await retain('native-request-error-control.json',result);expect(result.after).toEqual(result.before);expect(result.error).toContain('ConstraintError');expect(result.error).toContain('heads');expect(result.events).toContainEqual(expect.objectContaining({stage:'controlled.duplicate',event:'error',transactionError:null,request:expect.objectContaining({source:'heads',error:expect.objectContaining({name:'ConstraintError'})})}));expect(result.events).toContainEqual(expect.objectContaining({stage:'controlled.duplicate',event:'abort'}));
+});
+test('native fixture census waits for transaction complete before returning for close and upgrade',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),transaction=IDBDatabase.prototype.transaction;let completed=false;IDBDatabase.prototype.transaction=function(...args:Parameters<typeof transaction>){const tx=transaction.apply(this,args);tx.addEventListener('complete',()=>{completed=true;});return tx;};try{await f.census(db);return {completed};}finally{IDBDatabase.prototype.transaction=transaction;db.close();}});expect(result.completed).toBe(true);
 });
