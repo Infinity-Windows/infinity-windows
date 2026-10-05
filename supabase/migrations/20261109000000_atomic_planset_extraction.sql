@@ -1436,15 +1436,13 @@ comment on function public.import_window_types(jsonb) is
 
 -- ---- inventory assignment: assign_window_to_opening ----------------------------
 --
--- Recreated with its CURRENT signature and body (20260715200000_lifecycle_
--- unify.sql) so gate (b) lets its one type write through. Unchanged: SECURITY
--- INVOKER, so the caller's RLS still governs every read and write exactly as
--- before (any signed-in non-partner, the warehouse's own path); the type is
--- still only ever FILLED from the assigned unit when the opening had none.
--- Changed: the marker around that update, a pinned search_path, and EXECUTE
--- made explicit — revoked from PUBLIC/anon (anon could already reach nothing:
--- every policy on these tables is `to authenticated`), granted to
--- authenticated and service_role. Same signature, so no overload is added.
+-- Recreated with its CURRENT signature (20260715200000_lifecycle_unify.sql).
+-- The older invoker function can no longer append its movement after the
+-- movement ledger was made append-only (20260829000000). Run as definer to
+-- append that record, but first explicitly check the signed-in crew member,
+-- opening job, and any job already holding the physical unit. The type is
+-- still only FILLED from the assigned unit when the opening had none. The
+-- marker covers only that update. Same signature, so no overload is added.
 create or replace function public.assign_window_to_opening(
   p_opening_id uuid,
   p_window_id uuid,
@@ -1452,23 +1450,37 @@ create or replace function public.assign_window_to_opening(
 )
 returns project_openings
 language plpgsql
+security definer
 set search_path = public, pg_temp
 as $$
 declare
+  v_uid uuid := auth.uid();
   v_opening project_openings;
   v_window windows;
   v_prev_marker text;
 begin
-  select * into v_opening from project_openings where id = p_opening_id;
-  if v_opening is null then
+  if v_uid is null or public.is_partner_user()
+     or not exists (select 1 from public.profiles p
+                     where p.id = v_uid and p.retired_at is null
+                       and p.access_revoked_at is null) then
+    raise exception 'Sign in with a current Forge crew account before assigning a unit.'
+      using errcode = '42501';
+  end if;
+
+  select * into v_opening from public.project_openings
+   where id = p_opening_id for update;
+  if not found or v_opening.removed_at is not null
+     or not public._ai_job_visible(v_opening.project_id, v_uid) then
     raise exception 'unknown opening %', p_opening_id;
   end if;
   if v_opening.status = 'installed' then
     raise exception 'opening % is already installed', v_opening.opening_code;
   end if;
 
-  select * into v_window from windows where id = p_window_id;
-  if v_window is null then
+  select * into v_window from public.windows
+   where id = p_window_id for update;
+  if not found or (v_window.project_id is not null
+                   and not public._ai_job_visible(v_window.project_id, v_uid)) then
     raise exception 'unknown window %', p_window_id;
   end if;
   if v_window.status = 'installed' then
