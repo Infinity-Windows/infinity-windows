@@ -1,9 +1,13 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./support/nativeBlobTest";
 import { serviceWorkerReady, signInButton } from "./support/pwa";
 
 // Diagnostic only: determine whether WebKit can reload an installed Forge
-// shell while truly offline. The dev-server route probe cannot do so.
-test("diagnostic: installed WebKit shell reopens without a network", async ({ page, context }) => {
+// shell while truly offline in a persistent profile like an installed phone.
+// The ephemeral WebKit case failed before any new document started in CI.
+test.use({ nativeBlobProfile: true });
+
+test("diagnostic: persistent installed WebKit shell reopens without a network", async ({ page, context }) => {
   await page.goto("/");
   await expect(signInButton(page)).toBeVisible();
   await serviceWorkerReady(page);
