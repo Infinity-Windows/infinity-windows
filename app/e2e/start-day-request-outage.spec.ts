@@ -56,6 +56,7 @@ test("a refused Start day request survives reload and sends its original punch o
   expect(Math.abs(tapped - tappedAt)).toBeLessThan(5_000);
   await expect(clock).not.toContainText("Saved on this phone");
   await expect(page.getByTestId("ws-start-day")).toHaveCount(0);
+  await expect.poll(async () => (await savedClockPunch(page)).length).toBe(0);
   await page.waitForTimeout(1_500);
   expect(world.clockIns).toHaveLength(1);
 });
