@@ -15,6 +15,7 @@ import "./mediaExport.css";
 export default function MediaExportDialog({ kind, projectId, fromDate = "", throughDate = "", receiptFilter, onClose }: { kind: MediaExportKind; projectId: string | null; fromDate?: string; throughDate?: string; receiptFilter?: ReceiptFilter; onClose: () => void }) {
   const { lang } = useLanguage();
   const say = (en: string, es: string) => lang === "es" ? es : en;
+  const [activeKind, setActiveKind] = useState<MediaExportKind>(kind);
   const [job, setJob] = useState(projectId ?? "");
   const [from, setFrom] = useState(fromDate);
   const [through, setThrough] = useState(throughDate);
@@ -79,15 +80,17 @@ export default function MediaExportDialog({ kind, projectId, fromDate = "", thro
   }, [currentViewer]);
   const rangeError = custom ? ((!from || !through) ? "Both dates are required" : mediaExportRangeError(from, through)) : null;
   const projects = useQuery({ queryKey: ["media-export-jobs", viewer.userId, viewer.generation], queryFn: ({ signal }) => scopedRead(() => listProjectsAnyStatus(), signal), enabled: !invalid && currentViewer(), retry: false, gcTime: 0 });
-  const filter = useMemo(() => ({ kind, projectId: job || null, fromDate: custom ? from : "", throughDate: custom ? through : "", receiptFilter }), [kind, job, custom, from, through, receiptFilter]);
+  // Office receipt filters only apply to receipt exports; job photos never carry them.
+  const activeReceiptFilter = activeKind === "receipt" ? receiptFilter : undefined;
+  const filter = useMemo(() => ({ kind: activeKind, projectId: job || null, fromDate: custom ? from : "", throughDate: custom ? through : "", receiptFilter: activeReceiptFilter }), [activeKind, job, custom, from, through, activeReceiptFilter]);
   const query = useQuery({ queryKey: ["media-export", viewer.userId, viewer.generation, filter], queryFn: ({ signal }) => scopedRead(ownedSignal => listMediaExportItems(filter, undefined, ownedSignal), signal), enabled: !invalid && currentViewer() && !rangeError, staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: false, retry: false, gcTime: 0 });
   const items = query.data ?? [];
   const jobCodeById = useMemo(() => new Map((projects.data ?? []).map(p => [p.id, p.job_code])), [projects.data]);
   const selected = useMemo(() => (query.data ?? []).filter(item => selection === null || selection.has(item.id)).map(item => ({ ...item, jobCode: item.jobCode ?? jobCodeById.get(item.projectId ?? "") ?? item.projectId })), [query.data, selection, jobCodeById]);
   const ready = currentViewer() && query.isSuccess && !query.isFetching && !rangeError && !busy && !projects.isFetching && (projects.isSuccess || projects.isError) && selected.length > 0;
-  const title = kind === "photo" ? say("Export photos", "Exportar fotos") : say("Export receipts", "Exportar recibos");
+  const title = activeKind === "photo" ? say("Export photos", "Exportar fotos") : say("Export receipts", "Exportar recibos");
   const jobLabel = jobCodeById.get(job) ?? (job || "all-jobs");
-  const filename = mediaExportName(kind, jobLabel, filter.fromDate, filter.throughDate);
+  const filename = mediaExportName(activeKind, jobLabel, filter.fromDate, filter.throughDate);
   function reset() { setPreview(null); setPrepared(null); setSelection(null); setError(null); setNotice(null); setProgress(""); }
   function readError(e: unknown) {
     if (e instanceof MediaExportDataError) return e.code === "too_many" ? say("Too many files to load at once. Choose one job or a smaller date range.", "Hay demasiados archivos. Elige un trabajo o un rango de fechas menor.") : say("Photo export is unavailable right now. Please try again later.", "La exportación de fotos no está disponible. Inténtalo más tarde.");
@@ -138,13 +141,15 @@ export default function MediaExportDialog({ kind, projectId, fromDate = "", thro
     <header className="media-export-heading"><h2>{title}</h2><button type="button" className="action-btn" onClick={close} aria-label={say("Close", "Cerrar")}><X size={20} aria-hidden /></button></header>
     <p className="muted">{say("Choose a job, dates and files. Downloads keep the original saved images; PDF receipts include the original document.", "Elige un trabajo, fechas y archivos. Las descargas conservan las imágenes guardadas; los recibos PDF incluyen el documento original.")}</p>
     <fieldset disabled={busy} className="media-export-filters">
+      <label>{say("Export content", "Contenido a exportar")}<select value={activeKind} onChange={e => { setActiveKind(e.target.value === "receipt" ? "receipt" : "photo"); reset(); }}><option value="photo">{say("Job photos only (exclude receipts)", "Solo fotos del trabajo (sin recibos)")}</option><option value="receipt">{say("Receipts only", "Solo recibos")}</option></select></label>
+      <p className="muted">{activeKind === "photo" ? say("Receipt captures are left out. Choose Receipts only to export receipts.", "Los recibos se dejan fuera. Elige Solo recibos para exportar recibos.") : say("Only receipts are included. Each receipt exports its saved image, plus the original PDF when there is one.", "Solo se incluyen recibos. Cada recibo exporta su imagen guardada y el PDF original si lo tiene.")}</p>
       <JobSearchSelect jobs={projects.data ?? []} value={job} onChange={id => { setJob(id); reset(); }} label={say("Export job", "Trabajo a exportar")} loading={projects.isFetching} />
       <button type="button" className="action-btn" aria-pressed={!job} onClick={() => { setJob(""); reset(); }}>{say("All jobs I can access", "Todos los trabajos a los que tengo acceso")}</button>
       <label className="media-export-choice"><input type="checkbox" checked={custom} onChange={e => { setCustom(e.target.checked); reset(); }} />{say("Custom dates", "Fechas personalizadas")}</label>
-      {custom ? <div className="media-export-dates"><label>{say("From date", "Desde")}<input type="date" value={from} onChange={e => { setFrom(e.target.value); reset(); }} /></label><label>{say("Through date", "Hasta")}<input type="date" value={through} onChange={e => { setThrough(e.target.value); reset(); }} /></label></div> : <p className="muted">{receiptFilter?.month ? say(`Saved month: ${receiptFilter.month}`, `Mes guardado: ${receiptFilter.month}`) : say("All dates", "Todas las fechas")}</p>}
+      {custom ? <div className="media-export-dates"><label>{say("From date", "Desde")}<input type="date" value={from} onChange={e => { setFrom(e.target.value); reset(); }} /></label><label>{say("Through date", "Hasta")}<input type="date" value={through} onChange={e => { setThrough(e.target.value); reset(); }} /></label></div> : <p className="muted">{activeReceiptFilter?.month ? say(`Saved month: ${activeReceiptFilter.month}`, `Mes guardado: ${activeReceiptFilter.month}`) : say("All dates", "Todas las fechas")}</p>}
     </fieldset>
-    {receiptFilter && <p className="muted">{say("Your office month, category and billing filters also apply to these files.", "También se aplican los filtros de mes, categoría y facturación de la oficina.")}</p>}
-    <p className="muted">{kind === "photo" ? say("Dates use when the photo was taken, or when it was saved if unknown. Both dates are included, in your local time.", "Se usa la fecha de captura, o de guardado si se desconoce. Ambas fechas se incluyen, en tu hora local.") : say("Dates use the receipt purchase date, or the saved date if unknown. Both dates are included.", "Se usa la fecha de compra, o de guardado si se desconoce. Ambas fechas se incluyen.")}</p>
+    {activeReceiptFilter && <p className="muted">{say("Your office month, category and billing filters also apply to these files.", "También se aplican los filtros de mes, categoría y facturación de la oficina.")}</p>}
+    <p className="muted">{activeKind === "photo" ? say("Dates use when the photo was taken, or when it was saved if unknown. Both dates are included, in your local time.", "Se usa la fecha de captura, o de guardado si se desconoce. Ambas fechas se incluyen, en tu hora local.") : say("Dates use the receipt purchase date, or the saved date if unknown. Both dates are included.", "Se usa la fecha de compra, o de guardado si se desconoce. Ambas fechas se incluyen.")}</p>
     {rangeError && <p role="alert" className="error">{say("Enter valid start and end dates, with the end on or after the start.", "Ingresa fechas válidas; la fecha final debe ser igual o posterior a la inicial.")}</p>}
     {query.isFetching && !rangeError && <p role="status">{say("Finding matching files…", "Buscando archivos…")}</p>}
     {query.error && !rangeError && <div role="alert"><p className="error">{readError(query.error)}</p><button className="action-btn" onClick={() => void query.refetch()}>{say("Try again", "Reintentar")}</button></div>}

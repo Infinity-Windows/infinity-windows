@@ -63,6 +63,8 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-10-01-receipt-viewer',
   // Photo and receipt export (20261118000000).
   '2026-10-06-photo-receipt-export',
+  // Export content choice: job photos only or receipts only (20261121000000).
+  '2026-10-06-export-job-photos-only',
 ] as const;
 export interface AppUpdate {
   id: string; published_on: string; audience: number[]; kind: 'fix' | 'improvement';

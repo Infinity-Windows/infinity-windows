@@ -261,6 +261,12 @@ export interface PhotoExportRow {
   projectId: string | null;
 }
 
+/** Only the app's known receipt storage namespace is excluded. Other photos,
+ * including ones with receipt-like names, remain ordinary job photos. */
+function isReceiptStoragePath(path: string): boolean {
+  return path.startsWith("install-media/receipts/") || path.startsWith("receipts/");
+}
+
 /**
  * Every live (not trashed) photo the caller's RLS returns, one job or all,
  * newest-inserted first. Unlike listPhotos there is NO legacy fallback: on a
@@ -287,7 +293,10 @@ export async function listPhotosForExport(
         .from("attachments")
         .select("id, storage_path, created_at, taken_at, project_id")
         .eq("kind", "photo")
-        .is("deleted_at", null);
+        .is("deleted_at", null)
+        // Exclude known receipt paths before range/cap evaluation.
+        .not("storage_path", "like", "install-media/receipts/%")
+        .not("storage_path", "like", "receipts/%");
       if (projectId) query = query.eq("project_id", projectId);
       if (window) {
         // Capture time when there is one, else insert time — photoTime's rule.
@@ -303,7 +312,7 @@ export async function listPhotosForExport(
     if (isMissingColumn(err)) throw new MediaExportDataError("schema_missing");
     throw err;
   }
-  return rows.map((r) => ({
+  return rows.filter((r) => !isReceiptStoragePath(r.storage_path)).map((r) => ({
     id: r.id,
     storagePath: r.storage_path,
     createdAt: r.created_at,
