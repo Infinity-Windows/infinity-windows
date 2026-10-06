@@ -29,7 +29,16 @@ jobs:
           cache-dependency-path: app/package-lock.json
       - run: npm ci
         working-directory: app
-      - run: npx --no-install playwright install --with-deps webkit
+      - name: Install WebKit with the repository's bounded Ubuntu mirror setup
+        timeout-minutes: 10
+        run: |
+          for source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            if [ -f "$source" ]; then
+              sudo sed -i -E 's|https?://azure.archive.ubuntu.com/ubuntu/?|https://archive.ubuntu.com/ubuntu/|g' "$source"
+            fi
+          done
+          printf 'Acquire::Retries "1";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' | sudo tee /etc/apt/apt.conf.d/99forge-browser-downloads >/dev/null
+          npx --no-install playwright install --with-deps webkit
         working-directory: app
       - name: Verify installed app retention and request retry in WebKit
         working-directory: app
