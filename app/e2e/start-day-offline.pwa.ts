@@ -37,10 +37,11 @@ async function savedClockPunch(page: Page) {
   });
 }
 
-// The installed app's worker supplies the shell while all page network
-// requests are blocked. Playwright WebKit rejects reload itself with
-// context.setOffline(true), before the service worker can respond.
-test("an installed phone keeps its saved Start day through a no-network reload and sends one original punch", async ({ page }) => {
+// The installed app's worker supplies the shell while the local server refuses
+// browser traffic. WebKit's inspector rejects page.reload with setOffline or
+// a page-wide route abort before the worker can respond.
+test("an installed phone keeps its saved Start day through a no-network reload and sends one original punch", async ({ page, request }) => {
+  await request.post("/__pwa-harness/network/online");
   await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
   await hideWrongProjectBanner(page);
   await stubGeolocationDenied(page);
@@ -48,7 +49,7 @@ test("an installed phone keeps its saved Start day through a no-network reload a
   await page.route((url) => /\/rest\/v1\/rpc\/server_now(\?|$)/.test(url.href), (route) => json(route, new Date().toISOString(), null));
 
   const signal = { dead: false, refused: 0 };
-  await page.route("**/*", (route) => {
+  await page.route(/e2efixture\.supabase\.co/, (route) => {
     if (signal.dead) {
       signal.refused += 1;
       return route.abort("internetdisconnected");
@@ -58,21 +59,15 @@ test("an installed phone keeps its saved Start day through a no-network reload a
 
   await page.goto("/");
   await serviceWorkerReady(page);
-  const harnessReachable = () => page.evaluate(async () => {
-    try {
-      const response = await fetch(`/__pwa-harness/state?offline-probe=${crypto.randomUUID()}`, { cache: "no-store" });
-      return response.ok;
-    } catch {
-      return false;
-    }
-  });
-  expect(await harnessReachable(), "the uncached harness responds before signal is cut").toBe(true);
+  const networkProbe = `/__offline-probe/${crypto.randomUUID()}`;
+  expect((await request.get(networkProbe)).status(), "the uncached server responds before signal is cut").toBe(404);
   const clock = page.getByTestId("ws-clock");
   await expect(page.getByTestId("ws-start-day")).toBeVisible();
   await expect(clock).toContainText("OAKRIDGE · Oakridge Apartments Bldg C");
   await expect(clock).toContainText("000 — General");
 
   signal.dead = true;
+  await request.post("/__pwa-harness/network/offline");
   const tappedAt = Date.now();
   await page.getByTestId("ws-start-day").click();
   await expect(clock).toContainText("Clocked in");
@@ -88,9 +83,10 @@ test("an installed phone keeps its saved Start day through a no-network reload a
   expect(world.clockIns).toHaveLength(0);
   expect(await savedClockPunch(page)).toEqual(beforeReload);
   expect(signal.refused, "the phone really was cut off from Forge").toBeGreaterThan(0);
-  expect(await harnessReachable(), "an uncached server URL is unreachable after the offline reload").toBe(false);
+  await expect(request.get(networkProbe), "the server refuses uncached requests after the offline reload").rejects.toThrow();
 
   signal.dead = false;
+  await request.post("/__pwa-harness/network/online");
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect.poll(() => world.clockIns.length).toBe(1);
   expect(world.clockIns[0].p_project_id).toBe(OAKRIDGE);
@@ -104,4 +100,8 @@ test("an installed phone keeps its saved Start day through a no-network reload a
   await expect(page.getByTestId("ws-start-day")).toHaveCount(0);
   await page.waitForTimeout(1_500);
   expect(world.clockIns).toHaveLength(1);
+});
+
+test.afterEach(async ({ request }) => {
+  await request.post("/__pwa-harness/network/online");
 });
