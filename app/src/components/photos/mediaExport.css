@@ -1,4 +1,13 @@
 .media-export-sheet { width: min(100%, 760px); max-width: 100vw; box-sizing: border-box; }
+@media (min-width: 860px) {
+  .ui-sheet.media-export-sheet.sheet-enter {
+    width: min(760px, calc(100vw - 64px));
+    transform: translate(-50%, -50%);
+  }
+  @starting-style {
+    .ui-sheet.media-export-sheet.sheet-enter { transform: translate(-50%, -46%); }
+  }
+}
 .media-export-heading, .media-export-selection { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .media-export-heading h2 { margin: 0; }
 .media-export-filters { border: 0; padding: 0; margin: 16px 0; min-width: 0; display: grid; gap: 12px; }
