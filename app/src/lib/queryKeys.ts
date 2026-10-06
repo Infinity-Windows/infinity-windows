@@ -257,6 +257,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "recordEvents", offline: false },
   { root: "recordMedia", offline: false },
   { root: "removedOpenings", offline: false },
+  { root: "redesignPilot", offline: false },
   { root: "reorderNeeds", offline: false },
   { root: "savedCrews", offline: false },
   { root: "schedule", offline: false },
