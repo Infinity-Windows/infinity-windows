@@ -1,7 +1,7 @@
 // The design switch in Settings (crew redesign K-X2, 2026-09-23) — the
-// person's own "Use the new design" choice, and for the owner the two
-// release-level controls: the master switch (K-X2) and the paid-time rule's
-// effective date (K1.3 / Q69).
+// person's own "Use the new design" choice, and for the owner the paid-time
+// rule's effective date (K1.3 / Q69). The crew-wide release switch is held
+// during the owner-only pilot.
 //
 // Both designs mount this card, so a person on the new design can go back
 // from the same place they left. The owner controls key off the REAL role:
@@ -13,11 +13,11 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getCompanySettings,
-  setNewDesignSwitch,
   setPaidTimeRuleDate,
   type CompanySettings,
 } from "../../lib/companySettings";
 import { useDesign } from "../../lib/design/context";
+import { useRedesignPilot } from "../../lib/design/useRedesignPilot";
 import { useT } from "../../lib/i18n";
 import "../../lib/i18n/designCatalog";
 import { isOwner } from "../../lib/install/types";
@@ -49,6 +49,10 @@ export function DesignSettings() {
   const t = useT();
   const { design, choice, masterOn, setChoice } = useDesign();
   const { realRole } = useEffectiveRole();
+  const pilotAdmitted = useRedesignPilot();
+  // The paid-time date predates this pilot and must remain available to a
+  // real owner even if the canary RPC is not installed or the phone is offline.
+  if (!pilotAdmitted) return isOwner(realRole) ? <OwnerReleaseControls /> : null;
   const onNew = design === "new";
   // The person's own choice may be "new" while the master switch is off — say
   // so, rather than showing a switch that appears to do nothing.
@@ -89,7 +93,7 @@ export function DesignSettings() {
   );
 }
 
-/** Owner only: the master switch and the paid-time rule date. */
+/** Owner only: the existing paid-time rule date. Crew release stays held. */
 function OwnerReleaseControls() {
   const t = useT();
   const queryClient = useQueryClient();
@@ -98,8 +102,7 @@ function OwnerReleaseControls() {
   // A database that predates the column reads undefined → the controls
   // simply do not offer themselves (the house rule for a feature ahead of
   // its migration).
-  const masterKnown = row != null && row.new_design_r1_enabled !== undefined;
-  const masterOn = row?.new_design_r1_enabled ?? true;
+  const ruleKnown = row != null && row.paid_time_from_start_day_on !== undefined;
   const today = todayLocalISO();
   const [date, setDate] = useState<string>("");
   const ruleDate = row?.paid_time_from_start_day_on ?? null;
@@ -109,11 +112,6 @@ function OwnerReleaseControls() {
     queryClient.setQueryData(["companySettings"], next);
     void queryClient.invalidateQueries({ queryKey: ["companySettings"] });
   };
-  const flipMaster = useMutation({
-    mutationFn: (enabled: boolean) => setNewDesignSwitch("r1", enabled),
-    onSuccess: applyRow,
-    onError: (e) => toastError(e),
-  });
   const saveDate = useMutation({
     mutationFn: (on: string | null) => setPaidTimeRuleDate(on),
     onSuccess: (next) => {
@@ -124,31 +122,11 @@ function OwnerReleaseControls() {
     onError: (e) => toastError(e),
   });
 
-  if (!masterKnown) return null;
+  if (!ruleKnown) return null;
   const pendingDate = normalizeRuleDate(date);
 
   return (
     <>
-      <section className="detail-card" style={{ marginBottom: 12 }} aria-label={t("design.owner.heading")}>
-        <h2 style={{ marginTop: 0, fontSize: 18 }}>{t("design.owner.heading")}</h2>
-        <p className="muted" style={{ marginTop: 0, fontSize: 14 }}>{t("design.owner.help")}</p>
-        <p style={{ margin: "0 0 8px", fontWeight: 600 }}>
-          {masterOn ? t("design.owner.on") : t("design.owner.off")}
-        </p>
-        <button
-          type="button"
-          className={`button-like design-choice${masterOn ? "" : " active-pill"}`}
-          disabled={flipMaster.isPending}
-          onClick={() => flipMaster.mutate(!masterOn)}
-        >
-          {flipMaster.isPending
-            ? t("design.owner.saving")
-            : masterOn
-              ? t("design.owner.turnOff")
-              : t("design.owner.turnOn")}
-        </button>
-      </section>
-
       <section className="detail-card" style={{ marginBottom: 12 }} aria-label={t("paidTime.heading")}>
         <h2 style={{ marginTop: 0, fontSize: 18 }}>{t("paidTime.heading")}</h2>
         <p className="muted" style={{ marginTop: 0, fontSize: 14 }}>{t("paidTime.help")}</p>

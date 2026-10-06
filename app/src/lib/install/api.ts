@@ -17,7 +17,7 @@ import { extractSpecsDeterministic } from "./specsDeterministic";
 import { parseSpecPageStatuses, type SpecPageStatus } from "./specPageStatus";
 import { pendingPages, type StoredPageProgress } from "./extractionProgress";
 import { formatApiError } from "./errors";
-import { errorMessage, isPermanentSqlState } from "../offline/outbox-core";
+import { isProfileReadNetworkFailure } from "./profileReadFailure";
 import { visionMarksToDrafts, type RawVisionMark } from "./specsVision";
 import type { DiscrepancyKind } from "./specReconciliation";
 import { elevationAppearances, type ElevationAppearance } from "./elevationViews";
@@ -248,52 +248,6 @@ async function profileOf(user: User | null): Promise<Profile | null> {
 }
 
 /**
- * Is a `profiles` row-read failure "could not ask" (no signal) rather than a
- * real answer from the server? Used only by getRealProfile's fallback below.
- *
- * Deliberately narrower than lib/offline/outbox-core's isNetworkError, which
- * treats `navigator.onLine === false` as sufficient on its own — right for a
- * WRITE the queue can retry later regardless of what the error says, wrong for
- * a READ: an offline browser can still be holding a REAL 401/403 (RLS shut
- * this role out, a role change) from the last request that reached the
- * server, and that answer must not be swallowed just because the phone is
- * offline right now. So a denial — an HTTP status, a permanent Postgres
- * SQLSTATE (22/23/42, the same list isRetryableError treats as final), or its
- * wording — is real no matter what navigator.onLine says, and only a message
- * that actually reads as a fetch failure counts as "could not ask". Not
- * `err instanceof TypeError` either: a programming bug throws TypeError too,
- * and that must surface, not vanish as "offline". `.status` here is the one
- * `withReadStatus` attached below, not a field PostgrestError ever carries
- * itself.
- *
- * The phrase list below is exact, known browser/runtime fetch-failure
- * wordings only — never a bare "connection", "timeout" or "offline". Those
- * three swallowed a plain programming TypeError once already (a typo'd
- * property access reading `'connection'` off `undefined`, caught here as a
- * profile-read failure): ordinary English words a bug's message can contain
- * for reasons that have nothing to do with the network.
- *
- * 408 (request timeout), 429 ("slow down") and 5xx are the server saying it
- * could not answer just now, not answering the question — the same class
- * `couldNotAsk` above already treats that way for the auth call. Checked by
- * status, never by wording, so "Rate limit reached" or "Upstream unavailable"
- * settle the read exactly like a fetch failure, without widening the message
- * regex to catch words a genuine 4xx denial could also happen to contain.
- */
-function isProfileReadNetworkFailure(err: unknown): boolean {
-  const rec = err && typeof err === "object" ? (err as { status?: unknown; code?: unknown }) : null;
-  const status = typeof rec?.status === "number" ? rec.status : null;
-  if (status === 401 || status === 403) return false;
-  if (status === 408 || status === 429 || (status !== null && status >= 500)) return true;
-  if (isPermanentSqlState(typeof rec?.code === "string" ? rec.code : null)) return false;
-  const msg = errorMessage(err).toLowerCase();
-  if (/permission denied|not authorized|forbidden|row-level security/.test(msg)) return false;
-  return /failed to fetch|networkerror when attempting to fetch|load failed|fetch failed|the network connection was lost|err_internet_disconnected|err_network_changed|err_connection_(refused|reset|closed|aborted)|err_name_not_resolved|request timed out|timed out while fetching/.test(
-    msg,
-  );
-}
-
-/**
  * The signed-in user's own profile — NEVER affected by person preview.
  *
  * With no signal to ask who is signed in, this still answers null, as it
@@ -320,6 +274,25 @@ export async function getRealProfile(): Promise<Profile | null> {
     if (isProfileReadNetworkFailure(err)) return null;
     throw err;
   });
+}
+
+/** The pilot gate must distinguish a real "no profile" from a read that could
+ * not reach the server. The ordinary profile contract above deliberately
+ * collapses those for offline screens, so it must not be changed. */
+export async function getRealProfileForPilot(): Promise<
+  { kind: "answered"; profile: Profile | null } | { kind: "unreachable" }
+> {
+  let user: User | null;
+  try { user = await signedInUser(); }
+  catch (err) {
+    if (couldNotAsk(err)) return { kind: "unreachable" };
+    throw err;
+  }
+  try { return { kind: "answered", profile: await profileOf(user) }; }
+  catch (err) {
+    if (isProfileReadNetworkFailure(err)) return { kind: "unreachable" };
+    throw err;
+  }
 }
 
 /**

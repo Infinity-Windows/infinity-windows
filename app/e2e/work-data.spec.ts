@@ -3,7 +3,7 @@
 // is synthetic and intercepted before it can reach Supabase.
 import { expect, test, type Page } from "@playwright/test";
 import type { WorkDataSnapshot } from "../src/lib/workData/api";
-import { FIXTURE_AUTH_KEY, TEST_USER, jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { FIXTURE_AUTH_KEY, TEST_USER, jobFixtures, useSupabaseFixtures, type FixtureOptions } from "./support/supabaseFixtures";
 import { hideWrongProjectBanner, json } from "./support/specHelpers";
 
 const JOB = jobFixtures().find((j) => j.jobCode === "OAKRIDGE")!;
@@ -184,6 +184,19 @@ async function mockWorkDataSnapshot(page: Page, report = snapshot) {
   return calls;
 }
 
+const installSupabaseFixtures = useSupabaseFixtures;
+
+async function setupOwnerPilotFixtures(
+  page: Page,
+  opts: Pick<FixtureOptions, "language" | "profileOverrides" | "session"> = {},
+) {
+  await installSupabaseFixtures(page, { role: "owner", uiDesign: "new", ...opts });
+  // Admission is scoped to the real signed-in owner. A supervisor preview is
+  // useful for layout review, but it does not grant a supervisor account.
+  await page.route((url) => /\/rest\/v1\/rpc\/my_redesign_pilot_access(\?|$)/.test(url.href),
+    (route) => json(route, true, null));
+}
+
 async function loadReport(page: Page, peopleHeading = "People and payroll sources") {
   await page.goto("/data");
   const jobs = page.getByRole("combobox").first();
@@ -192,47 +205,54 @@ async function loadReport(page: Page, peopleHeading = "People and payroll source
   await expect(page.getByText(peopleHeading, { exact: true })).toBeVisible();
 }
 
-for (const role of ["supervisor", "owner"] as const) {
-  test(`${role} can load a fixture snapshot and see payroll reconciliation and source details`, async ({ page }) => {
-    await useSupabaseFixtures(page, { role, uiDesign: "new" });
-    await hideWrongProjectBanner(page);
-    const calls = await mockWorkDataSnapshot(page);
-    await loadReport(page);
+test("owner can load a fixture snapshot and see payroll reconciliation and source details", async ({ page }) => {
+  await setupOwnerPilotFixtures(page);
+  await hideWrongProjectBanner(page);
+  const calls = await mockWorkDataSnapshot(page);
+  await loadReport(page);
 
-    await expect(page.getByRole("heading", { name: "Data", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Summary", exact: true })).toHaveAttribute("href", "/summary");
-    await expect(page.getByText("Recorded payroll", { exact: true })).toBeVisible();
-    await expect(page.getByText("Classified", { exact: true }).first()).toBeVisible();
-    await expect(page.getByText("Unknown", { exact: true }).first()).toBeVisible();
-    await expect(page.getByText("Conflicted", { exact: true }).first()).toBeVisible();
-    await expect(page.getByText("Riley Fixture", { exact: false }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Data", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Summary", exact: true })).toHaveAttribute("href", "/summary");
+  await expect(page.getByText("Recorded payroll", { exact: true })).toBeVisible();
+  await expect(page.getByText("Classified", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Unknown", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Conflicted", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Riley Fixture", { exact: false }).first()).toBeVisible();
 
-    const historicalBreak = page.locator(".work-data-card").filter({ hasText: "shift-historical-break-position-unknown" }).first();
-    await historicalBreak.locator("summary").click();
-    await expect(page.getByText("Historical break position unknown", { exact: true })).toBeVisible();
-    expect(calls).toHaveLength(1);
-    expect(calls[0].p_project_id).toBe(JOB.projectId);
-    expect(Date.parse(calls[0].p_from)).toBeLessThan(Date.parse(calls[0].p_until));
-    expect(calls[0].p_until).toContain("T");
+  const historicalBreak = page.locator(".work-data-card").filter({ hasText: "shift-historical-break-position-unknown" }).first();
+  await historicalBreak.locator("summary").click();
+  await expect(page.getByText("Historical break position unknown", { exact: true })).toBeVisible();
+  expect(calls).toHaveLength(1);
+  expect(calls[0].p_project_id).toBe(JOB.projectId);
+  expect(Date.parse(calls[0].p_from)).toBeLessThan(Date.parse(calls[0].p_until));
+  expect(calls[0].p_until).toContain("T");
 
-    const unitCard = page.locator(".work-data-card").filter({ hasText: "W7" }).first();
-    await expect(unitCard).toContainText("12.00 ft²");
-    // Two people claim labor for W7, but it remains one canonical unit row.
-    await expect(page.locator(".work-data-card summary").filter({ hasText: "W7" })).toHaveCount(1);
-    await page.getByText("Recorded area by floor", { exact: true }).click();
-    await expect(page.getByText("1: 24.00 ft²", { exact: true })).toBeVisible();
-    const untimedUnit = page.locator(".work-data-card").filter({ hasText: "W8" }).first();
-    await untimedUnit.locator("summary").click();
-    await expect(untimedUnit).toContainText("Untimed evidence");
-    await expect(page.getByText("Historical break position unknown", { exact: true })).toBeVisible();
-    await page.getByText("Original activity sources", { exact: false }).click();
-    await expect(page.locator(".work-data-source").getByText("claim-unit-primary", { exact: true })).toBeVisible();
-    await expect(page.getByText(PRIVATE_MARKER, { exact: false }).first()).toBeVisible();
-  });
-}
+  const unitCard = page.locator(".work-data-card").filter({ hasText: "W7" }).first();
+  await expect(unitCard).toContainText("12.00 ft²");
+  // Two people claim labor for W7, but it remains one canonical unit row.
+  await expect(page.locator(".work-data-card summary").filter({ hasText: "W7" })).toHaveCount(1);
+  await page.getByText("Recorded area by floor", { exact: true }).click();
+  await expect(page.getByText("1: 24.00 ft²", { exact: true })).toBeVisible();
+  const untimedUnit = page.locator(".work-data-card").filter({ hasText: "W8" }).first();
+  await untimedUnit.locator("summary").click();
+  await expect(untimedUnit).toContainText("Untimed evidence");
+  await expect(page.getByText("Historical break position unknown", { exact: true })).toBeVisible();
+  await page.getByText("Original activity sources", { exact: false }).click();
+  await expect(page.locator(".work-data-source").getByText("claim-unit-primary", { exact: true })).toBeVisible();
+  await expect(page.getByText(PRIVATE_MARKER, { exact: false }).first()).toBeVisible();
+});
+
+test("owner previewing a supervisor cannot open private Work Data", async ({ page }) => {
+  await setupOwnerPilotFixtures(page);
+  await page.addInitScript(() => sessionStorage.setItem("infinity.viewAsRole", "supervisor"));
+  const calls = await mockWorkDataSnapshot(page);
+  await page.goto("/data");
+  await expect(page.getByText("Work evidence is available to supervisors and the owner outside role preview.")).toBeVisible();
+  expect(calls).toEqual([]);
+});
 
 test("Spanish labels come from the signed-in profile language", async ({ page }) => {
-  await useSupabaseFixtures(page, { role: "supervisor", language: "es", uiDesign: "new" });
+  await setupOwnerPilotFixtures(page, { language: "es" });
   await hideWrongProjectBanner(page);
   await mockWorkDataSnapshot(page);
   await loadReport(page, "Personas y fuentes de nómina");
@@ -255,6 +275,16 @@ for (const role of ["installer", "foreman"] as const) {
     expect(calls).toEqual([]);
   });
 }
+
+test("a real supervisor stays on Classic Data during the owner-only pilot", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "supervisor", uiDesign: "new" });
+  await hideWrongProjectBanner(page);
+  const calls = await mockWorkDataSnapshot(page);
+  await page.goto("/data");
+  await expect(page.getByRole("heading", { name: "Data", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Summary", exact: true })).toHaveCount(0);
+  expect(calls).toEqual([]);
+});
 
 test("a partner is redirected before the Work Data route can fetch private evidence", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
@@ -279,7 +309,7 @@ test("Classic /data remains the existing DataHub", async ({ page }) => {
 });
 
 test("private evidence disappears on role preview or offline reload and is not persisted to browser storage", async ({ page, context }) => {
-  await useSupabaseFixtures(page, { role: "owner", uiDesign: "new" });
+  await setupOwnerPilotFixtures(page);
   await hideWrongProjectBanner(page);
   const calls = await mockWorkDataSnapshot(page);
   await loadReport(page);
@@ -316,7 +346,7 @@ test("private evidence disappears on role preview or offline reload and is not p
 });
 
 test("the layout stays within narrow portrait and landscape viewports", async ({ page }) => {
-  await useSupabaseFixtures(page, { role: "supervisor", uiDesign: "new" });
+  await setupOwnerPilotFixtures(page);
   await hideWrongProjectBanner(page);
   await mockWorkDataSnapshot(page);
   await loadReport(page);
@@ -336,13 +366,9 @@ test("the layout stays within narrow portrait and landscape viewports", async ({
   }
 });
 
-test("changing the signed-in profile below supervisor hides the previous snapshot", async ({ page }) => {
-  let role: "supervisor" | "foreman" = "supervisor";
-  const calls = await useSupabaseFixtures(page, {
-    role: "supervisor",
-    uiDesign: "new",
-    profileOverrides: () => ({ role }),
-  });
+test("changing the signed-in owner profile below pilot eligibility hides the previous snapshot", async ({ page }) => {
+  let role: "owner" | "foreman" = "owner";
+  await setupOwnerPilotFixtures(page, { profileOverrides: () => ({ role }) });
   await hideWrongProjectBanner(page);
   let snapshotCalls = 0;
   await page.route("**/rest/v1/rpc/work_data_snapshot", (route) => { snapshotCalls++; return json(route, snapshot, null); });
@@ -355,11 +381,10 @@ test("changing the signed-in profile below supervisor hides the previous snapsho
   await expect(page.getByText("Not available for your role", { exact: true })).toBeVisible();
   await expect(page.getByText("Riley Fixture", { exact: false })).toHaveCount(0);
   expect(snapshotCalls).toBe(1);
-  void calls;
 });
 
 test("switching the authenticated identity clears the previous person's snapshot", async ({ page }) => {
-  await useSupabaseFixtures(page, { role: "supervisor", uiDesign: "new", session: "phone" });
+  await setupOwnerPilotFixtures(page, { session: "phone" });
   await hideWrongProjectBanner(page);
   const calls = await mockWorkDataSnapshot(page);
   await loadReport(page);
@@ -402,7 +427,7 @@ function explorationSnapshot(): WorkDataSnapshot {
 }
 
 test("unit filters drill down recorded facts without changing the job payroll or fetching again", async ({ page }) => {
-  await useSupabaseFixtures(page, { role: "owner", uiDesign: "new" });
+  await setupOwnerPilotFixtures(page);
   await hideWrongProjectBanner(page);
   const calls = await mockWorkDataSnapshot(page, explorationSnapshot());
   await loadReport(page);
@@ -427,7 +452,7 @@ test("unit filters drill down recorded facts without changing the job payroll or
 });
 
 test("size bounds are inclusive, unknown area is not zero, and invalid bounds show no unit totals", async ({ page }) => {
-  await useSupabaseFixtures(page, { role: "owner", uiDesign: "new" });
+  await setupOwnerPilotFixtures(page);
   await hideWrongProjectBanner(page);
   await mockWorkDataSnapshot(page, explorationSnapshot());
   await loadReport(page);
@@ -444,7 +469,7 @@ test("size bounds are inclusive, unknown area is not zero, and invalid bounds sh
 });
 
 test("unit activities keep helper labor and sources without double-counting area or exclusions", async ({ page }) => {
-  await useSupabaseFixtures(page, { role: "owner", uiDesign: "new" });
+  await setupOwnerPilotFixtures(page);
   await hideWrongProjectBanner(page);
   await mockWorkDataSnapshot(page, explorationSnapshot());
   await loadReport(page);
@@ -466,7 +491,7 @@ test("unit activities keep helper labor and sources without double-counting area
 });
 
 test("actual unavailable taxonomy and QC stay unknown instead of producing a trusted average", async ({ page }) => {
-  await useSupabaseFixtures(page, { role: "supervisor", language: "es", uiDesign: "new" });
+  await setupOwnerPilotFixtures(page, { language: "es" });
   await hideWrongProjectBanner(page);
   const report = explorationSnapshot();
   report.units.forEach(unit => { unit.category = null; unit.subtype = null; unit.dimensionsVerified = false; unit.qcAccepted = false; });

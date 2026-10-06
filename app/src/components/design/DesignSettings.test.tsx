@@ -11,6 +11,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DesignContext, type DesignContextValue } from "../../lib/design/context";
 
 let realRole = "installer";
+let pilotAdmitted = false;
+vi.mock("../../lib/design/useRedesignPilot", () => ({
+  useRedesignPilot: () => pilotAdmitted,
+}));
 vi.mock("../../lib/useEffectiveRole", () => ({
   useEffectiveRole: () => ({
     realRole,
@@ -58,6 +62,7 @@ afterEach(() => {
   host = null;
   setNewDesignSwitch.mockClear();
   setPaidTimeRuleDate.mockClear();
+  pilotAdmitted = false;
 });
 
 async function mount(ctx: Partial<DesignContextValue> = {}): Promise<HTMLElement> {
@@ -92,34 +97,42 @@ const buttonNamed = (el: HTMLElement, text: RegExp) =>
   [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text.test(b.textContent ?? ""));
 
 describe("DesignSettings", () => {
-  it("lets a person switch to the new design and back, one tap each way", async () => {
+  it("does not offer the redesign to a crew account", async () => {
     realRole = "installer";
     const setChoice = vi.fn();
     const el = await mount({ setChoice });
-    expect(el.textContent).toContain("You're on the classic design.");
+    expect(el.textContent).not.toContain("Use the new design");
+    expect(el.textContent).not.toContain("Paid time starts");
+    expect(setChoice).not.toHaveBeenCalled();
+  });
+
+  it("keeps the existing paid-time control for an owner without pilot admission", async () => {
+    realRole = "owner";
+    const el = await mount();
+    expect(el.textContent).not.toContain("Use the new design");
+    expect(el.textContent).toContain("Paid time starts at Start day");
+  });
+
+  it("lets the admitted owner switch to the new design and back", async () => {
+    realRole = "owner";
+    pilotAdmitted = true;
+    const setChoice = vi.fn();
+    const el = await mount({ setChoice });
     act(() => buttonNamed(el, /Use the new design/)!.click());
     expect(setChoice).toHaveBeenCalledWith("new");
     act(() => buttonNamed(el, /Use the classic design/)!.click());
     expect(setChoice).toHaveBeenCalledWith("classic");
-    // No owner controls for an installer.
-    expect(el.textContent).not.toContain("master switch");
-    expect(el.textContent).not.toContain("Paid time starts");
+    expect(el.textContent).not.toContain("New design master switch");
   });
 
-  it("says out loud when the owner has the new design off, instead of a switch that does nothing", async () => {
-    realRole = "foreman";
-    const el = await mount({ choice: "new", design: "classic", masterOn: false });
-    expect(el.textContent).toContain("turned the new design off for everyone");
-  });
-
-  it("gives the owner the master switch and the paid-time date, wired to the two RPCs", async () => {
+  it("keeps the paid-time date but holds the crew-wide master switch", async () => {
     realRole = "owner";
+    pilotAdmitted = true;
     const el = await mount({ choice: "new", design: "new" });
-    expect(el.textContent).toContain("New design master switch");
+    expect(el.textContent).not.toContain("New design master switch");
     expect(el.textContent).toContain("Paid time starts at Start day");
     expect(el.textContent).toContain("Off — today's timing applies.");
-    await act(async () => buttonNamed(el, /Turn off for everyone/)!.click());
-    expect(setNewDesignSwitch).toHaveBeenCalledWith("r1", false);
+    expect(setNewDesignSwitch).not.toHaveBeenCalled();
 
     const date = el.querySelector<HTMLInputElement>("#paid-time-from")!;
     const save = buttonNamed(el, /Save date/)!;

@@ -169,6 +169,8 @@ export interface FixtureOptions {
    * itself (offline-session.spec.ts).
    */
   session?: "pinned" | "phone";
+  /** A realistic token for the few specs that verify a login-bound offline UI copy. */
+  authSession?: typeof SESSION;
   /**
    * Role the fixture user signs in as. Defaults to installer (fewest powers —
    * see TEST_USER above); a spec for a gated screen (Model Studio is
@@ -379,7 +381,7 @@ export async function useSupabaseFixtures(
       window.localStorage.setItem("infinity.language", lang);
     },
     {
-      session: SESSION,
+      session: opts.authSession ?? SESSION,
       tipKeys: DISMISSED_TIPS,
       lang: opts.language ?? "en",
       pinned: (opts.session ?? "pinned") === "pinned",
@@ -400,7 +402,7 @@ export async function useSupabaseFixtures(
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(SESSION),
+        body: JSON.stringify(opts.authSession ?? SESSION),
       });
     }
     return route.fulfill({ status: 204, body: "" });
