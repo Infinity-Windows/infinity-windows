@@ -560,8 +560,8 @@ jobs:
           npm run e2e -- receipt-viewer.spec.ts --browser=webkit
       - name: Job overview stays inside phone screens in Chromium and Safari
         run: |
-          npm run e2e -- job-phone-layout.spec.ts
-          npm run e2e -- job-phone-layout.spec.ts --browser=webkit
+          npm run e2e -- job-phone-layout.spec.ts job-phone-loading-interaction.spec.ts
+          npm run e2e -- job-phone-layout.spec.ts job-phone-loading-interaction.spec.ts --browser=webkit
       # Home unit creation, job handoff, and the phone keyboard viewport are
       # release paths for the crew; keep them in the PR browser gate.
       - run: npm run e2e -- new-design-work.spec.ts
