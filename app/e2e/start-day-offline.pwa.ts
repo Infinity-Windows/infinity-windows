@@ -8,9 +8,11 @@ import { savedClockPunch } from "./support/savedClockPunch";
 // The installed app's worker supplies the shell while the local server refuses
 // browser traffic. WebKit's inspector rejects page.reload with setOffline or
 // a page-wide route abort before the worker can respond.
-test("an installed phone keeps the original saved Start day through a server-outage reload", async ({ page, request }) => {
+test("the owner pilot preserves its saved Start day when an offline reload falls back to Classic", async ({ page, request }) => {
   await request.post("/__pwa-harness/network/online");
-  await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
+  await useSupabaseFixtures(page, { role: "owner", uiDesign: "new" });
+  await page.route((url) => /\/rest\/v1\/rpc\/my_redesign_pilot_access(\?|$)/.test(url.href),
+    (route) => json(route, true, null));
   await hideWrongProjectBanner(page);
   await stubGeolocationDenied(page);
   const world = await morningFixtures(page, { signed: true, myOpening: true });
@@ -44,8 +46,12 @@ test("an installed phone keeps the original saved Start day through a server-out
 
   await page.reload();
   await serviceWorkerReady(page);
-  await expect(clock).toContainText("Clocked in", { timeout: 30_000 });
-  await expect(clock).toContainText("Saved on this phone");
+  // A fresh pilot admission cannot be checked during the offline reload. The
+  // account-specific gate closes the New screen, while the original punch
+  // stays on this phone for the next connected session.
+  await expect(page.getByRole("heading", { name: "Current Work" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").filter({ hasText: "Clock 1" })).toBeVisible();
+  await expect(clock).toHaveCount(0);
   await expect(page.getByTestId("ws-start-day")).toHaveCount(0);
   expect(world.clockIns).toHaveLength(0);
   expect(await savedClockPunch(page)).toEqual(beforeReload);
