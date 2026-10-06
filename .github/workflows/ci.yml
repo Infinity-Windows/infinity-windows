@@ -564,6 +564,10 @@ jobs:
           npm run e2e -- job-phone-layout.spec.ts job-phone-loading-interaction.spec.ts --browser=webkit
       # Home unit creation, job handoff, and the phone keyboard viewport are
       # release paths for the crew; keep them in the PR browser gate.
+      - name: Schedule job handoff and ordinary Start day on phone browsers
+        run: |
+          npm run e2e -- schedule-start-work.spec.ts start-day.spec.ts schedule-offline.spec.ts
+          npm run e2e -- schedule-start-work.spec.ts start-day.spec.ts schedule-offline.spec.ts --browser=webkit
       - run: npm run e2e -- new-design-work.spec.ts
       - run: npx playwright test --browser webkit new-design-work.spec.ts -g "New unit stays within the phone"
       - name: Saved work survives design switches and owner rollback on phone browsers

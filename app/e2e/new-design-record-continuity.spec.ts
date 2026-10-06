@@ -38,6 +38,7 @@ import {
 import { TEST_USER } from "./support/supabaseFixtures";
 import { pngFile } from "./support/specHelpers";
 import { OAKRIDGE } from "./support/release1Fixtures";
+import { installNativePhotoOutboxRecorder, readNativePhotoOutboxRecorder } from "./support/nativePhotoOutboxRecorder";
 
 const PHONE = { width: 390, height: 844 };
 test.use({ viewport: PHONE, deviceScaleFactor: 2 });
@@ -118,6 +119,8 @@ function expectFinalPreferenceAndMaster(server: RecordContinuityServer) {
 }
 
 test("a photo saved on the phone with no signal stays the same queued photo through classic → new → classic → new and master off → on, and nothing is sent", async ({ page }) => {
+  await page.addInitScript(installNativePhotoOutboxRecorder);
+  try {
   const server = createRecordContinuityServer();
   await openRecordContinuityPage(page, server, { session: SESSION, photo: true });
   await settledReload(page, server);
@@ -207,6 +210,21 @@ test("a photo saved on the phone with no signal stays the same queued photo thro
     { type: "list_my_worked_jobs reads", description: String(server.ledgers.workedJobsReads) },
     { type: "limit", description: "Synthetic owner in one disposable browser context; not installed PWA, auth, Storage or physical-phone proof." },
   );
+  } finally {
+    // The buffer belongs to this document. A before-navigation failure keeps
+    // its initial request observations; a later reload starts a new buffer.
+    // No readback request is added, and evidence collection cannot replace
+    // the original test failure if this page or artifact channel is closed.
+    try {
+      const snapshot = await page.evaluate(readNativePhotoOutboxRecorder).catch(() => ({
+        version: 1, installed: false, dropped: 0, events: [], snapshotUnavailable: true,
+      }));
+      await test.info().attach("native-photo-outbox-events", {
+        contentType: "application/json",
+        body: Buffer.from(JSON.stringify({ documentBufferOnly: true, ...snapshot })),
+      });
+    } catch { /* Preserve the test's original outcome. */ }
+  }
 });
 
 async function buildCrewRecord(page: Page) {

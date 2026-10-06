@@ -275,12 +275,20 @@ export async function listDraftAssignments(): Promise<ScheduleAssignment[]> {
   return ((data ?? []) as unknown as RawAssignmentRow[]).map(mapRow);
 }
 
-/** Published assignments a person is on, overlapping [from, to] (My Schedule). */
+/** Published assignments a person is on, overlapping [from, to] (My Schedule).
+ *
+ * `strictRemote`: the answer must come from the database. A missing table
+ * (here or time off's) is thrown instead of answered from this browser's
+ * local draft store or as "no time off" — those are fine for showing a
+ * schedule, never for confirming which job a Schedule-tab Start work tap was
+ * about (pages/work/useScheduleStartWorkIntent.ts, its only user). */
 export async function listMyPublished(
   profileId: string,
   fromISO: string,
   toISO: string,
+  opts: { strictRemote?: boolean } = {},
 ): Promise<ScheduleAssignment[]> {
+  const strict = opts.strictRemote === true;
   // Two-step: first the ids the user is a member of, then the full rows with the
   // single members embed. Embedding the members relationship a second time (as a
   // `!inner` filter) makes PostgREST emit SQL that trips Postgres' "aggregate
@@ -291,7 +299,7 @@ export async function listMyPublished(
     .select("assignment_id")
     .eq("profile_id", profileId);
   if (memberRes.error) {
-    if (isMissingScheduleTable(memberRes.error)) {
+    if (!strict && isMissingScheduleTable(memberRes.error)) {
       return filterMyPublished(readLocal(), profileId, fromISO, toISO);
     }
     throw memberRes.error;
@@ -310,12 +318,16 @@ export async function listMyPublished(
     .gte("end_date", fromISO)
     .order("start_date");
   if (error) {
-    if (isMissingScheduleTable(error)) {
+    if (!strict && isMissingScheduleTable(error)) {
       return filterMyPublished(readLocal(), profileId, fromISO, toISO);
     }
     throw error;
   }
-  return availableAssignments(((data ?? []) as unknown as RawAssignmentRow[]).map(mapRow), await listTimeOff(profileId), profileId);
+  return availableAssignments(
+    ((data ?? []) as unknown as RawAssignmentRow[]).map(mapRow),
+    await listTimeOff(profileId, strict ? { strictRemote: true } : {}),
+    profileId,
+  );
 }
 
 /** Published assignments for one job (read-only view on the project hub). */

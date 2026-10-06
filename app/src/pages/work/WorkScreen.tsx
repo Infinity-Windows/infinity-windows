@@ -57,6 +57,7 @@ import { unitWorkLocked, type StartDayInput } from "../../lib/work/startDay";
 import { pickTodayEntries } from "../../lib/work/today";
 import "./work.css";
 import { useDesign } from "../../lib/design/context";
+import { clockIntentFor, intentJobContext, useScheduleStartWorkIntent } from "./useScheduleStartWorkIntent";
 const SelectedJobWorkEntry = lazy(() => import("./SelectedJobWorkEntry"));
 
 function todayLocalISO(): string {
@@ -119,7 +120,13 @@ export function LegacyWorkScreen() {
     [schedule.data, profileId, today, through],
   );
   const todayJobId = pick.day === today ? (pick.entries.find((e) => e.project_id)?.project_id ?? null) : null;
-  const jobId = shift?.project_id ?? todayJobId;
+  // A Schedule-tab Start work tap names one of today's jobs; until it is
+  // confirmed (or replaced by a hand pick) Work suggests no job at all, so the
+  // first job of the day never stands in for the one that was tapped.
+  const scheduleIntent = useScheduleStartWorkIntent({ profileId, shift, clockKnown, today });
+  const intentJob = intentJobContext(scheduleIntent.phase);
+  const primeJobId = intentJob.override ? intentJob.jobId : todayJobId;
+  const jobId = shift?.project_id ?? primeJobId;
   const jobEntry = pick.entries.find((e) => e.project_id === jobId) ?? null;
   const jobLabel = shift?.projects
     ? `${shift.projects.job_code} · ${shift.projects.name}`
@@ -264,7 +271,9 @@ export function LegacyWorkScreen() {
         profileId={profileId}
         shift={shift}
         clockKnown={clockKnown}
-        todayJobId={todayJobId}
+        todayJobId={primeJobId}
+        scheduleIntent={clockIntentFor(scheduleIntent.phase)}
+        onExplicitProjectChoice={scheduleIntent.onExplicitProjectChoice}
         scheduleSettled={schedule.isSuccess || schedule.isError}
         talk={todayTalk.data ?? null}
         gate={gate}

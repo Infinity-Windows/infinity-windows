@@ -58,6 +58,8 @@ export const WORK_CATALOG = {
   "work.title": { en: "Work", es: "Trabajo" },
   "work.clock.job": { en: "Job", es: "Trabajo" },
   "work.clock.costCode": { en: "Cost code", es: "Código de costo" },
+  "work.clock.checkingScheduled": { en: "Checking your scheduled job…", es: "Revisando tu trabajo programado…" },
+  "work.clock.chooseScheduled": { en: "We couldn’t confirm that scheduled job. Choose your job.", es: "No pudimos confirmar ese trabajo programado. Elige tu trabajo." },
   "work.clock.change": { en: "Change", es: "Cambiar" },
   "work.clock.pickJob": { en: "Pick a job", es: "Elegir trabajo" },
   "work.clock.startDay": { en: "Start day", es: "Iniciar el día" },

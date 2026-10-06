@@ -3,8 +3,13 @@ import { isMissingTable } from "../schemaErrors";
 import type { TimeOffKind, TimeOffRequest } from "./model";
 const SELECT =
   "id,profile_id,kind,start_date,end_date,status,created_at,reviewed_by,reviewed_at,profiles!profile_id(display_name)";
+/** `strictRemote`: a missing table is an error, not "no time off". Only for a
+ * read that must come from the database itself (a Schedule-tab Start work
+ * check, pages/work/useScheduleStartWorkIntent.ts); every other caller keeps
+ * the pre-migration empty list. */
 export async function listTimeOff(
   profileId?: string,
+  opts: { strictRemote?: boolean } = {},
 ): Promise<TimeOffRequest[]> {
   const rows: TimeOffRequest[] = [];
   for (let page = 0; page < 1000; page++) {
@@ -17,7 +22,7 @@ export async function listTimeOff(
     if (profileId) q = q.eq("profile_id", profileId);
     const { data, error } = await q;
     if (error) {
-      if (isMissingTable(error)) return [];
+      if (!opts.strictRemote && isMissingTable(error)) return [];
       throw error;
     }
     rows.push(...((data ?? []) as unknown as TimeOffRequest[]));

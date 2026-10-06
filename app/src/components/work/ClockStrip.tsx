@@ -89,9 +89,19 @@ export interface ClockStripProps {
   toolboxDone: ToolboxTodayView;
   /** Refetch the shift and everything keyed off it after a punch. */
   onShiftChanged: () => void;
+  /**
+   * A Schedule-tab Start work tap being honoured (pages/work/
+   * useScheduleStartWorkIntent.ts). Absent or null: exactly the old strip.
+   * "checking" and "choose" prime nothing and start nothing; "selected"
+   * starts only once the pick IS that job (todayJobId carries it).
+   */
+  scheduleIntent?: { kind: "checking" } | { kind: "choose" } | { kind: "selected"; projectId: string } | null;
+  /** Told each time the person taps a JOB by hand
+   * (even the one already picked) — never for a cost code, mode, note or Done. */
+  onExplicitProjectChoice?: (projectId: string) => void;
 }
 
-export function ClockStrip({ profileId, shift, clockKnown, nativeFlow=null, todayJobId, scheduleSettled, talk, gate, toolboxDone, onShiftChanged }: ClockStripProps) {
+export function ClockStrip({ profileId, shift, clockKnown, nativeFlow=null, todayJobId, scheduleSettled, talk, gate, toolboxDone, onShiftChanged, scheduleIntent = null, onExplicitProjectChoice }: ClockStripProps) {
   const t = useT();
   const queryClient = useQueryClient();
   const onClock = isOnTheClock(shift);
@@ -126,7 +136,11 @@ export function ClockStrip({ profileId, shift, clockKnown, nativeFlow=null, toda
   // settle — the recents answer first on most mornings, and priming off them
   // alone put yesterday's job on the button (e2e, 2026-09-23). Never while a
   // shift is open, never over a pick made by hand.
+  // A Schedule tap still being checked, or that failed its check, primes
+  // nothing: the first job of the day must never stand in for the tapped one.
+  const intentKind = scheduleIntent?.kind ?? null;
   useEffect(() => {
+    if (intentKind === "checking" || intentKind === "choose") return;
     if (pickedByHandRef.current || shift || !(recents.isSuccess || recents.isError) || !scheduleSettled) return;
     const recent = recents.data ?? [];
     const projectId = todayJobId ?? recent[0]?.projectId ?? "";
@@ -137,7 +151,7 @@ export function ClockStrip({ profileId, shift, clockKnown, nativeFlow=null, toda
         ? p
         : { ...p, projectId, costCodeId: match?.costCodeId ?? recent[0]?.costCodeId ?? "" },
     );
-  }, [recents.isSuccess, recents.isError, recents.data, todayJobId, scheduleSettled, shift]);
+  }, [recents.isSuccess, recents.isError, recents.data, todayJobId, scheduleSettled, shift, intentKind]);
 
   // A cost code the job's list does not offer is dropped; an empty pick takes
   // the general code, so the common morning is one tap.
@@ -152,7 +166,12 @@ export function ClockStrip({ profileId, shift, clockKnown, nativeFlow=null, toda
   const project = useMemo(() => (projects.data ?? []).find((p) => p.id === pick.projectId), [projects.data, pick.projectId]);
   const costCode = (costCodes.data ?? []).find((c) => c.id === pick.costCodeId);
   const nativeRoute=!!nativeFlow && nativeFlow.route!=="legacy";
-  const canStart=nativeRoute?(nativeFlow!.canReserveStart ?? nativeFlow!.canStartDay):Boolean(pick.projectId && pick.costCodeId);
+  // Held in canStart itself (so canStartRef and the signature path see it),
+  // not just in the button's look.
+  const intentBlocks =
+    scheduleIntent !== null &&
+    (scheduleIntent.kind !== "selected" || pick.projectId !== scheduleIntent.projectId);
+  const canStart=!intentBlocks && (nativeRoute?(nativeFlow!.canReserveStart ?? nativeFlow!.canStartDay):Boolean(pick.projectId && pick.costCodeId));
   canStartRef.current = canStart;
   const plan =nativeRoute?"clock-in-then-sign":startDayPlan(gate);
 
@@ -233,6 +252,11 @@ export function ClockStrip({ profileId, shift, clockKnown, nativeFlow=null, toda
 
   const onStartDay = () => {
     if (!clockKnown || doStart.isPending) return;
+    if (intentBlocks) {
+      // Nothing starts; when the check failed, the tap opens the job picker.
+      if (intentKind === "choose" && !nativeRoute) setPicking(true);
+      return;
+    }
     if (!canStart) {
       if(nativeRoute){openClockGlobally();return;}
       setPicking(true);
@@ -332,7 +356,7 @@ export function ClockStrip({ profileId, shift, clockKnown, nativeFlow=null, toda
         <div className="ws-clock-pick-text">
           <span className="ws-label">{t("work.clock.job")}</span>
           <span className="ws-clock-pick-job">
-            {project ? `${project.job_code} · ${project.name}` : t("work.clock.pickJob")}
+            {!intentBlocks && project ? `${project.job_code} · ${project.name}` : t("work.clock.pickJob")}
           </span>
           {costCode && (
             <span className="ws-meta">
@@ -344,6 +368,12 @@ export function ClockStrip({ profileId, shift, clockKnown, nativeFlow=null, toda
           {t("work.clock.change")}
         </button>
       </div>
+      {intentKind === "checking" && (
+        <p className="ws-meta" role="status" data-testid="ws-schedule-intent">{t("work.clock.checkingScheduled")}</p>
+      )}
+      {intentKind === "choose" && (
+        <p className="ws-meta" role="status" data-testid="ws-schedule-intent">{t("work.clock.chooseScheduled")}</p>
+      )}
 
       {!nativeRoute && showSign && talk && canStart ? (
         <div className="ws-talk" data-testid="ws-start-talk">
@@ -368,7 +398,7 @@ export function ClockStrip({ profileId, shift, clockKnown, nativeFlow=null, toda
           <button
             type="button"
             className="ws-btn ws-btn--primary ws-btn--start"
-            disabled={busy || nativeRoute && !canStart}
+            disabled={busy || nativeRoute && !canStart || intentBlocks && intentKind !== "choose"}
             onClick={onStartDay}
             data-testid="ws-start-day"
           >
@@ -393,8 +423,18 @@ export function ClockStrip({ profileId, shift, clockKnown, nativeFlow=null, toda
         recents={recents.data ?? []}
         costCodes={costCodes.data ?? []}
         value={pick}
-        onChange={(next) => {
+        onPickJob={(projectId) => {
           pickedByHandRef.current = true;
+          // Only a tap on a JOB ends a Schedule tap — the same job tapped again
+          // too, which is how "choose" is answered when the strip already
+          // shows it. Inferring this from a changed id could not see that.
+          onExplicitProjectChoice?.(projectId);
+        }}
+        onChange={(next) => {
+          // With no Schedule tap live, any change is a hand pick, as before.
+          // With one live, a cost code, a note or the mode is not a choice of
+          // job: it must not stop the confirmed job from priming.
+          if (scheduleIntent === null) pickedByHandRef.current = true;
           setPick(next);
         }}
       />
