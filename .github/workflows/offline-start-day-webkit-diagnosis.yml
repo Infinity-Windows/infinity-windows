@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/offline-start-day-webkit-diagnosis.yml
       - app/e2e/offline-reload-webkit-diagnostic.spec.ts
+      - app/e2e/offline-shell-webkit-diagnostic.pwa.ts
       - app/e2e/start-day.spec.ts
 
 permissions:
@@ -34,9 +35,11 @@ jobs:
           probe_status=$?
           npm run e2e -- start-day.spec.ts --browser=webkit --grep 'Start day with no signal stays on the phone; a reload with no signal shows you clocked in and never offers a second Start day$' > ../offline-start-day-original.log 2>&1
           original_status=$?
-          printf 'probe_status=%s\noriginal_status=%s\n' "$probe_status" "$original_status" > ../offline-webkit-status.txt
-          cat ../offline-reload-probes.log ../offline-start-day-original.log ../offline-webkit-status.txt
-          test "$probe_status" -eq 0 && test "$original_status" -eq 0
+          IW_PWA_OLD_REF=HEAD npx --no-install playwright test --config playwright.pwa.config.ts --browser=webkit offline-shell-webkit-diagnostic.pwa.ts > ../offline-shell-webkit.log 2>&1
+          shell_status=$?
+          printf 'probe_status=%s\noriginal_status=%s\nshell_status=%s\n' "$probe_status" "$original_status" "$shell_status" > ../offline-webkit-status.txt
+          cat ../offline-reload-probes.log ../offline-start-day-original.log ../offline-shell-webkit.log ../offline-webkit-status.txt
+          test "$probe_status" -eq 0 && test "$original_status" -eq 0 && test "$shell_status" -eq 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -44,6 +47,7 @@ jobs:
           path: |
             offline-reload-probes.log
             offline-start-day-original.log
+            offline-shell-webkit.log
             offline-webkit-status.txt
             app/e2e/test-results/
           if-no-files-found: ignore
