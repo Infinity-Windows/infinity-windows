@@ -184,6 +184,134 @@ export async function listMyWorkedJobs(): Promise<WorkedJob[] | null> {
   }));
 }
 
+// ---------------------------------------------------------------------------
+// Export reads (lib/mediaExport.ts). Every matching row, not a feed's worth:
+// paged in a stable order until a short page, under a hard ceiling that fails
+// loudly instead of quietly dropping the oldest. No URLs are signed here — the
+// export mints fresh ones per file only once someone actually asks for them.
+// ---------------------------------------------------------------------------
+
+export const EXPORT_PAGE_SIZE = 500;
+export const EXPORT_MAX_ROWS = 5000;
+
+/** Why an export read refused. `too_many`: more rows than EXPORT_MAX_ROWS
+ * match — narrow the job or dates. `schema_missing`: this database cannot
+ * scope photos by job/trash, so exporting would leak the wrong set. */
+export class MediaExportDataError extends Error {
+  readonly code: "too_many" | "schema_missing";
+  readonly limit: number | null;
+  constructor(code: "too_many" | "schema_missing", limit: number | null = null) {
+    super(
+      code === "too_many"
+        ? `More than ${limit} items match. Narrow the job or dates.`
+        : "This database cannot scope photo exports yet.",
+    );
+    this.name = "MediaExportDataError";
+    this.code = code;
+    this.limit = limit;
+  }
+}
+
+/**
+ * A server-side prefilter for an export date range. `since`/`before` are UTC
+ * instants that cover every local calendar day in [fromDay, throughDay] in any
+ * time zone — a deliberate superset; the caller applies the exact local-day
+ * test. `fromDay`/`throughDay` are bare YYYY-MM-DD for date columns.
+ */
+export interface ExportWindow {
+  fromDay: string;
+  throughDay: string;
+  since: string;
+  before: string;
+}
+
+/** Page `fetchPage` in EXPORT_PAGE_SIZE steps until a short page; past
+ * EXPORT_MAX_ROWS, probe one more row and refuse rather than truncate. Rows
+ * seen twice (an insert shifting the offset mid-read) are kept once. */
+export async function collectExportPages<T extends { id: string }>(
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: unknown; error: unknown }>,
+  signal?: AbortSignal,
+): Promise<T[]> {
+  const seen = new Map<string, T>();
+  for (let offset = 0; offset < EXPORT_MAX_ROWS; offset += EXPORT_PAGE_SIZE) {
+    if (signal?.aborted) throw new DOMException("Export canceled", "AbortError");
+    const { data, error } = await fetchPage(offset, offset + EXPORT_PAGE_SIZE - 1);
+    if (signal?.aborted) throw new DOMException("Export canceled", "AbortError");
+    if (error) throw error;
+    const rows = (data ?? []) as T[];
+    for (const r of rows) if (!seen.has(r.id)) seen.set(r.id, r);
+    if (rows.length < EXPORT_PAGE_SIZE) return [...seen.values()];
+  }
+  if (signal?.aborted) throw new DOMException("Export canceled", "AbortError");
+  const probe = await fetchPage(EXPORT_MAX_ROWS, EXPORT_MAX_ROWS);
+  if (signal?.aborted) throw new DOMException("Export canceled", "AbortError");
+  if (probe.error) throw probe.error;
+  if (((probe.data ?? []) as unknown[]).length > 0) {
+    throw new MediaExportDataError("too_many", EXPORT_MAX_ROWS);
+  }
+  return [...seen.values()];
+}
+
+/** One exportable photo, unsigned. */
+export interface PhotoExportRow {
+  id: string;
+  storagePath: string;
+  createdAt: string;
+  takenAt: string | null;
+  projectId: string | null;
+}
+
+/**
+ * Every live (not trashed) photo the caller's RLS returns, one job or all,
+ * newest-inserted first. Unlike listPhotos there is NO legacy fallback: on a
+ * database without project_id/deleted_at the job scope and the trash filter
+ * cannot apply, and an export of "every photo, trashed included" is not a
+ * degraded answer but a wrong one — so it refuses.
+ */
+export async function listPhotosForExport(
+  projectId?: string | null,
+  window?: ExportWindow | null,
+  signal?: AbortSignal,
+): Promise<PhotoExportRow[]> {
+  type Row = {
+    id: string;
+    storage_path: string;
+    created_at: string;
+    taken_at: string | null;
+    project_id: string | null;
+  };
+  let rows: Row[];
+  try {
+    rows = await collectExportPages<Row>((from, to) => {
+      let query = supabase
+        .from("attachments")
+        .select("id, storage_path, created_at, taken_at, project_id")
+        .eq("kind", "photo")
+        .is("deleted_at", null);
+      if (projectId) query = query.eq("project_id", projectId);
+      if (window) {
+        // Capture time when there is one, else insert time — photoTime's rule.
+        query = query.or(
+          `and(taken_at.gte."${window.since}",taken_at.lt."${window.before}"),` +
+            `and(taken_at.is.null,created_at.gte."${window.since}",created_at.lt."${window.before}")`,
+        );
+      }
+      const page = query.order("created_at", { ascending: false }).order("id", { ascending: false }).range(from, to);
+      return signal ? page.abortSignal(signal) : page;
+    }, signal);
+  } catch (err) {
+    if (isMissingColumn(err)) throw new MediaExportDataError("schema_missing");
+    throw err;
+  }
+  return rows.map((r) => ({
+    id: r.id,
+    storagePath: r.storage_path,
+    createdAt: r.created_at,
+    takenAt: r.taken_at ?? null,
+    projectId: r.project_id ?? null,
+  }));
+}
+
 /** Prefer the true capture time; fall back to the server insert time. */
 export function photoTime(p: Pick<FeedPhoto, "takenAt" | "createdAt">): string {
   return p.takenAt ?? p.createdAt;

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Camera,
+  Download,
   CheckCircle2,
   ImageIcon,
   MapPin,
@@ -29,10 +30,12 @@ import { PhotoCaptureSheet } from "../PhotoCaptureSheet";
 import { PhotoUploadStatus } from "./PhotoUploadStatus";
 import { ReceiptDocumentLink } from "../receipts/ReceiptDocumentLink";
 import { ReceiptViewer } from "../receipts/ReceiptViewer";
-import { useT } from "../../lib/i18n";
+import { useLanguage, useT } from "../../lib/i18n";
 
 // The fallback is passed in (t("feed.someone")) rather than hard-coded so a
 // null uploader reads in the viewer's language too (tracking-jobs slice 7).
+const MediaExportDialog = lazy(() => import("./MediaExportDialog"));
+
 function whoLabel(createdBy: string | null, fallback: string): string {
   if (!createdBy) return fallback;
   const at = createdBy.indexOf("@");
@@ -114,6 +117,7 @@ export function PhotoFeed({
 }) {
   const isReceipt = kind === "receipt";
   const t = useT();
+  const { lang } = useLanguage();
   const queryClient = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
   const isLead = isForemanPlus(effectiveRole);
@@ -124,6 +128,7 @@ export function PhotoFeed({
   const [viewer, setViewer] = useState<FeedPhoto | null>(null);
   const [receiptViewer, setReceiptViewer] = useState<FeedReceipt | null>(null);
   const [showTrash, setShowTrash] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const photos = useQuery({
     queryKey: ["photos", projectId ?? "all"],
@@ -203,6 +208,7 @@ export function PhotoFeed({
           {isReceipt ? <ReceiptIcon size={16} aria-hidden /> : <Camera size={16} aria-hidden />}{" "}
           {isReceipt ? t("feed.addReceipt") : t("feed.addPhoto")}
         </button>
+        {!inTrash && <button type="button" className="action-btn" onClick={() => setExporting(true)}><Download size={16} aria-hidden /> {lang === "es" ? (isReceipt ? "Exportar recibos" : "Exportar fotos") : (isReceipt ? "Export receipts" : "Export photos")}</button>}
         {canCurate && (
           <button
             type="button"
@@ -214,6 +220,8 @@ export function PhotoFeed({
           </button>
         )}
       </div>
+
+      {exporting && <Suspense fallback={<p role="status">{lang === "es" ? "Cargando exportación…" : "Loading export…"}</p>}><MediaExportDialog kind={kind} projectId={projectId} onClose={() => setExporting(false)} /></Suspense>}
 
       {/* ---- The 30-day recoverable trash (foreman+) ---- */}
       {!isReceipt && <PhotoUploadStatus projectId={projectId} />}

@@ -6,15 +6,14 @@
 // filter as CSV + a zip of the images — the accounting bridge Horizon never
 // had (spec: "their gap, our feature").
 
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import JSZip from "jszip";
 import { CheckCircle2, Circle, Download, FileArchive } from "lucide-react";
 import { BackChip } from "../components/BackChip";
 import { BankImportSection } from "../components/receipts/BankImportSection";
 import { ReceiptDocumentLink } from "../components/receipts/ReceiptDocumentLink";
 import { ReceiptViewer } from "../components/receipts/ReceiptViewer";
-import { useT } from "../lib/i18n";
+import { useLanguage, useT } from "../lib/i18n";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { listBankTransactions } from "../lib/bank";
 import { isOwner } from "../lib/install/types";
@@ -25,7 +24,6 @@ import { listProjects } from "../lib/api";
 import {
   buildReceiptsCsv,
   listReceipts,
-  receiptDocumentSignedUrl,
   reviewReceipt,
   setCategory,
   setPassthrough,
@@ -69,22 +67,11 @@ function dateLabel(iso: string | null): string {
   });
 }
 
-/** A safe-ish file name for one receipt inside the export zip. */
-function zipEntryName(r: Receipt): string {
-  const ext = r.photoPath.split(".").pop() || "jpg";
-  return `${zipEntryStem(r)}.${ext}`;
-}
-
-/** The same name without its extension, so a receipt's picture and its
- * original PDF land side by side in the zip under one obvious pair of names. */
-function zipEntryStem(r: Receipt): string {
-  const day = r.purchasedOn ?? r.createdAt.slice(0, 10);
-  const who = (r.vendor ?? r.id).replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "");
-  return `${day}-${who || r.id.slice(0, 8)}`;
-}
+const MediaExportDialog = lazy(() => import("../components/photos/MediaExportDialog"));
 
 export function Receipts() {
   const t = useT();
+  const { lang } = useLanguage();
   const [viewer, setViewer] = useState<Receipt | null>(null);
   const qc = useQueryClient();
   const [month, setMonth] = useState("");
@@ -94,7 +81,7 @@ export function Receipts() {
   const [unreviewedFirst, setUnreviewedFirst] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [zipping, setZipping] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const filter: ReceiptFilter = useMemo(
     () => ({
@@ -174,52 +161,6 @@ export function Receipts() {
     downloadText(buildReceiptsCsv(sorted), `receipts-${month || "all"}.csv`, "text/csv;charset=utf-8");
   };
 
-  const exportZip = async () => {
-    setZipping(true);
-    setMessage(null);
-    try {
-      const zip = new JSZip();
-      const withPhotos = sorted.filter((r) => r.signedUrl);
-      const used = new Set<string>();
-      await Promise.all(
-        withPhotos.map(async (r) => {
-          const res = await fetch(r.signedUrl!);
-          if (!res.ok) return;
-          const blob = await res.blob();
-          let name = zipEntryName(r);
-          // Two receipts on the same day from the same vendor would
-          // otherwise collide inside the zip and silently overwrite.
-          if (used.has(name)) name = `${r.id.slice(0, 8)}-${name}`;
-          used.add(name);
-          zip.file(name, blob);
-
-          // A receipt that arrived as a PDF puts the ORIGINAL in the zip too,
-          // named off the same stem so the pair sits together in the listing.
-          // The picture is page one; an accounting export that shipped only
-          // that would be handing an auditor a screenshot of a document, with
-          // pages two and three simply missing. Its link is minted here rather
-          // than carried on the row — a ten-minute URL cannot wait for somebody
-          // to press Export.
-          if (!r.documentPath) return;
-          try {
-            const docUrl = await receiptDocumentSignedUrl(r.id, r.documentPath);
-            const docRes = await fetch(docUrl);
-            if (!docRes.ok) return;
-            zip.file(`${name.replace(/\.[^.]+$/, "")}.pdf`, await docRes.blob());
-          } catch {
-            // One unreachable original must not cost the whole export.
-          }
-        }),
-      );
-      const blob = await zip.generateAsync({ type: "blob" });
-      downloadBlob(blob, `receipts-${month || "all"}-images.zip`);
-    } catch (e) {
-      setMessage(formatApiError(e));
-    } finally {
-      setZipping(false);
-    }
-  };
-
   return (
     <div className="page">
       <header className="page-header">
@@ -296,12 +237,14 @@ export function Receipts() {
         <button
           type="button"
           className="action-btn"
-          onClick={() => void exportZip()}
-          disabled={sorted.length === 0 || zipping}
+          onClick={() => setExporting(true)}
+          disabled={receipts.isLoading}
         >
-          <FileArchive size={16} aria-hidden /> {zipping ? "Zipping…" : "Export images (zip)"}
+          <FileArchive size={16} aria-hidden /> {lang === "es" ? "Exportar archivos de recibos" : "Export receipt files"}
         </button>
       </div>
+
+      {exporting && <Suspense fallback={<p role="status">{lang === "es" ? "Cargando exportación…" : "Loading export…"}</p>}><MediaExportDialog kind="receipt" projectId={projectId || null} receiptFilter={filter} onClose={() => setExporting(false)} /></Suspense>}
 
       {receipts.isLoading && <SkeletonList rows={6} />}
       {receipts.isError && (

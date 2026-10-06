@@ -218,6 +218,8 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "payPeriodShifts", offline: false },
   { root: "payRates", offline: false },
   { root: "phasePhoto", offline: false },
+  { root: "media-export-jobs", offline: false, why: "Export job names are read fresh for one sign-in generation and discarded with the dialog." },
+  { root: "media-export", offline: false, why: "Export metadata is read fresh for the current signed-in viewer; private media links and prepared files are never persisted." },
   { root: "photos", offline: false },
   { root: "photos-trash", offline: false },
   { root: "pinMoves", offline: false },
