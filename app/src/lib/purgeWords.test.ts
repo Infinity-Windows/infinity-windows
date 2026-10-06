@@ -251,6 +251,9 @@ describe("the probe list covers the schema", () => {
    * here on its own reasons — this list is short and stays short.
    */
   const EPHEMERA = new Set([
+    // Temporary UI admission only. Removing the login must revoke its pilot
+    // grant; the row contains no work, pay, or safety record to preserve.
+    "redesign_pilot_accounts.profile_id",
     // Seven-day request counters only; no audio, words, work or payroll.
     "description_dictation_usage.profile_id",
     // A counter bumped when a person's clock/timers change, so Forge AI can
