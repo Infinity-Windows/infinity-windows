@@ -220,6 +220,9 @@ describe("listMediaExportItems — photos", () => {
     expect(db.state.queries[0].table).toBe("attachments");
     expect(ops).toContainEqual(["eq", ["kind", "photo"]]);
     expect(ops).toContainEqual(["is", ["deleted_at", null]]);
+    expect(ops).toContainEqual(["not", ["storage_path", "like", "install-media/receipts/%"]]);
+    expect(ops).toContainEqual(["not", ["storage_path", "like", "receipts/%"]]);
+    expect(ops.findIndex((o) => o[0] === "not")).toBeLessThan(ops.findIndex((o) => o[0] === "range"));
     expect(ops).toContainEqual(["eq", ["project_id", "job1"]]);
     expect(ops.filter((o) => o[0] === "order")).toEqual([
       ["order", ["created_at", { ascending: false }]],
@@ -233,6 +236,23 @@ describe("listMediaExportItems — photos", () => {
       date: "2026-10-06",
       storagePath: "install-media/photos/p0.jpg",
     });
+  });
+
+  it("rejects known receipt paths even when a stale server response returns photo-kind rows", async () => {
+    serve([
+      photoRow(1),
+      photoRow(2, { storage_path: "install-media/receipts/r2.jpg" }),
+      photoRow(3, { storage_path: "receipts/r3.jpg" }),
+      photoRow(4, { storage_path: "install-media/photos/receipt-note.jpg" }),
+    ]);
+    const items = await listMediaExportItems({ kind: "photo", projectId: "job1", fromDate: "", throughDate: "" });
+    expect(items.map((p) => p.storagePath)).toEqual([
+      "install-media/photos/p1.jpg",
+      "install-media/photos/receipt-note.jpg",
+    ]);
+    expect(db.state.queries.every((q) => q.table === "attachments")).toBe(true);
+    expect(db.state.queries[0].ops).toContainEqual(["eq", ["project_id", "job1"]]);
+    expect(db.state.signed).toEqual([]);
   });
 
   it("leaves the job filter off for all jobs (RLS alone decides)", async () => {

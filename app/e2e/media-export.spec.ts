@@ -58,7 +58,14 @@ async function useMediaExportFixtures(page: Page, kind: "photo" | "receipt", row
       exportRanges.push(`${url.searchParams.get("offset") ?? "0"}-${Number(url.searchParams.get("offset") ?? 0) + Number(url.searchParams.get("limit") ?? 0) - 1}`);
     }
     const project = url.searchParams.get("project_id")?.replace(/^eq\./, "");
-    const scoped = rows.filter((r): r is PhotoRow => "storage_path" in r && (!project || r.project_id === project));
+    const queryKind = url.searchParams.get("kind")?.replace(/^eq\./, "");
+    const excludedPaths = url.searchParams.getAll("storage_path")
+      .filter(value => value.startsWith("not.like."))
+      .map(value => value.slice("not.like.".length).replace(/%$/, ""));
+    const scoped = rows.filter((r): r is PhotoRow => "storage_path" in r &&
+      (!project || r.project_id === project) &&
+      (!queryKind || r.kind === queryKind) &&
+      excludedPaths.every(prefix => !r.storage_path.startsWith(prefix)));
     // PostgREST represents .range() as offset and limit query parameters.
     return fulfillRows(route, scoped, scoped.length);
   });
@@ -188,6 +195,42 @@ test("photo export pages past 60, keeps the chosen job and both date edges, and 
   expect(entries.every(entry => !entry.name.includes("999") && !entry.name.includes("998"))).toBe(true);
   expect(entries.some(entry => entry.name.includes("photo-000"))).toBe(true);
   expect(entries.some(entry => entry.name.includes("photo-500"))).toBe(true);
+});
+
+test("job photo content excludes receipt attachments and receipt paths, and switching content resets prepared files", async ({ page }, testInfo) => {
+  const legacyReceipt = { ...photo(2), id: "legacy-receipt", kind: "document", storage_path: "install-media/receipts/legacy-receipt.png" };
+  const mislabelledReceipt = { ...photo(3), id: "mislabelled-receipt", storage_path: "install-media/receipts/mislabelled-receipt.png" };
+  const { exportQueries } = await useMediaExportFixtures(page, "receipt", [
+    photo(1), legacyReceipt, mislabelledReceipt, receipt("receipt-only"),
+  ]);
+  const dialog = await openExport(page, "photo");
+  const content = dialog.getByLabel("Export content");
+  await expect(content).toHaveValue("photo");
+  await expect(dialog.getByText("1 / 1 selected")).toBeVisible();
+  const photoQuery = exportQueries.find(url => url.pathname.endsWith("/attachments") && url.searchParams.has("offset"));
+  expect(photoQuery?.searchParams.get("kind")).toBe("eq.photo");
+  expect(photoQuery?.searchParams.getAll("storage_path")).toContain("not.like.install-media/receipts/%");
+  expect(photoQuery?.searchParams.getAll("storage_path")).toContain("not.like.receipts/%");
+  expect(exportQueries.some(url => url.pathname.endsWith("/receipts"))).toBe(false);
+  await dialog.getByRole("button", { name: "Prepare export" }).click();
+  await expect(dialog.getByText("1 files ready")).toBeVisible();
+  const photoZip = await downloadedZip(page, "Download ZIP", testInfo);
+  const photoNames = Object.values(photoZip.files).filter(file => !file.dir).map(file => file.name);
+  expect(photoNames).toHaveLength(1);
+  expect(photoNames[0]).toContain("photo-001");
+  await content.selectOption("receipt");
+  const receiptsDialog = page.getByRole("dialog", { name: "Export receipts" });
+  await expect(receiptsDialog.getByText("1 / 1 selected")).toBeVisible();
+  await expect(receiptsDialog.getByRole("button", { name: "Download ZIP" })).toHaveCount(0);
+  await receiptsDialog.getByRole("button", { name: "Prepare export" }).click();
+  await expect(receiptsDialog.getByText("1 files ready")).toBeVisible();
+  const receiptZip = await downloadedZip(page, "Download ZIP", testInfo);
+  const receiptNames = Object.values(receiptZip.files).filter(file => !file.dir).map(file => file.name);
+  expect(receiptNames).toHaveLength(1);
+  expect(receiptNames[0]).toContain("receipt-only");
+  await receiptsDialog.getByLabel("Export content").selectOption("photo");
+  await expect(dialog.getByText("1 / 1 selected")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Download ZIP" })).toHaveCount(0);
 });
 
 test("office receipt export retains original PDF and both images when vendor and date collide", async ({ page }, testInfo) => {
