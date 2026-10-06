@@ -11,7 +11,7 @@
 // this file is just a thin client for.
 
 import { supabase } from "./supabase";
-import { signedMedia } from "./photos";
+import { collectExportPages, signedMedia, type ExportWindow } from "./photos";
 import { isMissingColumn } from "./schemaErrors";
 import { weekRange } from "./timeclock";
 import type { ReceiptCategory } from "./receiptMerge";
@@ -126,7 +126,9 @@ function one<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
 }
 
-async function mapRow(row: ReceiptRow): Promise<Receipt> {
+/** `sign = false` leaves signedUrl null — the export lists rows first and
+ * mints a fresh link per file only when it fetches (lib/mediaExport.ts). */
+async function mapRow(row: ReceiptRow, sign = true): Promise<Receipt> {
   const proj = one(row.projects);
   const uploader = one(row.profiles);
   return {
@@ -138,7 +140,7 @@ async function mapRow(row: ReceiptRow): Promise<Receipt> {
     jobCode: proj?.job_code ?? null,
     jobName: proj?.name ?? null,
     photoPath: row.photo_path,
-    signedUrl: await signedMedia(row.photo_path),
+    signedUrl: sign ? await signedMedia(row.photo_path) : null,
     amountCents: row.amount_cents,
     vendor: row.vendor,
     purchasedOn: row.purchased_on,
@@ -192,7 +194,48 @@ export async function listReceipts(filter: ReceiptFilter = {}): Promise<Receipt[
     return query;
   });
   if (error) throw error;
-  return Promise.all(((data ?? []) as ReceiptRow[]).map(mapRow));
+  return Promise.all(((data ?? []) as ReceiptRow[]).map(row => mapRow(row)));
+}
+
+/**
+ * Every receipt matching `filter` for an export (lib/mediaExport.ts): the same
+ * RLS-scoped read and column ladder as listReceipts, but paged in a stable
+ * created_at/id order until a short page instead of stopping at 500, and
+ * refusing past EXPORT_MAX_ROWS rather than truncating. Unsigned — the export
+ * signs each file fresh when it fetches it. `window` prefilters to the
+ * receipt's day: purchased_on as the literal date it is, else created_at.
+ */
+export async function listReceiptsForExport(
+  filter: ReceiptFilter = {},
+  window?: ExportWindow | null,
+): Promise<Receipt[]> {
+  const rows = await collectExportPages<ReceiptRow>((from, to) =>
+    readReceipts((cols) => {
+      let query = supabase.from("receipts").select(cols);
+      if (filter.month) {
+        const [y, m] = filter.month.split("-").map(Number);
+        const start = new Date(Date.UTC(y, m - 1, 1));
+        const end = new Date(Date.UTC(y, m, 1));
+        query = query.gte("created_at", start.toISOString()).lt("created_at", end.toISOString());
+      }
+      if (filter.projectId) query = query.eq("project_id", filter.projectId);
+      if (filter.category === "uncategorized") query = query.is("category", null);
+      else if (filter.category) query = query.eq("category", filter.category);
+      if (filter.passthrough != null) query = query.eq("is_passthrough", filter.passthrough);
+      if (filter.unreviewedOnly) query = query.is("reviewed_at", null);
+      if (window) {
+        query = query.or(
+          `and(purchased_on.gte.${window.fromDay},purchased_on.lte.${window.throughDay}),` +
+            `and(purchased_on.is.null,created_at.gte."${window.since}",created_at.lt."${window.before}")`,
+        );
+      }
+      return query
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to);
+    }),
+  );
+  return Promise.all(rows.map((r) => mapRow(r, false)));
 }
 
 export async function getReceipt(id: string): Promise<Receipt | null> {
@@ -518,10 +561,8 @@ const CSV_HEADER = [
   "uploaded_by",
   "reviewed",
   "note",
-  // The image zip carries the original PDF beside the picture whenever there
-  // is one (see zipEntryName / exportZip). This column is how a bookkeeper
-  // reading the CSV knows to go looking for it — a row that says "yes" has a
-  // second file in the zip, and one that says "no" never did.
+  // Whether an original PDF is recorded, not a promise that it downloaded.
+  // The media export prepares it independently and names any unavailable file.
   "original_pdf",
 ];
 
