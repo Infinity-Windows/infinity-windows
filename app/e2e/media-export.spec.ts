@@ -175,7 +175,8 @@ test("photo export pages past 60, keeps the chosen job and both date edges, and 
   await dialog.locator('.media-export-items input[type="checkbox"]').nth(1).uncheck();
   await expect(dialog.getByText("500 / 501 selected")).toBeVisible();
   await dialog.getByRole("button", { name: "Prepare export" }).click();
-  await expect(dialog.getByText("500 files ready")).toBeVisible();
+  // CI signs and fetches 500 files through three workers; allow the batch to finish.
+  await expect(dialog.getByText("500 files ready")).toBeVisible({ timeout: 90_000 });
   const zip = await downloadedZip(page, "Download ZIP", testInfo);
   const entries = Object.values(zip.files).filter(file => !file.dir);
   expect(entries).toHaveLength(500);
