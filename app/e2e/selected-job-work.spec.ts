@@ -214,6 +214,11 @@ test("native journal commit precedes RPC; unknown start blocks descendants and r
   await tile.click();
   await expect(tile).toBeDisabled();
   await expect.poll(() => log.commands.length).toBe(2);
+  // The command route logs each attempt BEFORE awaiting its native journal
+  // read, then logs the witness. Wait for that read to finish; the boolean
+  // vector below stays synchronous so a completed false still fails at once.
+  await expect.poll(() => ({ attempts: log.commands.length, witnesses: log.committed.length })).toEqual({ attempts: 2, witnesses: 2 });
+  expect(log.commands).toHaveLength(2);
   expect(log.committed).toEqual([true, true]);
   const original = structuredClone(log.commands[1]);
   await page.getByRole("button", { name: "Remount Work" }).click();
@@ -222,6 +227,9 @@ test("native journal commit precedes RPC; unknown start blocks descendants and r
   expect(log.commands).toHaveLength(2); // receipt read cannot resend the uncertain command
   await page.getByRole("button", { name: "Check receipt and retry original request" }).click();
   await expect.poll(() => log.commands.length).toBe(3);
+  // Same settlement: the third witness is logged only after its native read.
+  await expect.poll(() => ({ attempts: log.commands.length, witnesses: log.committed.length })).toEqual({ attempts: 3, witnesses: 3 });
+  expect(log.commands).toHaveLength(3);
   expect(log.commands[2]).toEqual(original);
   expect(log.committed).toEqual([true, true, true]);
   expect(log.unexpected).toEqual([]);
@@ -244,6 +252,10 @@ test("Specific uses the exact current ten-token basis and refuses catalog/basis 
   await expect(tile).toBeEnabled();
   await tile.click();
   await expect.poll(() => log.commands.length).toBe(2);
+  // The command route logs the attempt before awaiting its native journal
+  // read; wait for the witness before the synchronous boolean check below.
+  await expect.poll(() => ({ attempts: log.commands.length, witnesses: log.committed.length })).toEqual({ attempts: 2, witnesses: 2 });
+  expect(log.commands).toHaveLength(2);
   const intent = log.commands[1].p_payload.intent as unknown as { scope: string; unit: Record<string, unknown> };
   expect(intent.scope).toBe("specific");
   expect(intent.unit).toEqual({ id: UNIT, operationalRevision: 5, factId: FACT, factRevision: 2,
