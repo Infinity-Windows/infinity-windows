@@ -208,6 +208,7 @@ export async function listReceipts(filter: ReceiptFilter = {}): Promise<Receipt[
 export async function listReceiptsForExport(
   filter: ReceiptFilter = {},
   window?: ExportWindow | null,
+  signal?: AbortSignal,
 ): Promise<Receipt[]> {
   const rows = await collectExportPages<ReceiptRow>((from, to) =>
     readReceipts((cols) => {
@@ -229,11 +230,10 @@ export async function listReceiptsForExport(
             `and(purchased_on.is.null,created_at.gte."${window.since}",created_at.lt."${window.before}")`,
         );
       }
-      return query
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false })
-        .range(from, to);
+      const page = query.order("created_at", { ascending: false }).order("id", { ascending: false }).range(from, to);
+      return signal ? page.abortSignal(signal) : page;
     }),
+    signal,
   );
   return Promise.all(rows.map((r) => mapRow(r, false)));
 }

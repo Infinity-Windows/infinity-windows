@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download, Share2, X } from "lucide-react";
 import { Sheet } from "../ui/Sheet";
@@ -8,6 +8,7 @@ import { useLanguage } from "../../lib/i18n";
 import { signedMedia } from "../../lib/photos";
 import { formatApiError } from "../../lib/errors";
 import { canShareMediaFiles, downloadMediaBlob, listMediaExportItems, mediaExportName, mediaExportRangeError, mediaExportZip, prepareMediaExport, shareMediaFiles, MediaExportDataError, isMediaShareCancel, type MediaExportKind, type PreparedMediaExport } from "../../lib/mediaExport";
+import { signInMark, stillSignedInAs, subscribeSignedIn } from "../../lib/signedIn";
 import type { ReceiptFilter } from "../../lib/receipts";
 import "./mediaExport.css";
 
@@ -27,16 +28,63 @@ export default function MediaExportDialog({ kind, projectId, fromDate = "", thro
   const [preview, setPreview] = useState<{ id: string; url: string } | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const prepareController = useRef<AbortController | null>(null);
-  useEffect(() => () => prepareController.current?.abort(), []);
-  function close() { prepareController.current?.abort(); onClose(); }
+  const listingControllers = useRef(new Set<AbortController>());
+  const [viewer] = useState(signInMark);
+  const active = useRef(true);
+  const [invalid, setInvalid] = useState(false);
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
+  const currentViewer = useCallback(() => active.current && viewer.userId !== null && stillSignedInAs(viewer, viewer.userId), [viewer]);
+  const invalidate = useCallback(() => {
+    if (!active.current) return;
+    active.current = false;
+    prepareController.current?.abort();
+    for (const ctl of listingControllers.current) ctl.abort();
+    setPrepared(null); setPreview(null); setInvalid(true);
+    closeRef.current();
+  }, []);
+  useEffect(() => {
+    active.current = true;
+    const stop = subscribeSignedIn(() => { if (!currentViewer()) invalidate(); });
+    if (!currentViewer()) invalidate();
+    return () => {
+      active.current = false;
+      prepareController.current?.abort();
+      for (const ctl of listingControllers.current) ctl.abort();
+      stop();
+    };
+  }, [currentViewer, invalidate]);
+  function close() { invalidate(); }
+  const scopedRead = useCallback(async <T,>(read: (signal: AbortSignal) => Promise<T>, signal: AbortSignal): Promise<T> => {
+    if (!currentViewer()) throw new DOMException("Export canceled", "AbortError");
+    const ctl = new AbortController(); listingControllers.current.add(ctl);
+    const cancel = () => ctl.abort();
+    signal.addEventListener("abort", cancel, { once: true });
+    let rejectAbort!: () => void;
+    const stopped = new Promise<never>((_resolve, reject) => { rejectAbort = () => reject(new DOMException("Export canceled", "AbortError")); });
+    ctl.signal.addEventListener("abort", rejectAbort, { once: true });
+    if (signal.aborted) ctl.abort();
+    try {
+      const result = await Promise.race([Promise.resolve().then(() => {
+        if (!currentViewer() || ctl.signal.aborted) throw new DOMException("Export canceled", "AbortError");
+        return read(ctl.signal);
+      }), stopped]);
+      if (!currentViewer() || ctl.signal.aborted) throw new DOMException("Export canceled", "AbortError");
+      return result;
+    } finally {
+      signal.removeEventListener("abort", cancel);
+      ctl.signal.removeEventListener("abort", rejectAbort);
+      listingControllers.current.delete(ctl);
+    }
+  }, [currentViewer]);
   const rangeError = custom ? ((!from || !through) ? "Both dates are required" : mediaExportRangeError(from, through)) : null;
-  const projects = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
+  const projects = useQuery({ queryKey: ["media-export-jobs", viewer.userId, viewer.generation], queryFn: ({ signal }) => scopedRead(() => listProjectsAnyStatus(), signal), enabled: !invalid && currentViewer(), retry: false, gcTime: 0 });
   const filter = useMemo(() => ({ kind, projectId: job || null, fromDate: custom ? from : "", throughDate: custom ? through : "", receiptFilter }), [kind, job, custom, from, through, receiptFilter]);
-  const query = useQuery({ queryKey: ["media-export", filter], queryFn: () => listMediaExportItems(filter), enabled: !rangeError, staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: false, retry: false, gcTime: 0 });
+  const query = useQuery({ queryKey: ["media-export", viewer.userId, viewer.generation, filter], queryFn: ({ signal }) => scopedRead(ownedSignal => listMediaExportItems(filter, undefined, ownedSignal), signal), enabled: !invalid && currentViewer() && !rangeError, staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: false, retry: false, gcTime: 0 });
   const items = query.data ?? [];
   const jobCodeById = useMemo(() => new Map((projects.data ?? []).map(p => [p.id, p.job_code])), [projects.data]);
   const selected = useMemo(() => (query.data ?? []).filter(item => selection === null || selection.has(item.id)).map(item => ({ ...item, jobCode: item.jobCode ?? jobCodeById.get(item.projectId ?? "") ?? item.projectId })), [query.data, selection, jobCodeById]);
-  const ready = query.isSuccess && !query.isFetching && !rangeError && !busy && !projects.isFetching && (projects.isSuccess || projects.isError) && selected.length > 0;
+  const ready = currentViewer() && query.isSuccess && !query.isFetching && !rangeError && !busy && !projects.isFetching && (projects.isSuccess || projects.isError) && selected.length > 0;
   const title = kind === "photo" ? say("Export photos", "Exportar fotos") : say("Export receipts", "Exportar recibos");
   const jobLabel = jobCodeById.get(job) ?? (job || "all-jobs");
   const filename = mediaExportName(kind, jobLabel, filter.fromDate, filter.throughDate);
@@ -52,37 +100,40 @@ export default function MediaExportDialog({ kind, projectId, fromDate = "", thro
     return pdf ? `${say("Original PDF", "PDF original")}: ${detail}` : detail;
   }
   async function showPreview(id: string, path: string) {
+    if (!currentViewer()) return;
     if (preview?.id === id) { setPreview(null); return; }
     setPreviewBusy(true); setError(null);
-    try { const url = await signedMedia(path); if (!url) throw new Error("unavailable"); setPreview({ id, url }); }
-    catch { setError(say("The photo preview is unavailable. You can still try preparing the export.", "La vista previa no está disponible. Puedes intentar preparar la exportación.")); }
-    finally { setPreviewBusy(false); }
+    try { const url = await signedMedia(path); if (!url) throw new Error("unavailable"); if (currentViewer()) setPreview({ id, url }); }
+    catch { if (currentViewer()) setError(say("The photo preview is unavailable. You can still try preparing the export.", "La vista previa no está disponible. Puedes intentar preparar la exportación.")); }
+    finally { if (currentViewer()) setPreviewBusy(false); }
   }
   async function prepare() {
-    if (!ready) return;
+    if (!currentViewer() || !ready) return;
     setBusy(true); setError(null); setNotice(null); setPrepared(null);
     const ctl = new AbortController(); prepareController.current = ctl;
     try {
-      setPrepared(await prepareMediaExport(selected, (done, total) => setProgress(`${done} / ${total}`), { signal: ctl.signal }));
-    } catch (e) { setError(formatApiError(e)); }
-    finally { prepareController.current = null; setBusy(false); }
+      const result = await prepareMediaExport(selected, (done, total) => { if (currentViewer()) setProgress(`${done} / ${total}`); }, { signal: ctl.signal });
+      if (currentViewer()) setPrepared(result);
+    } catch (e) { if (currentViewer()) setError(formatApiError(e)); }
+    finally { prepareController.current = null; if (currentViewer()) setBusy(false); }
   }
   async function download() {
-    if (!prepared?.files.length || busy) return;
+    if (!currentViewer() || !prepared?.files.length || busy) return;
     setBusy(true); setError(null);
-    try { downloadMediaBlob(await mediaExportZip(prepared.files), filename); setNotice(say("Download started. You can attach the ZIP to an email.", "Descarga iniciada. Puedes adjuntar el ZIP a un correo.")); }
-    catch (e) { setError(formatApiError(e)); }
-    finally { setBusy(false); }
+    try { const blob = await mediaExportZip(prepared.files); if (!currentViewer()) return; downloadMediaBlob(blob, filename); setNotice(say("Download started. You can attach the ZIP to an email.", "Descarga iniciada. Puedes adjuntar el ZIP a un correo.")); }
+    catch (e) { if (currentViewer()) setError(formatApiError(e)); }
+    finally { if (currentViewer()) setBusy(false); }
   }
   async function share() {
-    if (!prepared?.files.length || busy) return;
+    if (!currentViewer() || !prepared?.files.length || busy) return;
     setError(null); setNotice(null); setBusy(true);
     try { await shareMediaFiles(prepared.files); }
     catch (e) {
       if (isMediaShareCancel(e)) return;
-      setError(say("Sharing did not finish. Download the files and attach them to your email instead.", "No se pudo compartir. Descarga los archivos y adjúntalos al correo."));
-    } finally { setBusy(false); }
+      if (currentViewer()) setError(say("Sharing did not finish. Download the files and attach them to your email instead.", "No se pudo compartir. Descarga los archivos y adjúntalos al correo."));
+    } finally { if (currentViewer()) setBusy(false); }
   }
+  if (invalid || !currentViewer()) return null;
   return <Sheet open onClose={close} label={title} className="media-export-sheet">
     <header className="media-export-heading"><h2>{title}</h2><button type="button" className="action-btn" onClick={close} aria-label={say("Close", "Cerrar")}><X size={20} aria-hidden /></button></header>
     <p className="muted">{say("Choose a job, dates and files. Downloads keep the original saved images; PDF receipts include the original document.", "Elige un trabajo, fechas y archivos. Las descargas conservan las imágenes guardadas; los recibos PDF incluyen el documento original.")}</p>
@@ -111,7 +162,7 @@ export default function MediaExportDialog({ kind, projectId, fromDate = "", thro
       <button type="button" className="action-btn primary" onClick={() => void prepare()} disabled={!ready}>{prepared ? say("Prepare again", "Preparar de nuevo") : say("Prepare export", "Preparar exportación")}</button>
       {prepared?.files.length ? <><button type="button" className="action-btn" disabled={busy} onClick={() => void download()}><Download size={18} aria-hidden />{prepared.failed.length ? say("Download available files", "Descargar disponibles") : say("Download ZIP", "Descargar ZIP")}</button><button type="button" className="action-btn" disabled={busy || !canShareMediaFiles(prepared.files)} onClick={() => void share()}><Share2 size={18} aria-hidden />{say("Share / Email", "Compartir / Correo")}</button></> : null}
     </div>
-    {prepared?.files.length ? <><p className="muted">{say("Choose Mail or another app in your device’s share sheet. If sharing is unavailable, download the ZIP or individual files and attach them yourself.", "Elige Correo u otra app en el menú de compartir. Si no está disponible, descarga el ZIP o los archivos y adjúntalos.")}</p><ul className="media-export-files">{prepared.files.map(file => <li key={file.name}><span>{file.name}</span><button type="button" className="action-btn" disabled={busy} aria-label={`${say("Download", "Descargar")} ${file.name}`} onClick={() => downloadMediaBlob(file, file.name)}><Download size={16} aria-hidden /></button></li>)}</ul></> : null}
+    {prepared?.files.length ? <><p className="muted">{say("Choose Mail or another app in your device’s share sheet. If sharing is unavailable, download the ZIP or individual files and attach them yourself.", "Elige Correo u otra app en el menú de compartir. Si no está disponible, descarga el ZIP o los archivos y adjúntalos.")}</p><ul className="media-export-files">{prepared.files.map(file => <li key={file.name}><span>{file.name}</span><button type="button" className="action-btn" disabled={busy} aria-label={`${say("Download", "Descargar")} ${file.name}`} onClick={() => { if (currentViewer()) downloadMediaBlob(file, file.name); }}><Download size={16} aria-hidden /></button></li>)}</ul></> : null}
     {notice && <p role="status">{notice}</p>}
     <p className="muted">{say("Exports hold up to 50 MB at a time. Choose fewer files or a smaller date range for larger jobs.", "Las exportaciones incluyen hasta 50 MB. Elige menos archivos o fechas más cortas para trabajos grandes.")}</p>
     <p className="muted">{say("Only saved files you can view in Forge are included. Photos waiting to upload stay on your device.", "Solo se incluyen los archivos guardados que puedes ver en Forge. Las fotos pendientes quedan en tu dispositivo.")}</p>

@@ -144,6 +144,7 @@ function receiptDay(purchasedOn: string | null, createdAt: string, timeZone?: st
 export async function listMediaExportItems(
   filter: MediaExportFilter,
   timeZone?: string,
+  signal?: AbortSignal,
 ): Promise<MediaExportItem[]> {
   const rangeError = mediaExportRangeError(filter.fromDate, filter.throughDate);
   if (rangeError) throw new RangeError(rangeError);
@@ -154,7 +155,7 @@ export async function listMediaExportItems(
 
   let items: MediaExportItem[];
   if (filter.kind === "photo") {
-    const rows = await listPhotosForExport(filter.projectId, window);
+    const rows = await listPhotosForExport(filter.projectId, window, signal);
     items = rows.map((p) => {
       const date = photoDay(p.takenAt, p.createdAt, timeZone);
       return {
@@ -169,7 +170,7 @@ export async function listMediaExportItems(
       };
     });
   } else {
-    const rows = await listReceiptsForExport({ ...filter.receiptFilter, projectId: filter.projectId }, window);
+    const rows = await listReceiptsForExport({ ...filter.receiptFilter, projectId: filter.projectId }, window, signal);
     items = rows.map((r) => {
       const date = receiptDay(r.purchasedOn, r.createdAt, timeZone);
       return {

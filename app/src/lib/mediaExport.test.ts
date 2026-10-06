@@ -595,6 +595,14 @@ describe("stalled export cancellation", () => {
   });
 });
 
+it("forwards cancellation to the metadata request and stops before the next page", async () => {
+  const ctl = new AbortController();
+  db.state.respond = () => { ctl.abort(); return { data: Array.from({ length: 500 }, (_, i) => photoRow(i)), error: null }; };
+  await expect(listMediaExportItems({ kind: "photo", projectId: "job1", fromDate: "", throughDate: "" }, undefined, ctl.signal)).rejects.toMatchObject({ name: "AbortError" });
+  expect(db.state.queries).toHaveLength(1);
+  expect(db.state.queries[0].ops).toContainEqual(["abortSignal", [ctl.signal]]);
+});
+
 describe("names and types", () => {
   it("infers type from the stored path first, then Content-Type, else octet-stream", () => {
     expect(inferMediaType("install-media/x.PNG", "image/jpeg")).toEqual({ ext: "png", mime: "image/png" });

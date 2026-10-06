@@ -230,16 +230,21 @@ export interface ExportWindow {
  * seen twice (an insert shifting the offset mid-read) are kept once. */
 export async function collectExportPages<T extends { id: string }>(
   fetchPage: (from: number, to: number) => PromiseLike<{ data: unknown; error: unknown }>,
+  signal?: AbortSignal,
 ): Promise<T[]> {
   const seen = new Map<string, T>();
   for (let offset = 0; offset < EXPORT_MAX_ROWS; offset += EXPORT_PAGE_SIZE) {
+    if (signal?.aborted) throw new DOMException("Export canceled", "AbortError");
     const { data, error } = await fetchPage(offset, offset + EXPORT_PAGE_SIZE - 1);
+    if (signal?.aborted) throw new DOMException("Export canceled", "AbortError");
     if (error) throw error;
     const rows = (data ?? []) as T[];
     for (const r of rows) if (!seen.has(r.id)) seen.set(r.id, r);
     if (rows.length < EXPORT_PAGE_SIZE) return [...seen.values()];
   }
+  if (signal?.aborted) throw new DOMException("Export canceled", "AbortError");
   const probe = await fetchPage(EXPORT_MAX_ROWS, EXPORT_MAX_ROWS);
+  if (signal?.aborted) throw new DOMException("Export canceled", "AbortError");
   if (probe.error) throw probe.error;
   if (((probe.data ?? []) as unknown[]).length > 0) {
     throw new MediaExportDataError("too_many", EXPORT_MAX_ROWS);
@@ -266,6 +271,7 @@ export interface PhotoExportRow {
 export async function listPhotosForExport(
   projectId?: string | null,
   window?: ExportWindow | null,
+  signal?: AbortSignal,
 ): Promise<PhotoExportRow[]> {
   type Row = {
     id: string;
@@ -290,11 +296,9 @@ export async function listPhotosForExport(
             `and(taken_at.is.null,created_at.gte."${window.since}",created_at.lt."${window.before}")`,
         );
       }
-      return query
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false })
-        .range(from, to);
-    });
+      const page = query.order("created_at", { ascending: false }).order("id", { ascending: false }).range(from, to);
+      return signal ? page.abortSignal(signal) : page;
+    }, signal);
   } catch (err) {
     if (isMissingColumn(err)) throw new MediaExportDataError("schema_missing");
     throw err;
