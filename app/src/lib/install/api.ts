@@ -1842,61 +1842,22 @@ export async function getOpening(id: string): Promise<ProjectOpening | null> {
 }
 
 /**
- * Every table that points at `project_openings`, with the column that does it.
- *
- * `install_events` and `qc_checks` are ON DELETE CASCADE — deleting the opening
- * destroys them. The other three are ON DELETE SET NULL, which orphans the row
- * (an installer's open flag loses the window it was about). Neither outcome is
- * acceptable during a routine re-extract, so any opening named here is kept.
- */
-const OPENING_REFERENCE_TABLES: { table: string; column: string }[] = [
-  { table: "custom_work_units", column: "opening_id" },
-  { table: "install_events", column: "project_opening_id" },
-  { table: "qc_checks", column: "project_opening_id" },
-  { table: "issues", column: "opening_id" },
-  { table: "task_sessions", column: "opening_id" },
-  { table: "service_cases", column: "opening_id" },
-];
-
-/** Postgres/PostgREST codes for "that table or column isn't in this schema". */
-const MISSING_RELATION_CODES = new Set(["42P01", "42703", "PGRST205", "PGRST204"]);
-
-/**
- * Which of these openings are referenced by install events, QC checks, issues,
- * task sessions or service cases?
- *
- * A table that doesn't exist in this database is skipped; any other error is
- * thrown, because guessing "nothing references it" would licence a delete.
+ * Ask the same complete FK sweep that the atomic save uses. A fixed browser
+ * table list missed newer notes and work records, so it planned a delete the
+ * server correctly refused. A missing RPC is a server-update refusal, never
+ * permission to guess that no unit has history.
  */
 export async function openingsReferencedElsewhere(
+  projectId: string,
   openingIds: string[],
 ): Promise<Set<string>> {
-  const found = new Set<string>();
-  if (openingIds.length === 0) return found;
-
-  const chunks: string[][] = [];
-  for (let i = 0; i < openingIds.length; i += 200) {
-    chunks.push(openingIds.slice(i, i + 200));
-  }
-
-  for (const { table, column } of OPENING_REFERENCE_TABLES) {
-    for (const chunk of chunks) {
-      const { data, error } = await supabase
-        .from(table)
-        .select(column)
-        .in(column, chunk);
-      if (error) {
-        if (MISSING_RELATION_CODES.has(error.code ?? "")) break;
-        throw error;
-      }
-      for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
-        const id = row[column];
-        if (typeof id === "string") found.add(id);
-      }
-    }
-  }
-
-  return found;
+  if (openingIds.length === 0) return new Set<string>();
+  const { data, error } = await supabase.rpc("planset_referenced_openings", {
+    p_project_id: projectId,
+    p_opening_ids: openingIds,
+  });
+  if (error) throw plansetCommitError(error);
+  return new Set((data ?? []) as string[]);
 }
 
 /**
@@ -2156,6 +2117,7 @@ export async function saveDraftOpenings(
   }
 
   const referenced = await openingsReferencedElsewhere(
+    projectId,
     (existing ?? []).map((o) => o.id as string),
   );
 

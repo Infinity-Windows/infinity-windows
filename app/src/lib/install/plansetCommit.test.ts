@@ -34,6 +34,9 @@ const db = vi.hoisted(() => ({
   types: [] as Record<string, unknown>[],
   typesError: null as unknown,
   aiCalls: 0,
+  referencedIds: [] as string[],
+  referenceCalls: [] as Record<string, unknown>[],
+  referenceError: null as unknown,
 }));
 
 vi.mock("../supabase", () => {
@@ -70,6 +73,10 @@ vi.mock("../supabase", () => {
     supabase: {
       from: (table: string) => make(table),
       rpc: (name: string, args: Record<string, unknown>) => {
+        if (name === "planset_referenced_openings") {
+          db.referenceCalls.push(args);
+          return Promise.resolve({ data: db.referencedIds, error: db.referenceError });
+        }
         db.rpcCalls.push({ name, args });
         return Promise.resolve(
           db.rpcError ? { data: null, error: db.rpcError } : { data: db.rpcData, error: null },
@@ -156,6 +163,9 @@ beforeEach(() => {
   db.rpcError = null;
   db.rpcData = { saved: 1, skipped: 0, adopted: 0 };
   db.aiCalls = 0;
+  db.referencedIds = [];
+  db.referenceCalls = [];
+  db.referenceError = null;
   db.plansets = [
     { id: "vinyl-cad", kind: "specs", storage_path: "proj/pv40/Vinyl CAD.pdf" },
     { id: "aluminum-cad", kind: "specs", storage_path: "proj/pv40/Aluminum CAD.pdf" },
@@ -177,6 +187,7 @@ describe("opening drafts are committed by one database function", () => {
     });
 
     expect(db.tableWrites).toEqual([]);
+    expect(db.referenceCalls).toEqual([{ p_project_id: "pv40", p_opening_ids: ["v1", "v2", "v3"] }]);
     expect(db.rpcCalls.map((c) => c.name)).toEqual([RECONCILE_OPENINGS_RPC]);
     const args = db.rpcCalls[0].args;
     expect(args.p_project_id).toBe("pv40");
@@ -201,6 +212,24 @@ describe("opening drafts are committed by one database function", () => {
     expect(db.rpcCalls.map((c) => c.name)).toEqual([RECONCILE_OPENINGS_RPC]);
     expect(db.rpcCalls[0].args.p_delete_ids).toEqual([]);
     expect(db.rpcCalls[0].args.p_inserts).toEqual([]);
+    expect(db.tableWrites).toEqual([]);
+  });
+
+  it("keeps a draft when a newer table has history pointing to it", async () => {
+    db.referencedIds = ["v2"];
+    await saveDraftOpenings("pv40", "vinyl-cad", [draft("1"), draft("4")]);
+    expect(db.rpcCalls[0].args.p_delete_ids).not.toContain("v2");
+  });
+
+  it("refuses before planning a delete when the server lacks the reference sweep", async () => {
+    db.referenceError = {
+      code: "PGRST202",
+      message: "Could not find the function public.planset_referenced_openings in the schema cache",
+    };
+    await expect(saveDraftOpenings("pv40", "vinyl-cad", [draft("1")])).rejects.toMatchObject({
+      code: "forge.planset.update_required",
+    });
+    expect(db.rpcCalls).toEqual([]);
     expect(db.tableWrites).toEqual([]);
   });
 

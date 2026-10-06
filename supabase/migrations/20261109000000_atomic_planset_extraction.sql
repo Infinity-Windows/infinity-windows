@@ -218,8 +218,8 @@ $$;
 
 -- Openings among p_ids that ANY other table points at — found from the
 -- catalog, not a hand list, so a table added next month is covered the day it
--- lands. The browser's list (OPENING_REFERENCE_TABLES in api.ts) names six
--- tables; the schema has more (opening notes, phases, summons, the
+-- lands. The browser now calls planset_referenced_openings to use this same
+-- sweep; the schema has many links (opening notes, phases, summons, the
 -- assignment log, attachments, unit sessions, ...), and every one is a
 -- cascade or a set-null a re-read must not trigger. The one exemption is the
 -- pin-move history: it records where a draft's dot was dragged, the in-place
@@ -256,6 +256,46 @@ begin
   end loop;
 end;
 $$;
+
+-- The browser must plan with the same complete FK sweep the commit enforces.
+-- Otherwise a note or later-added work table can make a safe re-read refuse
+-- after its AI pass, even though that opening could simply be retained.
+create or replace function public.planset_referenced_openings(
+  p_project_id uuid,
+  p_opening_ids uuid[]
+)
+returns uuid[]
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_uid uuid;
+  v_ids uuid[] := coalesce(p_opening_ids, '{}'::uuid[]);
+  v_result uuid[];
+begin
+  v_uid := public._planset_extraction_caller();
+  if not public._ai_job_visible(p_project_id, v_uid) then
+    raise exception 'That job is no longer available. Reload and try again.'
+      using errcode = '42501', hint = 'forge.planset.not_found';
+  end if;
+  if exists (
+    select 1 from unnest(v_ids) requested(id)
+     where not exists (select 1 from public.project_openings o
+                        where o.id = requested.id and o.project_id = p_project_id
+                          and o.removed_at is null)
+  ) then
+    raise exception 'The windows on this job changed while the plan set was being read. Nothing was changed; read it again.'
+      using errcode = 'P0001', hint = 'forge.planset.stale_snapshot';
+  end if;
+  select coalesce(array_agg(distinct x.id), '{}'::uuid[])
+    into v_result from public._openings_with_references(v_ids) x(id);
+  return v_result;
+end;
+$$;
+revoke all on function public.planset_referenced_openings(uuid, uuid[]) from public, anon;
+grant execute on function public.planset_referenced_openings(uuid, uuid[]) to authenticated;
 
 -- Numeric equality that survives a browser round trip (a float read as 17
 -- digits and sent back, or a numeric with more digits than a JS number

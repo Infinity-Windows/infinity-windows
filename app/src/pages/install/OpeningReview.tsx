@@ -162,7 +162,7 @@ export function OpeningReview() {
     setCheckingRemoveId(o.id);
     let referenced = false;
     try {
-      referenced = (await openingsReferencedElsewhere([o.id])).has(o.id);
+      referenced = (await openingsReferencedElsewhere(projectId, [o.id])).has(o.id);
     } catch {
       // Can't see what it's linked to — say so in the question rather than
       // quietly promising the mark is safe to drop.

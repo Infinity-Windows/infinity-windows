@@ -37,6 +37,7 @@ declare
   v_imported_type_id uuid;
   v_import_result jsonb;
   v_view_saved integer;
+  v_ref_ids uuid[];
 begin
   -- Pick every account and the sandbox job before switching JWT identity.
   perform pg_temp.dry_run_as_system();
@@ -225,7 +226,12 @@ begin
   select id into v_open_id from public.project_openings
    where project_id = v_job and planset_id = v_set_a
      and opening_code = v_mark_3 || '-2' and removed_at is null;
+  insert into public.opening_notes (opening_id, body)
+  values (v_open_id, 'Rollback-only CAD reference probe');
   v_role := pg_temp.dry_run_act_as(v_foreman);
+  v_ref_ids := public.planset_referenced_openings(v_job, array[v_open_id]);
+  perform pg_temp.dry_run_check('browser planner sees an opening note through the same FK sweep',
+    v_open_id = any(v_ref_ids), coalesce(v_ref_ids::text, 'no references'));
   v_updated_open := public.set_opening_type(v_open_id, v_type_2, v_link_type);
   perform pg_temp.dry_run_check('set_opening_type: foreman changes the expected type',
     v_updated_open.id = v_open_id and v_updated_open.window_type_id = v_type_2,

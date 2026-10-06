@@ -76,7 +76,10 @@ vi.mock("../supabase", () => {
   return {
     supabase: {
       from: (table: string) => make(table),
-      rpc: (_name: string, args: Record<string, unknown>) => {
+      rpc: (name: string, args: Record<string, unknown>) => {
+        if (name === "planset_referenced_openings") {
+          return Promise.resolve({ data: [], error: null });
+        }
         db.commits.push(args);
         return Promise.resolve({ data: { inserted: 0 }, error: null });
       },
