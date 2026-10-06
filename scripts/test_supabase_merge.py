@@ -218,7 +218,7 @@ class TestSchemaParsing(unittest.TestCase):
         # 20261035000000 to land after the bill-to migrations).
         # +10 monthly-values tables: private policy, immutable reviews and
         # frozen accounting/provenance, plus reserved reminder claims.
-        self.assertEqual(len(SCHEMA.tables), 250)  # eight cross-job plus nine metadata relations
+        self.assertEqual(len(SCHEMA.tables), 251)  # plus one environment-specific redesign pilot grant
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
@@ -328,6 +328,10 @@ class TestMigrationVersions(unittest.TestCase):
 
 
 class TestDedupKeys(unittest.TestCase):
+    def test_redesign_pilot_grants_require_manual_reconciliation(self):
+        self.assertEqual(DEDUP_KEYS["redesign_pilot_accounts"], ("profile_id",))
+        self.assertIn("redesign_pilot_accounts", WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES)
+
     def test_values_review_identity_never_dedups_distinct_accepted_history(self):
         expected = {
             "values_rubric_versions": ("version_label",),

@@ -917,6 +917,9 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
 
     "work_setup_sessions": ("id",),
     "personal_activity_transition_sources": ("id",),
+    # A pilot grant is environment-specific access, not portable employee data.
+    # Preserve its identity for inventory only; never copy it in a generic merge.
+    "redesign_pilot_accounts": ("profile_id",),
 
 }
 
@@ -1021,6 +1024,7 @@ WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES = frozenset({
 
 WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES |= frozenset(WORK_CROSS_JOB_IDENTITIES)
 WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES |= frozenset(WORK_UNIT_METADATA_IDENTITIES)
+WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES |= frozenset({"redesign_pilot_accounts"})
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.
 #: The merge must choose one project's rows wholesale, or recompute from the
