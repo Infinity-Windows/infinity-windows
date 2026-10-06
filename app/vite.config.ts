@@ -7,6 +7,13 @@ import { VitePWA } from 'vite-plugin-pwa'
 // Explicit .ts extension: this config is checked under `module: nodenext`
 // (tsconfig.node.json), which requires one.
 import { renderWebManifest, withBase } from './src/lib/pwa/basePaths.ts'
+import {
+  admitWorkshopConfig,
+  describeRefusal,
+  isWorkshopMode,
+  workshopContentSecurityPolicy,
+  type WorkshopConfig,
+} from './src/lib/workshopIsolation.ts'
 
 // VITE_BASE is set for GitHub Pages (`/infinity-windows/`). Local/root hosts keep `/`.
 const base = process.env.VITE_BASE || '/'
@@ -68,8 +75,6 @@ const builtAt = new Date().toISOString()
  * in the build step's env (deploy-pages.yml) and a local build puts it in .env.
  * Production mode, because the service worker is disabled in dev anyway.
  */
-const monitoringOn =
-  (loadEnv('production', process.cwd(), 'VITE_').VITE_SENTRY_DSN ?? '').trim() !== ''
 
 /**
  * Emit `version.json` next to the bundle so a running app can ask "is there a
@@ -178,8 +183,69 @@ function spaFallbackPlugin(): Plugin {
   }
 }
 
+/**
+ * Forge Workshop (`vite --mode workshop`, launched by scripts/workshop/start.mjs).
+ *
+ * Inert in every other mode. In workshop mode it:
+ * - turns OFF .env loading (envDir: false). Vite otherwise loads app/.env under
+ *   every mode, and that file holds the production URL and key — any setting
+ *   the workshop forgot would quietly fall back to production. The launcher
+ *   passes the checked settings in the process environment instead;
+ * - refuses to start unless lib/workshopIsolation admits those settings;
+ * - serves on 127.0.0.1:5278 only (strictPort), a different origin from the
+ *   normal dev app, because IndexedDB names are fixed and would be shared;
+ * - sends a connect-src CSP so the browser itself refuses every backend but
+ *   the staged one;
+ * - marks every page with a banner that cannot be mistaken for the live app.
+ */
+function workshopPlugin(): Plugin {
+  let config: WorkshopConfig | null = null
+  return {
+    name: 'forge-workshop-isolation',
+    config(_user, { mode }) {
+      if (!isWorkshopMode(mode)) return
+      const admission = admitWorkshopConfig(process.env)
+      if (!admission.ok) throw new Error(describeRefusal(admission.problems))
+      config = admission.config
+      const origin = new URL(config.origin)
+      const headers = { 'Content-Security-Policy': workshopContentSecurityPolicy(config) }
+      const at = { host: origin.hostname, port: Number(origin.port), strictPort: true, headers }
+      return { envDir: false, server: at, preview: at }
+    },
+    transformIndexHtml(html) {
+      if (!config) return
+      const banner =
+        `FORGE WORKSHOP · test backend ${config.ref} · synthetic accounts only · not the live app`
+      return {
+        html: html.replace(/<title>/, '<title>[WORKSHOP] '),
+        tags: [
+          {
+            tag: 'div',
+            attrs: {
+              id: 'forge-workshop-banner',
+              role: 'status',
+              // Never blocks a tap: it sits over the very top edge and lets
+              // touches through, so screens behave exactly as they will live.
+              style:
+                'position:fixed;top:0;left:0;right:0;z-index:2147483647;pointer-events:none;' +
+                'background:repeating-linear-gradient(45deg,#7c2d12 0 12px,#9a3412 12px 24px);' +
+                'color:#fff;font:600 11px/1.6 system-ui,sans-serif;text-align:center;' +
+                'letter-spacing:.04em;padding:0 8px;opacity:.92',
+            },
+            children: banner,
+            injectTo: 'body-prepend',
+          },
+        ],
+      }
+    },
+  }
+}
+
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const monitoringOn = mode !== 'workshop' &&
+    (loadEnv('production', process.cwd(), 'VITE_').VITE_SENTRY_DSN ?? '').trim() !== ''
+  return {
   base,
   define: {
     __BUILD_ID__: JSON.stringify(buildId),
@@ -228,6 +294,7 @@ export default defineConfig({
     },
   },
   plugins: [
+    workshopPlugin(),
     react(),
     buildVersionPlugin(),
     webManifestPlugin(),
@@ -325,4 +392,5 @@ export default defineConfig({
       interval: 300,
     },
   },
+  }
 })

@@ -9,9 +9,37 @@ import {
   readStoredSession,
   signInAwareFetch,
 } from "./offlineSession";
+import {
+  admitWorkshopConfig,
+  describeRefusal,
+  fenceWorkshopNetwork,
+  workshopPageProblems,
+  type WorkshopEnv,
+} from "./workshopIsolation";
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+
+// Forge Workshop only (`vite --mode workshop`): refuse to build either client
+// unless the settings name a non-production backend exactly, and fence the
+// page's network to that backend before anything can call out. Normal mode
+// never enters this block — see lib/workshopIsolation.ts.
+if (import.meta.env.MODE === "workshop") {
+  function refuse(message: string): never {
+    if (typeof document !== "undefined") {
+      const root = document.getElementById("root");
+      if (root) root.textContent = `Forge Workshop could not open. ${message}`;
+    }
+    throw new Error(message);
+  }
+  const admission = admitWorkshopConfig(import.meta.env as WorkshopEnv);
+  if (!admission.ok) refuse(describeRefusal(admission.problems));
+  if (typeof window !== "undefined") {
+    const misplaced = workshopPageProblems(window.location.origin, admission.config);
+    if (misplaced.length) refuse(describeRefusal(misplaced));
+    fenceWorkshopNetwork(window as unknown as Parameters<typeof fenceWorkshopNetwork>[0], admission.config);
+  }
+}
 
 export const supabaseConfigured = Boolean(url && key);
 

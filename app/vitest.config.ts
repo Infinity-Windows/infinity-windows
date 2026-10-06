@@ -10,8 +10,8 @@ import viteConfig from "./vite.config";
  * two copies of @playwright/test. Excluding them here keeps `npm test` and
  * `npm run e2e` as two separate, honest commands.
  */
-export default mergeConfig(
-  viteConfig,
+export default defineConfig((env) => mergeConfig(
+  viteConfig(env),
   defineConfig({
     test: {
       // e2e/ are Playwright specs, not unit tests; the vendored
@@ -19,4 +19,4 @@ export default mergeConfig(
       exclude: [...configDefaults.exclude, "e2e/**", "src/lib/modelstudio/vendor/**"],
     },
   }),
-);
+));

@@ -1,3 +1,7 @@
+# Workshop checkout override
+
+The owner explicitly authorized this isolated workshop. Follow `workshop/README.md` and the exact `workshop/manifest.json` target. The old one-production-project setup instructions below are historical production guidance and do not apply to this checkout. Never copy a production .env, run a quarantined workflow, or point workshop tools at production. No production merge or activation is authorized here.
+
 # Working in this repo
 
 Window installation ops app — warehouse inventory, install capture, time clock,
