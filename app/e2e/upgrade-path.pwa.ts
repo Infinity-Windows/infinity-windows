@@ -22,7 +22,7 @@
 // Refresh has nothing left to post to. They were reproduced here first and
 // fixed in PwaBanners.tsx; see the notes on each.
 
-import { expect, test, type Page, type Worker } from "@playwright/test";
+import { expect, test, type CDPSession, type Page, type Worker } from "@playwright/test";
 import { capturePwaReloadEvidence } from "./support/pwaReloadEvidence";
 import {
   cutTheNetwork,
@@ -63,6 +63,168 @@ function countNavigations(page: Page): { navigations: () => string[] } {
     if (req.isNavigationRequest() && req.frame() === page.mainFrame()) seen.push(req.url());
   });
   return { navigations: () => [...seen] };
+}
+
+type CdpCallFrame = { url: string; functionName: string; lineNumber: number; columnNumber: number };
+type CdpStack = { callFrames: CdpCallFrame[]; parent?: CdpStack };
+const PROVENANCE_MAX_EVENTS = 500;
+const PROVENANCE_MAX_REQUESTS = 250;
+const PROVENANCE_MAX_FRAMES_TRACKED = 64;
+const PROVENANCE_STACK_FRAMES = 4;
+const PROVENANCE_STACK_DEPTH = 2;
+
+/**
+ * Read-only network/lifecycle provenance for the switch to the new build.
+ *
+ * Retained CI 37388156633 (2026-10-05): six of the new document's module
+ * requests were cancelled about 600 ms BEFORE the empty-boot recovery reload,
+ * and nothing kept said who cancelled them. This keeps what that trace lacked
+ * — request/loader/frame ids, initiators, response cache and service-worker
+ * provenance, failures, finishes and frame lifecycle — for the harness origin
+ * ONLY, as origin+path (never query, hash, headers, cookies or bodies), in a
+ * bounded ring. Routing, cache, worker, delays and assertions stay unchanged;
+ * enabling CDP domains adds observer-startup awaits. Service-worker target requests are not
+ * visible on this page session.
+ */
+async function observeProvenance(cdp: CDPSession, admittedOrigin: string | null) {
+  const events: Record<string, unknown>[] = [];
+  const requests = new Map<string, { path: string; loaderId: string; frameId: string | null; resourceType: string | null }>();
+  const frames = new Set<string>();
+  const enableErrors: string[] = [];
+  let droppedEvents = 0;
+  let evictedRequests = 0;
+  const admitted = (raw: string | undefined) => {
+    try { return !!raw && admittedOrigin !== null && new URL(raw).origin === admittedOrigin; } catch { return false; }
+  };
+  const pathOf = (raw: string | undefined) => {
+    if (!raw) return "(inline)";
+    try { const url = new URL(raw); return url.origin === admittedOrigin ? url.pathname : "(other origin)"; } catch { return "(unparsed)"; }
+  };
+  const push = (event: Record<string, unknown>) => {
+    events.push({ ...event, observedAtEpochMs: Date.now() });
+    if (events.length > PROVENANCE_MAX_EVENTS) { events.shift(); droppedEvents += 1; }
+  };
+  const stackOf = (stack: CdpStack | undefined, depth = 0): unknown =>
+    stack && depth < PROVENANCE_STACK_DEPTH
+      ? {
+          callFrames: stack.callFrames.slice(0, PROVENANCE_STACK_FRAMES).map((f) => ({
+            path: pathOf(f.url), functionName: (f.functionName || "").slice(0, 80), line: f.lineNumber, column: f.columnNumber,
+          })),
+          parent: stackOf(stack.parent, depth + 1),
+        }
+      : null;
+  const track = (frameId: string | undefined) => {
+    if (frameId && frames.size < PROVENANCE_MAX_FRAMES_TRACKED) frames.add(frameId);
+  };
+
+  const onRequest = (e: {
+    requestId: string; loaderId: string; frameId?: string; timestamp: number; wallTime: number; type?: string;
+    request: { url: string }; redirectResponse?: unknown;
+    initiator: { type: string; url?: string; lineNumber?: number; stack?: CdpStack };
+  }) => {
+    // A redirect reuses requestId; forget a local binding when it leaves the origin.
+    if (!admitted(e.request.url)) { requests.delete(e.requestId); return; }
+    if (!requests.has(e.requestId) && requests.size >= PROVENANCE_MAX_REQUESTS) {
+      const oldest = requests.keys().next().value;
+      if (oldest !== undefined) requests.delete(oldest);
+      evictedRequests += 1;
+    }
+    const path = pathOf(e.request.url);
+    requests.set(e.requestId, { path, loaderId: e.loaderId, frameId: e.frameId ?? null, resourceType: e.type ?? null });
+    track(e.frameId);
+    push({
+      kind: "requestWillBeSent", requestId: e.requestId, loaderId: e.loaderId, frameId: e.frameId ?? null,
+      cdpMonotonicSec: e.timestamp, browserWallTimeSec: e.wallTime, path, resourceType: e.type ?? null,
+      redirect: e.redirectResponse !== undefined,
+      initiator: { type: e.initiator.type, path: e.initiator.url ? pathOf(e.initiator.url) : null,
+        line: e.initiator.lineNumber ?? null, stack: stackOf(e.initiator.stack) },
+    });
+  };
+  const onResponse = (e: {
+    requestId: string; loaderId: string; frameId?: string; timestamp: number;
+    response: { status: number; fromServiceWorker?: boolean; fromDiskCache?: boolean; fromPrefetchCache?: boolean; protocol?: string };
+  }) => {
+    const r = requests.get(e.requestId);
+    if (!r) return;
+    push({
+      kind: "responseReceived", requestId: e.requestId, loaderId: e.loaderId, frameId: e.frameId ?? null,
+      cdpMonotonicSec: e.timestamp, path: r.path, status: e.response.status,
+      fromServiceWorker: e.response.fromServiceWorker ?? null, fromDiskCache: e.response.fromDiskCache ?? null,
+      fromPrefetchCache: e.response.fromPrefetchCache ?? null, protocol: e.response.protocol ?? null,
+    });
+  };
+  const onFailed = (e: { requestId: string; timestamp: number; errorText: string; canceled?: boolean; blockedReason?: string }) => {
+    const r = requests.get(e.requestId);
+    if (!r) return;
+    push({
+      kind: "loadingFailed", requestId: e.requestId, loaderId: r.loaderId, frameId: r.frameId, cdpMonotonicSec: e.timestamp,
+      path: r.path, resourceType: r.resourceType, errorText: e.errorText, canceled: Boolean(e.canceled), blockedReason: e.blockedReason ?? null,
+    });
+  };
+  const onFinished = (e: { requestId: string; timestamp: number; encodedDataLength: number }) => {
+    const r = requests.get(e.requestId);
+    if (!r) return;
+    push({
+      kind: "loadingFinished", requestId: e.requestId, loaderId: r.loaderId, frameId: r.frameId, cdpMonotonicSec: e.timestamp,
+      path: r.path, encodedDataLength: e.encodedDataLength,
+    });
+  };
+  const onNavigated = (e: { frame: { id: string; parentId?: string; loaderId: string; url: string } }) => {
+    if (!admitted(e.frame.url)) { frames.delete(e.frame.id); return; }
+    track(e.frame.id);
+    push({
+      kind: "frameNavigated", frameId: e.frame.id, parentFrameId: e.frame.parentId ?? null, loaderId: e.frame.loaderId,
+      cdpMonotonicSec: null, path: pathOf(e.frame.url),
+    });
+  };
+  const onLifecycle = (e: { frameId: string; loaderId: string; name: string; timestamp: number }) => {
+    if (!frames.has(e.frameId)) return;
+    push({ kind: "lifecycleEvent", frameId: e.frameId, loaderId: e.loaderId, name: e.name, cdpMonotonicSec: e.timestamp });
+  };
+
+  cdp.on("Network.requestWillBeSent", onRequest);
+  cdp.on("Network.responseReceived", onResponse);
+  cdp.on("Network.loadingFailed", onFailed);
+  cdp.on("Network.loadingFinished", onFinished);
+  cdp.on("Page.frameNavigated", onNavigated);
+  cdp.on("Page.lifecycleEvent", onLifecycle);
+  // Domain enables only; a failure here is recorded, never thrown into the test.
+  try { await cdp.send("Page.enable"); } catch (error) { enableErrors.push(`Page.enable: ${String(error).slice(0, 200)}`); }
+  try {
+    await cdp.send("Page.setLifecycleEventsEnabled", { enabled: true });
+  } catch (error) {
+    enableErrors.push(`Page.setLifecycleEventsEnabled: ${String(error).slice(0, 200)}`);
+  }
+
+  return {
+    snapshot: () => ({
+      scope: {
+        admittedOrigin,
+        recorded: "admitted harness origin only, as origin+path; other origins omitted or shown as '(other origin)'; no query, hash, headers, cookies or bodies",
+        session: "this page's CDP session; service-worker target requests are not visible here",
+        bounds: { maxEvents: PROVENANCE_MAX_EVENTS, maxRequests: PROVENANCE_MAX_REQUESTS, stackFrames: PROVENANCE_STACK_FRAMES, stackDepth: PROVENANCE_STACK_DEPTH },
+      },
+      clockScope: {
+        cdpMonotonicSec: "Chromium monotonic event time in seconds; comparable only between events of this browser; not an epoch",
+        browserWallTimeSec: "requestWillBeSent wallTime: browser epoch seconds at request start only",
+        observedAtEpochMs: "Node Date.now() when the event reached the test process; includes delivery delay; not the browser event time",
+        note: "A gap between a request's browser start time and a failure's observedAtEpochMs is delivery and ordering across clocks, not a clock offset. Compare like with like.",
+      },
+      droppedEvents, evictedRequests, trackedRequests: requests.size, enableErrors: [...enableErrors],
+      events: events.slice(),
+    }),
+    dispose: () => {
+      cdp.off("Network.requestWillBeSent", onRequest);
+      cdp.off("Network.responseReceived", onResponse);
+      cdp.off("Network.loadingFailed", onFailed);
+      cdp.off("Network.loadingFinished", onFinished);
+      cdp.off("Page.frameNavigated", onNavigated);
+      cdp.off("Page.lifecycleEvent", onLifecycle);
+      requests.clear();
+      frames.clear();
+      events.length = 0;
+    },
+  };
 }
 
 /** After the switch: the new build stays, nothing reloads again, no banner returns. */
@@ -181,7 +343,13 @@ test("a phone on the previous build opens the app after a deploy, then switches 
       failedNetwork.push({ at: Date.now(), url: new URL(url).pathname, error: event.errorText, canceled: Boolean(event.canceled) });
     }
   });
+  // Preserve the original navigation-counter boundary before any new awaited diagnostics.
   const { navigations } = countNavigations(page);
+  // Additive diagnostics on the same session; failedNetwork above is unchanged.
+  const admittedOrigin = (() => {
+    try { const url = new URL(page.url()); return url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname) ? url.origin : null; } catch { return null; }
+  })();
+  const provenance = await observeProvenance(cdp, admittedOrigin);
   await expect
     .poll(() => runningEntry(page), {
       timeout: 120_000,
@@ -206,7 +374,7 @@ test("a phone on the previous build opens the app after a deploy, then switches 
         .map((entry) => ({ name: entry.name, duration: entry.duration })),
     })).catch((readError) => ({ readError: String(readError) }));
     await test.info().attach("new-build-boot.json", {
-      body: JSON.stringify({ state, bootErrors, failedAppFiles: failed }, null, 2),
+      body: JSON.stringify({ state, bootErrors, failedAppFiles: failed, failedNetwork, provenance: provenance.snapshot() }, null, 2),
       contentType: "application/json",
     });
     throw error;
@@ -222,11 +390,14 @@ test("a phone on the previous build opens the app after a deploy, then switches 
       JSON.parse(sessionStorage.getItem("wops-e2e-upgrade-timeline") || "[]"),
     );
     await test.info().attach("upgrade-reload-evidence.json", {
-      body: JSON.stringify({ navigations: navigations().map((url, i) => ({ url, at: navigationTimes[i] })), emptyBootRecovery, browserTimeline, failedNetwork, bootErrors }, null, 2),
+      body: JSON.stringify({ navigations: navigations().map((url, i) => ({ url, at: navigationTimes[i] })), emptyBootRecovery, browserTimeline, failedNetwork, bootErrors, provenance: provenance.snapshot() }, null, 2),
       contentType: "application/json",
     });
   }
   expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
+  // Only reached when the strict gate passed. Synchronous listener removal;
+  // the session itself closes with the page if an assertion above fails.
+  provenance.dispose();
 
   // And the new worker is the one in charge now: the next open with no
   // signal comes entirely from the new build's copy.

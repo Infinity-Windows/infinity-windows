@@ -47,11 +47,36 @@ async function chooseDesign(page: Page, server: ContinuityServer, design: "class
   expect(server.profile.ui_design).toBe(design);
 }
 
-/** A fresh load of the landing, and proof the saved shift was served to it. */
+/** Wait for the saved effective design, not the initial loading/classic shell. */
+async function expectExpectedLandingReady(page: Page, server: ContinuityServer) {
+  const design = server.company.new_design_r1_enabled === true && server.profile.ui_design === "new" ? "new" : "classic";
+  const closed = typeof server.shift.clock_out_at === "string";
+  await expect(page.locator("html")).toHaveAttribute("data-design", design);
+  if (design === "new") {
+    await expect(page.getByTestId("work-screen")).toBeVisible();
+    if (closed) {
+      await expect(page.getByTestId("ws-clock")).toHaveClass(/ws-clock--off/);
+      await expect(page.getByTestId("ws-start-day")).toBeVisible();
+    } else {
+      await expect(page.getByTestId("ws-clock")).toContainText(typeof server.shift.break_started_at === "string" ? "On break" : "Clocked in");
+      await expect(page.getByTestId("ws-clock")).toContainText("· OAKRIDGE");
+    }
+  } else if (closed) {
+    await expect(page.locator(".clockin-block")).toBeVisible();
+    await expect(page.getByTestId("work-screen")).toHaveCount(0);
+  } else {
+    await expect(page.getByRole("heading", { name: "Current Work", exact: true })).toBeVisible();
+    await expect(page.locator(".cw-heading")).toContainText("Oakridge Apartments Bldg C");
+  }
+}
+
+/** A settled initial load, then proof the hard reload served the saved shift. */
 async function reloadLanding(page: Page, server: ContinuityServer, session: string) {
-  const mark = readMark(server);
   await page.goto("/");
+  await expectExpectedLandingReady(page, server);
+  const mark = readMark(server);
   await page.reload();
+  await expectExpectedLandingReady(page, server);
   await expect.poll(() => shiftReadsSince(server, mark, session).length).toBeGreaterThan(0);
   return shiftReadsSince(server, mark, session);
 }
@@ -297,10 +322,12 @@ test("owner master switch off then on: a second session follows on its next fres
 
 /** A fresh load after clock-out: at least one current-shift answer served, every one empty. */
 async function reloadOffClock(page: Page, server: ContinuityServer, session: string) {
+  await page.goto("/");
+  await expectExpectedLandingReady(page, server);
   const answerMark = server.log.currentShiftAnswers.length;
   const openMark = readMark(server);
-  await page.goto("/");
   await page.reload();
+  await expectExpectedLandingReady(page, server);
   await expect.poll(() => server.log.currentShiftAnswers.slice(answerMark).filter((a) => a.session === session).length).toBeGreaterThan(0);
   for (const a of server.log.currentShiftAnswers.slice(answerMark)) expect(a.row).toBeNull();
   expect(shiftReadsSince(server, openMark)).toEqual([]);
