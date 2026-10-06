@@ -38,6 +38,8 @@ declare
   v_import_result jsonb;
   v_view_saved integer;
   v_ref_ids uuid[];
+  v_removed_mark text := 'CAD-DR-REMOVED-' || replace(gen_random_uuid()::text, '-', '');
+  v_removed_id uuid;
 begin
   -- Pick every account and the sandbox job before switching JWT identity.
   perform pg_temp.dry_run_as_system();
@@ -516,4 +518,70 @@ begin
     perform pg_temp.dry_run_check('valid CAD merge keeps a field-added unit', true,
       'skipped: no field-added row or open sandbox foreman shift was available');
   end if;
+
+  -- A person's removed unit remains a historical row, not an active mark.
+  -- Re-reading the same source may create a new live unit with that code;
+  -- neither the snapshot nor the conflict check may revive or rewrite the
+  -- removed row. Once the new unit is live, another specs set must refuse it.
+  perform pg_temp.dry_run_as_system();
+  insert into public.project_openings (project_id, planset_id, opening_code, confirmed)
+  values (v_job, v_set_a, v_removed_mark, false)
+  returning id into v_removed_id;
+  update public.project_openings
+     set removed_at = now(), removed_reason = 'CAD dry-run removed unit'
+   where id = v_removed_id;
+  select to_jsonb(o) into v_open_before
+    from public.project_openings o where o.id = v_removed_id;
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'id', o.id, 'opening_code', o.opening_code, 'planset_id', o.planset_id,
+      'confirmed', o.confirmed, 'status', o.status, 'pin_x', o.pin_x,
+      'pin_y', o.pin_y, 'page_number', o.page_number, 'assigned_to', o.assigned_to,
+      'work_started_at', o.work_started_at, 'ro_width_in', o.ro_width_in,
+      'ro_height_in', o.ro_height_in, 'ro_quick_ok', o.ro_quick_ok,
+      'condition', o.condition, 'field_added', o.field_added
+    ) order by o.id), '[]'::jsonb)
+    into v_snapshot from public.project_openings o
+   where o.project_id = v_job and o.removed_at is null;
+
+  v_role := pg_temp.dry_run_act_as(v_foreman);
+  v_result := public.reconcile_planset_openings(
+    v_job, v_set_a, v_snapshot, array[v_removed_mark]::text[], '{}'::uuid[],
+    jsonb_build_array(jsonb_build_object(
+      'opening_code', v_removed_mark, 'mark_code', v_removed_mark,
+      'label', 'replacement for removed unit', 'page_number', 1
+    )), false
+  );
+  perform pg_temp.dry_run_as_system();
+  select to_jsonb(o) into v_open_after
+    from public.project_openings o where o.id = v_removed_id;
+  perform pg_temp.dry_run_check('same-file re-read leaves removed unit unchanged',
+    v_result ->> 'inserted' = '1' and v_open_after = v_open_before
+      and (select count(*) = 1 from public.project_openings o
+            where o.project_id = v_job and o.planset_id = v_set_a
+              and o.opening_code = v_removed_mark and o.removed_at is null),
+    coalesce(v_result::text, 'no result'));
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'id', o.id, 'opening_code', o.opening_code, 'planset_id', o.planset_id,
+      'confirmed', o.confirmed, 'status', o.status, 'pin_x', o.pin_x,
+      'pin_y', o.pin_y, 'page_number', o.page_number, 'assigned_to', o.assigned_to,
+      'work_started_at', o.work_started_at, 'ro_width_in', o.ro_width_in,
+      'ro_height_in', o.ro_height_in, 'ro_quick_ok', o.ro_quick_ok,
+      'condition', o.condition, 'field_added', o.field_added
+    ) order by o.id), '[]'::jsonb)
+    into v_snapshot from public.project_openings o
+   where o.project_id = v_job and o.removed_at is null;
+  v_role := pg_temp.dry_run_act_as(v_foreman);
+  perform pg_temp.dry_run_expect_error('second specs set cannot claim replacement unit mark',
+    format('select public.reconcile_planset_openings(%L::uuid,%L::uuid,%L::jsonb,%L::text[],''{}''::uuid[],''[]''::jsonb,false)',
+      v_job, v_set_b, v_snapshot::text, array[v_removed_mark]::text[]),
+    'another plan set');
+  perform pg_temp.dry_run_as_system();
+  perform pg_temp.dry_run_check('second-set refusal leaves removed and replacement units intact',
+    (select to_jsonb(o) = v_open_before from public.project_openings o
+      where o.id = v_removed_id)
+      and (select count(*) = 1 from public.project_openings o
+            where o.project_id = v_job and o.planset_id = v_set_a
+              and o.opening_code = v_removed_mark and o.removed_at is null),
+    'removed row and live replacement retained');
 end $$;
