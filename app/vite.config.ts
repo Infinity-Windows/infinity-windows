@@ -263,6 +263,7 @@ export default defineConfig(({ mode }) => {
   },
   build: {
     rollupOptions: {
+      ...(mode === 'workshop' ? { input: { app: 'index.html', workshopPhone: 'workshop-phone.html' } } : {}),
       output: {
         // Give the crash monitor a chunk with a NAME, so the service worker's
         // globIgnores below can point at it. Left to itself rollup calls this

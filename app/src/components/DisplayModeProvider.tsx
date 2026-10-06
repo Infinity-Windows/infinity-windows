@@ -3,9 +3,19 @@ import { DISPLAY_MODE_KEY, DisplayModeContext, displayLayout, parseDisplayMode, 
 
 /** One presentation preference; never remount the app or change role/data state. */
 export function DisplayModeProvider({ children }: { children: ReactNode }) {
+  // The workshop frame overrides presentation locally; it must never change
+  // the person's shared preference or flip their other open app tabs.
+  const [phonePreview] = useState(() => {
+    if (import.meta.env.MODE !== "workshop" || window.self === window.top) return false;
+    const hinted = new URLSearchParams(window.location.search).get("workshopPhone") === "1";
+    try {
+      if (hinted) sessionStorage.setItem("forge.workshop.frame-phone", "1");
+      return hinted || sessionStorage.getItem("forge.workshop.frame-phone") === "1";
+    } catch { return hinted; }
+  });
   const [mode, updateMode] = useState<DisplayMode>(readDisplayMode);
   const [width, setWidth] = useState(() => window.innerWidth);
-  const layout = displayLayout(mode, width);
+  const layout = phonePreview ? "phone" : displayLayout(mode, width);
   const setMode = useCallback((next: DisplayMode) => {
     updateMode(next);
     try {

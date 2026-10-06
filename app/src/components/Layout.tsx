@@ -70,6 +70,16 @@ const TAB_ICONS: Record<string, ReactNode> = {
   jobs: <LayoutGrid size={20} />,
   photos: <Camera size={20} />,
 };
+// Forge Workshop only: the approved steel shell. `MODE` is a build-time
+// literal, so in every other build these are null and the dynamic import —
+// with the steel CSS behind it — is never emitted.
+const STEEL_WORKSHOP = import.meta.env.MODE === "workshop";
+const SteelTopbar = STEEL_WORKSHOP
+  ? lazy(() => import("./workshop/SteelWorkshopHome").then((m) => ({ default: m.SteelTopbar })))
+  : null;
+const SteelBrand = STEEL_WORKSHOP
+  ? lazy(() => import("./workshop/SteelWorkshopHome").then((m) => ({ default: m.SteelBrand })))
+  : null;
 const PersistentAskInfinity = lazy(() => import("../pages/AskInfinity").then((m) => ({ default: m.AskInfinity })));
 const idleLiveAsk: LiveAskShellState = { status: "idle", saving: false, needsClock: false, clockHandoff: null, muted: false, expiring: false, navigation: null };
 
@@ -243,7 +253,11 @@ export function Layout() {
   ).map((section) => ({
     ...section,
     // Rows with a catalog key read in the person's language (lib/nav.ts).
-    items: section.items.map((item) => (item.labelKey ? { ...item, label: t(item.labelKey) } : item)),
+    items: section.items.filter((item) => !(STEEL_WORKSHOP && !clock.shift && item.action === "open-clock")).map((item) => ({
+      ...item,
+      ...(item.labelKey ? { label: t(item.labelKey) } : {}),
+      ...(STEEL_WORKSHOP && roleRank(role) >= 2 && item.to === "/" && design === "new" ? { label: es ? "Inicio" : "Home" } : {}),
+    })),
   }));
   const isActionActive = (action: MenuAction) => (action === "open-clock" ? clock.isOpen : false);
   const onMenuAction = (action: MenuAction) => {
@@ -382,9 +396,18 @@ export function Layout() {
       <SummonBell />
       <div className="app-frame">
         <aside className="app-rail" aria-label="Primary">
-          <Link to="/" className="rail-brand" aria-label="Forge Windows home">
-            <InfinityLogo variant="full" size={22} />
-          </Link>
+          {SteelBrand ? (
+            <Suspense fallback={null}><SteelBrand /></Suspense>
+          ) : (
+            <Link to="/" className="rail-brand" aria-label="Forge Windows home">
+              <InfinityLogo variant="full" size={22} />
+            </Link>
+          )}
+          {STEEL_WORKSHOP && roleRank(role) >= 2 && (
+            <Link to="/work" className="menu-item steel-work-link">
+              <Hammer size={18} aria-hidden /><span>{t("nav.work")}</span>
+            </Link>
+          )}
           {/* Desktop's only door to Capture. The bottom bar — and with it the
               centre (+) FAB — is display:none from 860px up, so without this
               the button the owner asked to be "on every tab and view" simply
@@ -425,7 +448,7 @@ export function Layout() {
             pathname={location.pathname}
             // Release 1: the new design's Work screen has one stated job and
             // carries no strip (K-X3, no fat), for every role.
-            hidden={(isInstaller || isNewDesign) && location.pathname === "/"}
+            hidden={(isInstaller || isNewDesign) && (location.pathname === "/" || (STEEL_WORKSHOP && location.pathname === "/work"))}
           />
           {/* Phones only (hidden from 860px up, where the rail carries it).
               In the page flow rather than floating over it, so it can never
@@ -433,10 +456,18 @@ export function Layout() {
               row carries the "Clocked in 7:02" badge on the left — the door
               to break / clock out from any screen now that the bar has no
               Clock tab. */}
-          <div className="sync-strip" data-design={isNewDesign ? "new" : undefined}>
-            {isNewDesign && <ClockBadge />}
-            <SyncStatusPill />
-          </div>
+          {/* Workshop: the steel top bar carries the same ClockBadge (shown
+              in both designs there) and SyncStatusPill, so the strip goes. */}
+          {SteelTopbar ? (
+            <Suspense fallback={null}>
+              <SteelTopbar phone={layout === "phone"} menuOpen={menuOpen} onOpenMenu={openMenu} />
+            </Suspense>
+          ) : (
+            <div className="sync-strip" data-design={isNewDesign ? "new" : undefined}>
+              {isNewDesign && <ClockBadge />}
+              <SyncStatusPill />
+            </div>
+          )}
           {previewingPerson ? (
             <div className="view-as-banner" role="status">
               <span>
@@ -547,7 +578,7 @@ export function Layout() {
             <TabLink
               key={tab.id}
               label={tab.i18nKey ? t(tab.i18nKey) : tab.label}
-              to={tab.to}
+              to={STEEL_WORKSHOP && roleRank(role) >= 2 && tab.id === "work" ? "/work" : tab.to}
               end={tab.end}
               icon={TAB_ICONS[tab.id] ?? <LayoutGrid size={20} />}
               badge={tab.readyBadge ? readyBadge : undefined}

@@ -1,5 +1,5 @@
 {
-  "name": "Forge Workshop — Test Data Only",
+  "name": "Forge Workshop \u2014 Test Data Only",
   "code_base": "ee08f7f55f3af9ce81372e47c3883ecc4401a6b5",
   "branch": "codex/forge-workshop-20261006",
   "supabase_project_ref": "magcghmnbjiukidyalxd",
@@ -8,7 +8,20 @@
   "hosted_origin": null,
   "data_policy": "Synthetic records and newly generated identities only",
   "integrations": "Disabled; no production secrets, jobs, functions or provider actions",
-  "native_time_engine": "Held; first baseline uses established real Auth/workday backend",
-  "hosting": {"database_monthly_compute_usd": 10, "owner_approved": true},
-  "production_changes_authorized": false
+  "native_time_engine": "Root-owned integration in progress; new Clock in deliberately disabled until actual paid-setup callback is qualified",
+  "hosting": {
+    "database_monthly_compute_usd": 10,
+    "owner_approved": true
+  },
+  "production_changes_authorized": false,
+  "steel_design": "Mounted locally with simple Clock in/toolbox surface and390/320 phone preview",
+  "current_acceptance": {
+    "real_auth_roles": 5,
+    "browser_cases_current_simple_surface": 6,
+    "earlier_legacy_workday_cases": 7,
+    "new_paid_setup_qualified": false,
+    "general_specific_and_new_data_mounted": false
+  },
+  "production_export_source": "3561c02a4acbd96ac055d0d2ef92e1379563d6e5",
+  "production_export_cherry_pick": "3baf3fb7"
 }

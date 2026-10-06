@@ -82,6 +82,14 @@ const CurrentWork = lazyRoute(() => import("./pages/customWork/CurrentWork").the
 // Release 1 (crew redesign K1.2): the new design's landing. Lazy on purpose —
 // the classic shell stays what a phone downloads first, and the person who
 // switched designs gets this chunk once, precached like every other route.
+// Forge Workshop only (build-time literal): null in every other build, so the
+// steel chunk is never emitted outside the workshop.
+const SteelWorkshopHome = import.meta.env.MODE === "workshop"
+  ? lazyRoute(() => import("./components/workshop/SteelWorkshopHome").then((m) => ({ default: m.SteelWorkshopHome })))
+  : null;
+const WorkshopWorkEntry = import.meta.env.MODE === "workshop"
+  ? lazyRoute(() => import("./components/workshop/WorkshopWorkEntry").then((m) => ({ default: m.WorkshopWorkEntry })))
+  : null;
 const WorkScreen = lazyRoute(() => import("./pages/work/WorkScreen").then((m) => ({ default: m.WorkScreen })));
 // K1.6: the new design's Schedule tab, at the classic My Schedule address.
 const Schedule = lazyRoute(() => import("./pages/work/Schedule").then((m) => ({ default: m.Schedule })));
@@ -262,6 +270,13 @@ function RoleLanding() {
   // Release 1 (K-X2 / K1.2 / K1.4): the new design lands on Work for every
   // role, on and off the clock — Work carries the clock, the running unit and
   // Next up itself. A running service visit above still wins in both designs.
+  // Forge Workshop only: Work is the first screen for the field, and the
+  // office gets the steel home with Work one tap away (/work below).
+  if (SteelWorkshopHome) {
+    if (isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
+    if (clock.shift) return WorkshopWorkEntry ? <WorkshopWorkEntry /> : <WorkScreen />;
+    return roleRank(role) >= 2 ? <SteelWorkshopHome /> : WorkshopWorkEntry ? <WorkshopWorkEntry /> : <WorkScreen />;
+  }
   if (design === "new") return <WorkScreen />;
   if (clock.shift?.status === "open") return <CurrentWork />;
   if (!ROLE_NAV_V2) return <Home />;
@@ -734,6 +749,7 @@ export default function App() {
           <Route path="/stg/*" element={<StgApp />} />
           <Route element={<RequirePartnerElsewhere><Layout /></RequirePartnerElsewhere>}>
             <Route path="/" element={<RoleLanding />} />
+            {WorkshopWorkEntry && <Route path="/work" element={<WorkshopWorkEntry />} />}
             <Route path="/current-work" element={<RequireRole path="/current-work"><CurrentWork /></RequireRole>} />
             <Route path="/warehouse" element={<Warehouse />} />
             {/* One list per hub number: /warehouse/on-hand, /putaway, /staged,

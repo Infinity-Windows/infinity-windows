@@ -2,11 +2,15 @@
 
 This branch is a practice environment, not a production release branch. Do not merge the whole branch into master: its production workflows are intentionally quarantined.
 
-The first runnable baseline is production source `ee08f7f` with the workshop guard. The full redesigned native activity engine is still held in its separately owned candidate. Its assembly refusal has not been removed or bypassed. The workshop is where that integration can be developed safely; a functioning workshop is not proof the full redesign is complete.
+The Git baseline is production `ee08f7f`, with the later export change from production `3561c02` consumed as workshop cherry-pick `3baf3fb7` with the workshop guard. The approved steel shell is mounted locally. Field roles and /work now show just Clock in and today’s toolbox talk before a shift. The full redesigned native activity engine is still held in its separately owned candidate. Its assembly refusal has not been removed or bypassed. The workshop is where that integration can be developed safely; a functioning workshop is not proof the full redesign is complete.
 
 ## Open the practice app
 
 Use `http://127.0.0.1:5278/` on this laptop. It connects to the separate hosted Supabase project `magcghmnbjiukidyalxd`. The browser shows a WORKSHOP banner and cannot use a production Supabase endpoint in this mode.
+
+The new Clock in button is deliberately pending until the native first-tap paid setup is qualified and connected. It does not invoke the old clock-in behavior. General/Specific grids and the new Data integration are still root-owned work. Existing open shifts keep their established controls. This is an in-progress workshop, not a completed redesign.
+
+Use the Phone view link, or `http://127.0.0.1:5278/workshop-phone.html`, to open the actual app at 390 or 320 pixels. The outer preview mounts no app/clock/outbox and the iframe alone runs the app. Its phone override is local to that frame, without changing the shared display preference, and survives a reload inside the frame. On a narrow Codex panel the picture scales while the app keeps the chosen layout width. It is not a substitute for physical-device testing.
 
 The five real test accounts and passwords are in `~/.config/forge-workshop/LOGINS.md`, outside Git with private file permissions. Sign out and use another account to test its actual permissions. Owner View As is a separate layout preview.
 
@@ -42,4 +46,6 @@ The schema screening script never executes SQL and is a conservative filter, not
 
 ## Still to qualify
 
-Hosted frontend is waiting for permission to create a separate Vercel project on the existing company team. No website was published. The localhost link needs this laptop's development server running. Physical iPhone behavior and a full weak-signal workday remain later checks. The full redesigned time engine, final unit QC/analytics integration and steel-theme reveal remain their own build scope.
+Hosted frontend is waiting for permission to create a separate Vercel project on the existing company team. No website was published. The localhost link needs this laptop's development server running. Physical iPhone behavior and a full weak-signal workday remain later checks. The full redesigned time engine, final unit QC/analytics integration remain a root-owned stage integration. The steel-theme visual shell is being integrated separately against the approved October 5 interactive reference.
+
+The new start surface hides the off-clock legacy clock drawer action and shows any saved/refused clock changes with their recovery link. Other inherited legacy routes remain outside the qualified new paid-setup scope and require the main integration audit before a completed redesign or release claim.
