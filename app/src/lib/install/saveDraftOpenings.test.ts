@@ -20,6 +20,7 @@ const db = vi.hoisted(() => ({
   openingsError: null as unknown,
   /** Every atomic commit (reconcile_planset_openings) and what it was sent. */
   commits: [] as Record<string, unknown>[],
+  referenceRequests: [] as string[][],
 }));
 
 vi.mock("../supabase", () => {
@@ -37,6 +38,7 @@ vi.mock("../supabase", () => {
   const make = (table: string) => {
     let columns = "";
     let deleting = false;
+    let activeOnly = false;
     const builder: Record<string, unknown> = {};
     builder.select = (cols: string) => {
       columns = cols;
@@ -52,6 +54,10 @@ vi.mock("../supabase", () => {
       return Promise.resolve({ data: null, error: null });
     };
     builder.eq = () => builder;
+    builder.is = (column: string, value: unknown) => {
+      if (column === "removed_at" && value === null) activeOnly = true;
+      return builder;
+    };
     builder.in = (_column: string, ids: string[]) => {
       if (deleting) db.deletedIds.push(...ids);
       return builder;
@@ -68,7 +74,12 @@ vi.mock("../supabase", () => {
         return resolve({ data: null, error: FIELD_ADDED_MISSING });
       if (columns.includes("ro_quick_ok") && db.quickOkColumnMissing)
         return resolve({ data: null, error: QUICK_OK_MISSING });
-      return resolve({ data: db.openings, error: null });
+      return resolve({
+        data: activeOnly
+          ? db.openings.filter((row) => row.removed_at == null)
+          : db.openings,
+        error: null,
+      });
     };
     return builder;
   };
@@ -78,6 +89,7 @@ vi.mock("../supabase", () => {
       from: (table: string) => make(table),
       rpc: (name: string, args: Record<string, unknown>) => {
         if (name === "planset_referenced_openings") {
+          db.referenceRequests.push(args.p_opening_ids as string[]);
           return Promise.resolve({ data: [], error: null });
         }
         db.commits.push(args);
@@ -121,6 +133,7 @@ beforeEach(() => {
   db.fieldAddedColumnMissing = false;
   db.openingsError = null;
   db.commits = [];
+  db.referenceRequests = [];
   db.openings = [
     {
       id: "op-1",
@@ -195,6 +208,22 @@ describe("reading existing openings before a re-extract", () => {
     await saveDraftOpenings("proj-1", "ps-1", [draft("7-1")]);
 
     expect(db.commits[0].p_delete_ids).not.toContain("op-1");
+  });
+
+  it("does not ask the reference RPC about a removed opening", async () => {
+    db.openings.push({
+      ...db.openings[0],
+      id: "removed-1",
+      removed_at: "2026-10-05T00:00:00Z",
+    });
+
+    const result = await saveDraftOpenings("proj-1", "ps-1", [draft("7-1")]);
+
+    expect(result.inserted).toBe(1);
+    expect(db.referenceRequests).toEqual([["op-1"]]);
+    expect(
+      (db.commits[0].p_snapshot as { id: string }[]).map((row) => row.id),
+    ).toEqual(["op-1"]);
   });
 
   it("does not swallow a read that failed for any other reason", async () => {

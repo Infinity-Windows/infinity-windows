@@ -42,9 +42,14 @@ const db = vi.hoisted(() => ({
 vi.mock("../supabase", () => {
   const make = (table: string) => {
     let mutating: string | null = null;
+    let activeOnly = false;
     const builder: Record<string, unknown> = {};
     builder.select = () => builder;
     builder.eq = () => builder;
+    builder.is = (column: string, value: unknown) => {
+      if (column === "removed_at" && value === null) activeOnly = true;
+      return builder;
+    };
     builder.in = () => builder;
     builder.not = () => builder;
     builder.order = () => builder;
@@ -59,7 +64,13 @@ vi.mock("../supabase", () => {
     builder.then = (resolve: (value: unknown) => void) => {
       if (mutating) return resolve({ data: null, error: null });
       if (table === "project_plansets") return resolve({ data: db.plansets, error: null });
-      if (table === "project_openings") return resolve({ data: db.openings, error: null });
+      if (table === "project_openings")
+        return resolve({
+          data: activeOnly
+            ? db.openings.filter((row) => row.removed_at == null)
+            : db.openings,
+          error: null,
+        });
       if (table === "project_mark_specs") return resolve({ data: db.specs, error: null });
       if (table === "window_types")
         return resolve(

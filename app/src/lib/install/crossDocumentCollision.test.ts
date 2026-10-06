@@ -18,9 +18,14 @@ const db = vi.hoisted(() => ({
 vi.mock("../supabase", () => {
   const make = (table: string) => {
     let mutating: string | null = null;
+    let activeOnly = false;
     const builder: Record<string, unknown> = {};
     builder.select = () => builder;
     builder.eq = () => builder;
+    builder.is = (column: string, value: unknown) => {
+      if (column === "removed_at" && value === null) activeOnly = true;
+      return builder;
+    };
     builder.in = () => builder;
     builder.single = () => builder;
     for (const op of ["delete", "update", "upsert"]) {
@@ -38,7 +43,13 @@ vi.mock("../supabase", () => {
     builder.then = (resolve: (value: unknown) => void) => {
       if (mutating) return resolve({ data: { id: "new", type_code: "X" }, error: null });
       if (table === "project_plansets") return resolve({ data: db.plansets, error: null });
-      if (table === "project_openings") return resolve({ data: db.openings, error: null });
+      if (table === "project_openings")
+        return resolve({
+          data: activeOnly
+            ? db.openings.filter((row) => row.removed_at == null)
+            : db.openings,
+          error: null,
+        });
       if (table === "project_mark_specs") return resolve({ data: db.specs, error: db.specsError });
       return resolve({ data: [], error: null });
     };
@@ -120,6 +131,17 @@ beforeEach(() => {
 const aluminum = [draft("1"), draft("9")];
 
 describe("a second CAD set that shares a mark (PV 40)", () => {
+  it("ignores a mark from a removed unit when checking another file", async () => {
+    db.openings = [
+      { ...opening("old-1", "1", "vinyl-cad"), removed_at: "2026-10-05T00:00:00Z" },
+    ];
+
+    await expect(
+      assertNoCrossDocumentMarkCollision("pv40", "aluminum-cad", [draft("1")]),
+    ).resolves.toBeUndefined();
+    expect(db.writes).toEqual([]);
+  });
+
   it("the preflight refuses, naming the mark and the other file", async () => {
     const err = await assertNoCrossDocumentMarkCollision(
       "pv40",

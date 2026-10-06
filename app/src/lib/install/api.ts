@@ -1990,7 +1990,8 @@ export async function assertNoCrossDocumentMarkCollision(
       supabase
         .from("project_openings")
         .select("id, opening_code, planset_id")
-        .eq("project_id", projectId),
+        .eq("project_id", projectId)
+        .is("removed_at", null),
       supabase
         .from("project_mark_specs")
         .select("mark_code, planset_id")
@@ -2074,7 +2075,8 @@ export async function saveDraftOpenings(
     supabase
       .from("project_openings")
       .select(EXISTING_OPENING_COLS)
-      .eq("project_id", projectId),
+      .eq("project_id", projectId)
+      .is("removed_at", null),
   ]);
   if (psErr) throw psErr;
 
@@ -2102,7 +2104,8 @@ export async function saveDraftOpenings(
     const noFieldAdded = await supabase
       .from("project_openings")
       .select(EXISTING_OPENING_COLS_NO_FIELD_ADDED)
-      .eq("project_id", projectId);
+      .eq("project_id", projectId)
+      .is("removed_at", null);
     if (!noFieldAdded.error) {
       existing = noFieldAdded.data;
     } else {
@@ -2110,7 +2113,8 @@ export async function saveDraftOpenings(
       const retry = await supabase
         .from("project_openings")
         .select(EXISTING_OPENING_COLS_NO_QUICK_OK)
-        .eq("project_id", projectId);
+        .eq("project_id", projectId)
+        .is("removed_at", null);
       if (retry.error) throw retry.error;
       existing = retry.data;
     }
