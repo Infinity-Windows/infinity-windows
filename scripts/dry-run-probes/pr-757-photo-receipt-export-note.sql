@@ -55,7 +55,18 @@ begin
   perform pg_temp.dry_run_check('export note reapply preserves original row', v_count = 1 and v_after is not distinct from v_before);
   foreach v_role in array array['installer','foreman','supervisor','owner'] loop
     perform pg_temp.dry_run_as_system();
-    v_person := case when v_role in ('installer','foreman') then pg_temp.dry_run_pick(v_role) else pg_temp.dry_run_pick_real(v_role) end;
+    if v_role in ('installer','foreman') then
+      v_person := pg_temp.dry_run_pick(v_role);
+    else
+      -- Existing production aliases carry the same ranks as the canonical UI
+      -- names. Read an active real account; never modify a profile to test it.
+      select p.id into v_person from public.profiles p
+       where p.role in (v_role, case when v_role = 'supervisor' then 'admin' else 'big_boss' end)
+        and not coalesce(p.is_test, false) and not coalesce(p.is_partner, false)
+        and p.retired_at is null and p.access_revoked_at is null
+       order by p.id limit 1;
+      if v_person is null then raise exception 'dry run: no active real account for % or its legacy alias', v_role; end if;
+    end if;
     perform pg_temp.dry_run_act_as(v_person);
     select count(*) into v_count from public.app_release_notes where id = '2026-10-06-photo-receipt-export';
     perform pg_temp.dry_run_check(v_role || ' sees export note', v_count = 1, format('%s rows', v_count));
