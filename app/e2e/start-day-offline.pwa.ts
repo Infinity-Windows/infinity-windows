@@ -82,6 +82,15 @@ test("an installed phone keeps its saved Start day through a no-network reload a
   await expect(page.getByTestId("ws-start-day")).toHaveCount(0);
   expect(world.clockIns).toHaveLength(0);
   expect(await savedClockPunch(page)).toEqual(beforeReload);
+  const browserNetworkBlocked = await page.evaluate(async () => {
+    try {
+      await fetch(`https://e2efixture.supabase.co/__offline-probe/${crypto.randomUUID()}`, { cache: "no-store" });
+      return false;
+    } catch {
+      return true;
+    }
+  });
+  expect(browserNetworkBlocked, "browser requests to the database are blocked").toBe(true);
   expect(signal.refused, "the phone really was cut off from Forge").toBeGreaterThan(0);
   await expect(request.get(networkProbe), "the server refuses uncached requests after the offline reload").rejects.toThrow();
 
