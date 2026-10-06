@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getRealProfileForPilot } from "../install/api";
+import { getRealProfileForPilot, isProfileReadNetworkFailure } from "../install/api";
 import { signInGeneration, signedInUserId, signInMark, stillSignedInAs, subscribeSignedIn } from "../signedIn";
 import { signInOnThisPhone, supabase } from "../supabase";
 import { forgetOfflinePilotProof, readOfflinePilotProof, rememberOfflinePilotProof } from "./offlinePilotProof";
@@ -45,13 +45,10 @@ async function withReadDeadline<T>(read: Promise<T>): Promise<T> {
 function couldNotCheck(error: unknown): boolean {
   const rec = error && typeof error === "object"
     ? error as { status?: unknown; code?: unknown; message?: unknown } : null;
-  const status = typeof rec?.status === "number" ? rec.status : null;
-  if (status === 401 || status === 403 || status === 404) return false;
-  if (status === 408 || status === 429 || (status !== null && status >= 500)) return true;
-  if (typeof rec?.code === "string" && /^(22|23|42|PGRST30)/.test(rec.code)) return false;
-  const message = typeof rec?.message === "string" ? rec.message.toLowerCase() : "";
-  if (/permission denied|not authorized|forbidden|row-level security/.test(message)) return false;
-  return /failed to fetch|networkerror when attempting to fetch|load failed|fetch failed|the network connection was lost|err_internet_disconnected|err_network_changed|err_connection_(refused|reset|closed|aborted)|err_name_not_resolved|request timed out|timed out while fetching|pilot read timed out|waiting_to_renew/.test(message);
+  if (rec?.status === 404 || (typeof rec?.code === "string" && rec.code.startsWith("PGRST30"))) return false;
+  return isProfileReadNetworkFailure(error)
+    || rec?.message === "pilot read timed out"
+    || rec?.message === "waiting_to_renew";
 }
 
 const FRESH_MS = 10 * 60_000;

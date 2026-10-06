@@ -22,7 +22,8 @@ vi.mock("../supabase", () => ({
   supabase: { rpc: (name: string) => rpc(name) },
   signInOnThisPhone: () => ({ user: { id: signedInUserId() }, access_token: token(loginId) }),
 }));
-vi.mock("../install/api", () => ({
+vi.mock("../install/api", async (importOriginal) => ({
+  isProfileReadNetworkFailure: (await importOriginal<typeof import("../install/api")>()).isProfileReadNetworkFailure,
   getRealProfile: async () => profileUnreachable ? null : ({
     id: signedInUserId(), role, ui_design: choice, active: true, retired_at: null,
   }),

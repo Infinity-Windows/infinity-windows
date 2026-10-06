@@ -280,7 +280,7 @@ async function profileOf(user: User | null): Promise<Profile | null> {
  * settle the read exactly like a fetch failure, without widening the message
  * regex to catch words a genuine 4xx denial could also happen to contain.
  */
-function isProfileReadNetworkFailure(err: unknown): boolean {
+export function isProfileReadNetworkFailure(err: unknown): boolean {
   const rec = err && typeof err === "object" ? (err as { status?: unknown; code?: unknown }) : null;
   const status = typeof rec?.status === "number" ? rec.status : null;
   if (status === 401 || status === 403) return false;
