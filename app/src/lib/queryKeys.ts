@@ -258,6 +258,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "recordMedia", offline: false },
   { root: "removedOpenings", offline: false },
   { root: "redesignPilot", offline: false },
+  { root: "redesignPilotProfile", offline: false, why: "A fresh real-owner profile is required for the pilot; the separate login-bound offline UI proof carries a short-lived fallback." },
   { root: "reorderNeeds", offline: false },
   { root: "savedCrews", offline: false },
   { root: "schedule", offline: false },

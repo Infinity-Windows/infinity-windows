@@ -322,6 +322,25 @@ export async function getRealProfile(): Promise<Profile | null> {
   });
 }
 
+/** The pilot gate must distinguish a real "no profile" from a read that could
+ * not reach the server. The ordinary profile contract above deliberately
+ * collapses those for offline screens, so it must not be changed. */
+export async function getRealProfileForPilot(): Promise<
+  { kind: "answered"; profile: Profile | null } | { kind: "unreachable" }
+> {
+  let user: User | null;
+  try { user = await signedInUser(); }
+  catch (err) {
+    if (couldNotAsk(err)) return { kind: "unreachable" };
+    throw err;
+  }
+  try { return { kind: "answered", profile: await profileOf(user) }; }
+  catch (err) {
+    if (isProfileReadNetworkFailure(err)) return { kind: "unreachable" };
+    throw err;
+  }
+}
+
 /**
  * The profile every "my …" screen reads, and the one the phone KEEPS
  * (queryKeys: myProfile). So it throws when there is no signal to ask who is

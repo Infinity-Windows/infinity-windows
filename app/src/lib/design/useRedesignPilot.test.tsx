@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { rememberSignedIn, signedInUserId, signInGeneration } from "../signedIn";
+import { OFFLINE_PILOT_PROOF_KEY } from "./offlinePilotProof";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -13,11 +14,23 @@ const rpc = vi.fn(async (_name: string): Promise<{ data: boolean | null; error: 
   data: true, error: null,
 }));
 let role = "owner";
-vi.mock("../supabase", () => ({ supabase: { rpc: (name: string) => rpc(name) } }));
+let choice = "new";
+let loginId = "11111111-1111-4111-8111-111111111111";
+let profileUnreachable = false;
+const token = (id: string) => `header.${btoa(JSON.stringify({ sub: OWNER, session_id: id }))}.signature`;
+vi.mock("../supabase", () => ({
+  supabase: { rpc: (name: string) => rpc(name) },
+  signInOnThisPhone: () => ({ user: { id: signedInUserId() }, access_token: token(loginId) }),
+}));
 vi.mock("../install/api", () => ({
-  getRealProfile: async () => ({
-    id: signedInUserId(), role, active: true, retired_at: null,
+  getRealProfile: async () => profileUnreachable ? null : ({
+    id: signedInUserId(), role, ui_design: choice, active: true, retired_at: null,
   }),
+  getRealProfileForPilot: async () => profileUnreachable
+    ? { kind: "unreachable" }
+    : { kind: "answered", profile: {
+      id: signedInUserId(), role, ui_design: choice, active: true, retired_at: null,
+    } },
 }));
 const { useRedesignPilot } = await import("./useRedesignPilot");
 
@@ -43,6 +56,10 @@ async function mount(seed?: (client: QueryClient) => void) {
 
 beforeEach(() => {
   role = "owner";
+  choice = "new";
+  profileUnreachable = false;
+  loginId = "11111111-1111-4111-8111-111111111111";
+  localStorage.clear();
   rpc.mockReset();
   rpc.mockResolvedValue({ data: true, error: null });
   Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
@@ -65,7 +82,7 @@ describe("owner redesign pilot admission", () => {
     expect(answer).toBe(true);
     expect(rpc).toHaveBeenCalledWith("my_redesign_pilot_access");
     role = "installer";
-    await act(async () => { await qc!.invalidateQueries({ queryKey: ["myRealProfile"] }); });
+    await act(async () => { await qc!.invalidateQueries({ queryKey: ["redesignPilotProfile"] }); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     expect(answer).toBe(false);
   });
@@ -77,7 +94,7 @@ describe("owner redesign pilot admission", () => {
     rpc.mockResolvedValue({ data: false, error: null });
     await act(async () => rememberSignedIn({ user: { id: CREW } }));
     expect(answer).toBe(false);
-    await act(async () => { await qc!.invalidateQueries({ queryKey: ["myRealProfile"] }); });
+    await act(async () => { await qc!.invalidateQueries({ queryKey: ["redesignPilotProfile"] }); });
     expect(answer).toBe(false);
   });
 
@@ -98,6 +115,7 @@ describe("owner redesign pilot admission", () => {
     await act(async () => { await qc!.invalidateQueries({ queryKey: ["redesignPilot"] }); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
     expect(answer).toBe(false);
+    expect(localStorage.getItem(OFFLINE_PILOT_PROOF_KEY)).toBeNull();
   });
 
   it("does not admit on a missing or failing server function", async () => {
@@ -116,5 +134,78 @@ describe("owner redesign pilot admission", () => {
     expect(answer).toBe(false);
     await act(async () => finish?.({ data: false, error: null }));
     expect(answer).toBe(false);
+  });
+
+  it("keeps New after an offline full remount for the same owner login", async () => {
+    await mount();
+    expect(answer).toBe(true);
+    expect(localStorage.getItem(OFFLINE_PILOT_PROOF_KEY)).toContain(OWNER);
+    act(() => root?.unmount());
+    qc?.clear(); host?.remove(); root = null; qc = null; host = null;
+    profileUnreachable = true;
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
+    onlineManager.setOnline(false);
+    await act(async () => window.dispatchEvent(new Event("offline")));
+    await mount();
+    expect(answer).toBe(true);
+  });
+
+  it("keeps New when the phone claims online but both server reads cannot connect", async () => {
+    await mount();
+    expect(answer).toBe(true);
+    act(() => root?.unmount());
+    qc?.clear(); host?.remove(); root = null; qc = null; host = null;
+    profileUnreachable = true;
+    rpc.mockResolvedValue({ data: null, error: { message: "Failed to fetch" } });
+    await mount();
+    expect(answer).toBe(true);
+  });
+
+  it("does not use a stored yes before an online server attempt finishes", async () => {
+    await mount();
+    expect(answer).toBe(true);
+    act(() => root?.unmount());
+    qc?.clear(); host?.remove(); root = null; qc = null; host = null;
+    let finish: ((value: { data: boolean | null; error: { message: string } | null }) => void) | null = null;
+    rpc.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    await mount();
+    expect(answer).toBe(false);
+    await act(async () => finish?.({ data: false, error: null }));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(answer).toBe(false);
+    expect(localStorage.getItem(OFFLINE_PILOT_PROOF_KEY)).toBeNull();
+  });
+
+  it("does not reuse an offline proof after the same owner signs in again", async () => {
+    await mount();
+    expect(answer).toBe(true);
+    act(() => root?.unmount());
+    qc?.clear(); host?.remove(); root = null; qc = null; host = null;
+    rememberSignedIn(null);
+    loginId = "22222222-2222-4222-8222-222222222222";
+    rememberSignedIn({ user: { id: OWNER } });
+    profileUnreachable = true;
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
+    onlineManager.setOnline(false);
+    await mount();
+    expect(answer).toBe(false);
+  });
+
+  it("erases the offline proof on sign-out", async () => {
+    await mount();
+    expect(localStorage.getItem(OFFLINE_PILOT_PROOF_KEY)).not.toBeNull();
+    await act(async () => rememberSignedIn(null));
+    expect(answer).toBe(false);
+    expect(localStorage.getItem(OFFLINE_PILOT_PROOF_KEY)).toBeNull();
+  });
+
+  it("removes an admitted owner's offline proof when they choose Classic", async () => {
+    await mount();
+    expect(answer).toBe(true);
+    choice = "classic";
+    await act(async () => { await qc!.invalidateQueries({ queryKey: ["redesignPilotProfile"] }); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(answer).toBe(true); // The grant remains; the owner can switch back.
+    expect(localStorage.getItem(OFFLINE_PILOT_PROOF_KEY)).toBeNull();
   });
 });

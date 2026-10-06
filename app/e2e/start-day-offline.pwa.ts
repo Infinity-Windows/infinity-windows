@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { useSupabaseFixtures } from "./support/supabaseFixtures";
+import { FIXTURE_SESSION, TEST_USER, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { OFFLINE_PILOT_PROOF_KEY } from "../src/lib/design/offlinePilotProof";
 import { hideWrongProjectBanner, json, stubGeolocationDenied } from "./support/specHelpers";
 import { morningFixtures, OAKRIDGE } from "./support/release1Fixtures";
 import { serviceWorkerReady } from "./support/pwa";
@@ -8,9 +9,14 @@ import { savedClockPunch } from "./support/savedClockPunch";
 // The installed app's worker supplies the shell while the local server refuses
 // browser traffic. WebKit's inspector rejects page.reload with setOffline or
 // a page-wide route abort before the worker can respond.
-test("the owner pilot preserves its saved Start day when an offline reload falls back to Classic", async ({ page, request }) => {
+test("the owner pilot reopens New with its saved Start day after an offline reload", async ({ page, request }) => {
   await request.post("/__pwa-harness/network/online");
-  await useSupabaseFixtures(page, { role: "owner", uiDesign: "new" });
+  const loginId = "11111111-1111-4111-8111-111111111111";
+  const claims = Buffer.from(JSON.stringify({ sub: TEST_USER.id, session_id: loginId })).toString("base64url");
+  await useSupabaseFixtures(page, {
+    session: "phone", role: "owner", uiDesign: "new",
+    authSession: { ...FIXTURE_SESSION, access_token: `header.${claims}.signature` },
+  });
   await page.route((url) => /\/rest\/v1\/rpc\/my_redesign_pilot_access(\?|$)/.test(url.href),
     (route) => json(route, true, null));
   await hideWrongProjectBanner(page);
@@ -41,23 +47,91 @@ test("the owner pilot preserves its saved Start day when an offline reload falls
   await expect(clock).toContainText("Clocked in");
   await expect(clock).toContainText("Saved on this phone");
   expect(world.clockIns).toHaveLength(0);
+  expect(await page.evaluate((key) => localStorage.getItem(key), OFFLINE_PILOT_PROOF_KEY)).toContain(TEST_USER.id);
   const beforeReload = await savedClockPunch(page);
   expect(beforeReload).toHaveLength(1);
 
   await page.reload();
   await serviceWorkerReady(page);
-  // A fresh pilot admission cannot be checked during the offline reload. The
-  // account-specific gate closes the New screen, while the original punch
-  // stays on this phone for the next connected session.
-  await expect(page.getByRole("heading", { name: "Current Work" })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("status").filter({ hasText: "Clock 1" })).toBeVisible();
-  await expect(clock).toHaveCount(0);
+  // The last server-confirmed, login-bound choice keeps this owner's New
+  // screen open. The original clock punch remains local and is not duplicated.
+  await expect(clock).toBeVisible({ timeout: 30_000 });
+  await expect(clock).toContainText("Clocked in");
+  await expect(clock).toContainText("Saved on this phone");
   await expect(page.getByTestId("ws-start-day")).toHaveCount(0);
   expect(world.clockIns).toHaveLength(0);
   expect(await savedClockPunch(page)).toEqual(beforeReload);
   await expect(request.get(networkProbe), "the server refuses uncached requests after the offline reload").rejects.toThrow();
   expect(beforeReload[0].payload.projectId).toBe(OAKRIDGE);
   expect(beforeReload[0].ownerId).toBeTruthy();
+});
+
+test("the owner's confirmed Classic choice stays Classic after an offline reload", async ({ page, request }) => {
+  await request.post("/__pwa-harness/network/online");
+  const live = { ui_design: "new" };
+  const claims = Buffer.from(JSON.stringify({
+    sub: TEST_USER.id, session_id: "33333333-3333-4333-8333-333333333333",
+  })).toString("base64url");
+  await useSupabaseFixtures(page, {
+    session: "phone", role: "owner", uiDesign: "new",
+    authSession: { ...FIXTURE_SESSION, access_token: `header.${claims}.signature` },
+    profileOverrides: () => live,
+  });
+  await page.route((url) => /\/rest\/v1\/rpc\/my_redesign_pilot_access(\?|$)/.test(url.href),
+    (route) => json(route, true, null));
+  const signal = { dead: false };
+  await page.route(/e2efixture\.supabase\.co/, (route) => signal.dead
+    ? route.abort("internetdisconnected") : route.fallback());
+  await stubGeolocationDenied(page);
+  await morningFixtures(page, { signed: true, myOpening: true });
+  await page.route((url) => /\/rest\/v1\/rpc\/set_my_ui_design(\?|$)/.test(url.href), (route) => {
+    live.ui_design = "classic";
+    return json(route, null, null);
+  });
+  await page.goto("/");
+  await serviceWorkerReady(page);
+  await expect(page.getByTestId("work-screen")).toBeVisible();
+  expect(await page.evaluate((key) => localStorage.getItem(key), OFFLINE_PILOT_PROOF_KEY)).toContain(TEST_USER.id);
+
+  await page.goto("/settings");
+  await page.getByRole("button", { name: "Use the classic design" }).click();
+  await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), OFFLINE_PILOT_PROOF_KEY)).toBeNull();
+  signal.dead = true;
+  await request.post("/__pwa-harness/network/offline");
+  await page.reload();
+  await serviceWorkerReady(page);
+  await page.goto("/");
+  await expect(page.locator(".clockin-block")).toBeVisible();
+  await expect(page.getByTestId("work-screen")).toHaveCount(0);
+});
+
+test("an installer who selected New still reloads into Classic without signal", async ({ page, request }) => {
+  await request.post("/__pwa-harness/network/online");
+  const claims = Buffer.from(JSON.stringify({
+    sub: TEST_USER.id, session_id: "44444444-4444-4444-8444-444444444444",
+  })).toString("base64url");
+  await useSupabaseFixtures(page, {
+    session: "phone", role: "installer", uiDesign: "new",
+    authSession: { ...FIXTURE_SESSION, access_token: `header.${claims}.signature` },
+  });
+  await page.route((url) => /\/rest\/v1\/rpc\/my_redesign_pilot_access(\?|$)/.test(url.href),
+    (route) => json(route, false, null));
+  const signal = { dead: false };
+  await page.route(/e2efixture\.supabase\.co/, (route) => signal.dead
+    ? route.abort("internetdisconnected") : route.fallback());
+  await stubGeolocationDenied(page);
+  await morningFixtures(page, { signed: true, myOpening: true });
+  await page.goto("/");
+  await serviceWorkerReady(page);
+  await expect(page.locator(".clockin-block")).toBeVisible();
+  await expect(page.getByTestId("work-screen")).toHaveCount(0);
+
+  signal.dead = true;
+  await request.post("/__pwa-harness/network/offline");
+  await page.reload();
+  await serviceWorkerReady(page);
+  await expect(page.locator(".clockin-block")).toBeVisible();
+  await expect(page.getByTestId("work-screen")).toHaveCount(0);
 });
 
 test.afterEach(async ({ request }) => {

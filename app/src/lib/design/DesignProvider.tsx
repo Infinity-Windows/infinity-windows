@@ -13,9 +13,12 @@ import { toastError } from "../toast";
 import { DesignContext, type DesignContextValue } from "./context";
 import { DESIGN_CACHE_KEY, normalizeDesign, resolveDesign, type UiDesign } from "./design";
 import { useRedesignPilotState } from "./useRedesignPilot";
-import { signInMark, stillSignedInAs } from "../signedIn";
+import { signInMark, signedInUserId, stillSignedInAs } from "../signedIn";
+import { forgetOfflinePilotProof } from "./offlinePilotProof";
+import { useT } from "../i18n";
 
 export function DesignProvider({ children }: { children: ReactNode }) {
+  const t = useT();
   const queryClient = useQueryClient();
   // Keys off the REAL profile, not the view-as-person preview: which front
   // door renders is the viewer's own preference, the same rule the language
@@ -27,9 +30,13 @@ export function DesignProvider({ children }: { children: ReactNode }) {
     try { localStorage.removeItem(DESIGN_CACHE_KEY); } catch { /* storage denied */ }
   }, []);
 
-  const choice: UiDesign | null = me.data
-    ? normalizeDesign((me.data as Profile).ui_design)
-    : null;
+  // A fresh real-profile Classic answer must beat an older offline New copy.
+  // Cached profile data from a prior login cannot beat the login-bound proof.
+  const currentProfileChoice = me.data?.id === signedInUserId()
+    ? normalizeDesign((me.data as Profile).ui_design) : null;
+  const choice: UiDesign | null = pilot.serverChoice
+    ?? (me.isFetchedAfterMount ? currentProfileChoice : null)
+    ?? pilot.offlineChoice ?? currentProfileChoice;
   // The crew reveal switch remains separate. During the owner pilot, only a
   // fresh, account-bound server admission can show the new front door. Never
   // use the old shared-device cache or an unknown company setting to admit.
@@ -55,9 +62,17 @@ export function DesignProvider({ children }: { children: ReactNode }) {
       void setMyUiDesign(next)
         .then(() => {
           if (!stillSignedInAs(mark, mark.userId!)) return;
+          if (next === "classic") forgetOfflinePilotProof();
           queryClient.setQueryData<Profile | null>(["myRealProfile"], patch);
           queryClient.setQueryData<Profile | null>(["myProfile"], patch);
+          queryClient.setQueriesData<{ kind: "answered"; profile: Profile | null } | { kind: "unreachable" }>(
+            { queryKey: ["redesignPilotProfile", mark.userId] },
+            (old) => old?.kind === "answered" && old.profile?.id === mark.userId
+              ? { kind: "answered", profile: { ...old.profile, ui_design: next } }
+              : old,
+          );
           void queryClient.invalidateQueries({ queryKey: ["myRealProfile"] });
+          void queryClient.invalidateQueries({ queryKey: ["redesignPilotProfile", mark.userId] });
         })
         .catch((e) => {
           toastError(e);
@@ -72,5 +87,10 @@ export function DesignProvider({ children }: { children: ReactNode }) {
     [design, choice, pilotAdmitted, pilot.ready, setChoice],
   );
 
-  return <DesignContext.Provider value={value}>{children}</DesignContext.Provider>;
+  // When the phone claims it is online but its saved pilot proof is still
+  // awaiting this boot's server answer, show a neutral wait rather than a
+  // brief Classic screen that jumps to New seven seconds later.
+  return <DesignContext.Provider value={value}>
+    {pilot.pendingProof ? <div className="page" role="status">{t("design.pilot.opening")}</div> : children}
+  </DesignContext.Provider>;
 }

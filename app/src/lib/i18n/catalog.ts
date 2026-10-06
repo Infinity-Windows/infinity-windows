@@ -5581,6 +5581,7 @@ export const CATALOG = {
   "pin.setter.saved": { en: "PIN saved.", es: "PIN guardado." },
   // ---- Release 1, the new front door (crew redesign spec, 2026-09-23) ----
   "design.try.title": { en: "Try the new Forge", es: "Prueba el nuevo Forge" },
+  "design.pilot.opening": { en: "Opening Forge…", es: "Abriendo Forge…" },
   "design.try.body": {
     en: "One screen with your clock, today's job and your next unit. Your work saves the same either way, and you can switch back any time in Settings.",
     es: "Una sola pantalla con tu reloj, el trabajo de hoy y tu siguiente unidad. Tu trabajo se guarda igual de las dos formas y puedes volver cuando quieras en Ajustes.",

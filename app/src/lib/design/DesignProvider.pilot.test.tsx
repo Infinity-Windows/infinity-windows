@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { rememberSignedIn } from "../signedIn";
 import { classicDesignSettled } from "../work/scheduleStartWorkIntent";
+import { OFFLINE_PILOT_PROOF_KEY } from "./offlinePilotProof";
 import { DesignProvider } from "./DesignProvider";
 import { useDesign } from "./context";
 
@@ -13,10 +14,14 @@ const OWNER = "00000000-0000-4000-8000-000000000101";
 let admitted = false;
 let ready = true;
 let savedChoice = "new";
+let offlineChoice: "new" | null = null;
+let serverChoice: "new" | "classic" | null = null;
+let profileAvailable = true;
+let pendingProof = false;
 const writeChoice = vi.fn(async (_choice: string) => {});
-vi.mock("./useRedesignPilot", () => ({ useRedesignPilotState: () => ({ admitted, ready }) }));
+vi.mock("./useRedesignPilot", () => ({ useRedesignPilotState: () => ({ admitted, ready, offlineChoice, serverChoice, pendingProof }) }));
 vi.mock("../install/api", () => ({
-  getRealProfile: async () => ({ id: OWNER, role: "owner", ui_design: savedChoice }),
+  getRealProfile: async () => profileAvailable ? ({ id: OWNER, role: "owner", ui_design: savedChoice }) : null,
   setMyUiDesign: (choice: string) => writeChoice(choice),
 }));
 
@@ -45,7 +50,9 @@ async function mount() {
 afterEach(() => {
   act(() => root?.unmount()); host?.remove(); qc?.clear();
   root = null; host = null; qc = null;
-  admitted = false; ready = true; savedChoice = "new"; writeChoice.mockClear();
+  admitted = false; ready = true; savedChoice = "new";
+  offlineChoice = null; serverChoice = null; profileAvailable = true; pendingProof = false;
+  writeChoice.mockReset(); writeChoice.mockImplementation(async () => {});
   rememberSignedIn(null); localStorage.clear();
 });
 
@@ -76,5 +83,47 @@ describe("owner pilot front door", () => {
       <DesignProvider><Reader /></DesignProvider>
     </QueryClientProvider>));
     expect(design).toBe("classic");
+  });
+
+  it("drops the offline New copy after choosing Classic and allows switching back", async () => {
+    admitted = true;
+    rememberSignedIn({ user: { id: OWNER } });
+    writeChoice.mockImplementation(async (next: string) => { savedChoice = next; });
+    localStorage.setItem(OFFLINE_PILOT_PROOF_KEY, "earlier-new-proof");
+    await mount();
+    expect(design).toBe("new");
+    await act(async () => { choose("classic"); await new Promise((resolve) => setTimeout(resolve, 10)); });
+    expect(design).toBe("classic");
+    expect(localStorage.getItem(OFFLINE_PILOT_PROOF_KEY)).toBeNull();
+    await act(async () => { choose("new"); await new Promise((resolve) => setTimeout(resolve, 10)); });
+    expect(design).toBe("new");
+    expect(writeChoice).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses New with no profile signal but honors a later fresh Classic answer", async () => {
+    admitted = true;
+    offlineChoice = "new";
+    profileAvailable = false;
+    rememberSignedIn({ user: { id: OWNER } });
+    await mount();
+    expect(design).toBe("new");
+    profileAvailable = true;
+    savedChoice = "classic";
+    await act(async () => { await qc!.invalidateQueries({ queryKey: ["myRealProfile"] }); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(design).toBe("classic");
+  });
+
+  it("shows a neutral wait instead of flashing Classic while an online proof check hangs", async () => {
+    pendingProof = true;
+    rememberSignedIn({ user: { id: OWNER } });
+    await mount();
+    expect(host?.textContent).toContain("Opening Forge");
+    expect(host?.textContent).not.toContain("classic");
+    pendingProof = false; offlineChoice = "new"; admitted = true;
+    await act(async () => root!.render(<QueryClientProvider client={qc!}>
+      <DesignProvider><Reader /></DesignProvider>
+    </QueryClientProvider>));
+    expect(design).toBe("new");
   });
 });
