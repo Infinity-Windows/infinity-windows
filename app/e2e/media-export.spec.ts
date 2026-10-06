@@ -125,6 +125,38 @@ async function downloadedZip(page: Page, buttonName: string, testInfo: TestInfo)
   return JSZip.loadAsync(readFileSync(path));
 }
 
+for (const { width, height } of [{ width: 390, height: 844 }, { width: 859, height: 844 }, { width: 860, height: 844 }, { width: 1280, height: 711 }]) {
+  for (const kind of ["photo", "receipt"] as const) {
+    test(`${kind} export dialog fits a ${width}x${height} viewport`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      if (width === 860) await page.emulateMedia({ reducedMotion: "reduce" });
+      await useMediaExportFixtures(page, kind, [kind === "photo" ? photo(1) : receipt("receipt-1")]);
+      const dialog = await openExport(page, kind);
+      // The sheet enters from below; measure after its mount animation settles.
+      await expect.poll(async () => {
+        const b = await dialog.boundingBox();
+        return !!b && b.x >= -1 && b.y >= -1 && b.x + b.width <= width + 1 && b.y + b.height <= height + 1 &&
+          (width < 860 || (Math.abs(b.x + b.width / 2 - width / 2) <= 2 && Math.abs(b.y + b.height / 2 - height / 2) <= 2));
+      }).toBe(true);
+      const box = await dialog.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.x).toBeGreaterThanOrEqual(-1);
+      expect(box!.y).toBeGreaterThanOrEqual(-1);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(height + 1);
+      if (width >= 860) {
+        expect(Math.abs(box!.x + box!.width / 2 - width / 2)).toBeLessThanOrEqual(2);
+        expect(Math.abs(box!.y + box!.height / 2 - height / 2)).toBeLessThanOrEqual(2);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await expect(dialog.getByRole("button", { name: "Close" })).toBeInViewport();
+      const prepare = dialog.getByRole("button", { name: "Prepare export" });
+      await prepare.scrollIntoViewIfNeeded();
+      await expect(prepare).toBeInViewport();
+    });
+  }
+}
+
 test("photo export pages past 60, keeps the chosen job and both date edges, and honors individual selection", async ({ page }, testInfo) => {
   const rows = Array.from({ length: 501 }, (_, i) => photo(i));
   rows[0] = photo(0, JOB.projectId, "2026-10-05T06:00:00Z"); // midnight in Denver
