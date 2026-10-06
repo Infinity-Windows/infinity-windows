@@ -65,7 +65,7 @@ test("steel phone preview runs the actual signed-in app at 390 and 320 pixels", 
   await page.getByRole("link", { name: "Phone view", exact: true }).click();
   const phone = page.frameLocator('iframe[title="Forge Workshop phone app"]');
   await expect(phone.getByRole("status").filter({ hasText: "FORGE WORKSHOP" })).toBeVisible();
-  await expect(phone.locator(".steel-home")).toBeVisible();
+  await expect(phone.getByRole("button", { name: "Clock in", exact: true })).toBeVisible();
   await expect(phone.getByRole("link", { name: "Phone view", exact: true })).toHaveCount(0);
   for (const width of [390, 320]) {
     await page.getByRole("combobox", { name: "Phone width", exact: true }).selectOption(String(width));
@@ -82,7 +82,7 @@ test("steel phone preview runs the actual signed-in app at 390 and 320 pixels", 
   expect(await page.evaluate(() => localStorage.getItem("infinity.display-mode"))).toBe("desktop");
   expect(await page.evaluate(() => localStorage.getItem("infinity.display-mode"))).toBe("desktop");
   await page.getByRole("link", { name: "Back to app", exact: true }).click();
-  await expect(page.locator(".steel-home")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Clock in", exact: true })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "Primary", exact: true })).toBeVisible();
   expect(requests).toEqual([]);
 });

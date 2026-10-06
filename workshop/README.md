@@ -2,7 +2,7 @@
 
 This branch is a practice environment, not a production release branch. Do not merge the whole branch into master: its production workflows are intentionally quarantined.
 
-The Git baseline is production `ee08f7f`, with the later export change from production `3561c02` consumed as workshop cherry-pick `3baf3fb7` with the workshop guard. The approved steel shell is mounted locally. Field roles and /work now show just Clock in and today’s toolbox talk before a shift. The full redesigned native activity engine is still held in its separately owned candidate. Its assembly refusal has not been removed or bypassed. The workshop is where that integration can be developed safely; a functioning workshop is not proof the full redesign is complete.
+The Git baseline is production `ee08f7f`, with the later export change from production `3561c02` consumed as workshop cherry-pick `3baf3fb7` with the workshop guard. The approved steel shell is mounted locally. Every role lands on Clock in and today’s toolbox talk before a shift. The optional steel manager dashboard is at /workshop-home for supervisor/owner views; it is not the default starting flow. The full redesigned native activity engine is still held in its separately owned candidate. Its assembly refusal has not been removed or bypassed. The workshop is where that integration can be developed safely; a functioning workshop is not proof the full redesign is complete.
 
 ## Open the practice app
 

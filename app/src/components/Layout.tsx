@@ -256,7 +256,6 @@ export function Layout() {
     items: section.items.filter((item) => !(STEEL_WORKSHOP && !clock.shift && item.action === "open-clock")).map((item) => ({
       ...item,
       ...(item.labelKey ? { label: t(item.labelKey) } : {}),
-      ...(STEEL_WORKSHOP && roleRank(role) >= 2 && item.to === "/" && design === "new" ? { label: es ? "Inicio" : "Home" } : {}),
     })),
   }));
   const isActionActive = (action: MenuAction) => (action === "open-clock" ? clock.isOpen : false);
@@ -404,8 +403,8 @@ export function Layout() {
             </Link>
           )}
           {STEEL_WORKSHOP && roleRank(role) >= 2 && (
-            <Link to="/work" className="menu-item steel-work-link">
-              <Hammer size={18} aria-hidden /><span>{t("nav.work")}</span>
+            <Link to="/workshop-home" className="menu-item steel-work-link">
+              <LayoutGrid size={18} aria-hidden /><span>{es ? "Inicio" : "Home"}</span>
             </Link>
           )}
           {/* Desktop's only door to Capture. The bottom bar — and with it the
@@ -605,7 +604,12 @@ export function Layout() {
         onAction={onMenuAction}
         isActionActive={isActionActive}
         onSignOut={handleSignOut}
-        footer={viewAsPicker}
+        footer={STEEL_WORKSHOP ? <>
+          {STEEL_WORKSHOP && roleRank(role) >= 2 && <Link to="/workshop-home" className="menu-item" onClick={() => setMenuOpen(false)}>
+            <LayoutGrid size={18} aria-hidden /><span>{es ? "Inicio" : "Home"}</span>
+          </Link>}
+          {viewAsPicker}
+        </> : viewAsPicker}
       />
       <OnboardingWizard open={wizardOpen} onClose={closeOnboardingWizard} />
     </div>

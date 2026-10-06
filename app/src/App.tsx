@@ -271,11 +271,11 @@ function RoleLanding() {
   // role, on and off the clock — Work carries the clock, the running unit and
   // Next up itself. A running service visit above still wins in both designs.
   // Forge Workshop only: Work is the first screen for the field, and the
-  // office gets the steel home with Work one tap away (/work below).
+  // every role starts with Clock in and the talk. The approved manager
+  // dashboard is a separate optional destination, never the starting flow.
   if (SteelWorkshopHome) {
     if (isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
-    if (clock.shift) return WorkshopWorkEntry ? <WorkshopWorkEntry /> : <WorkScreen />;
-    return roleRank(role) >= 2 ? <SteelWorkshopHome /> : WorkshopWorkEntry ? <WorkshopWorkEntry /> : <WorkScreen />;
+    return WorkshopWorkEntry ? <WorkshopWorkEntry /> : <WorkScreen />;
   }
   if (design === "new") return <WorkScreen />;
   if (clock.shift?.status === "open") return <CurrentWork />;
@@ -750,6 +750,7 @@ export default function App() {
           <Route element={<RequirePartnerElsewhere><Layout /></RequirePartnerElsewhere>}>
             <Route path="/" element={<RoleLanding />} />
             {WorkshopWorkEntry && <Route path="/work" element={<WorkshopWorkEntry />} />}
+            {SteelWorkshopHome && <Route path="/workshop-home" element={<RequireRole path="/heartbeat"><SteelWorkshopHome /></RequireRole>} />}
             <Route path="/current-work" element={<RequireRole path="/current-work"><CurrentWork /></RequireRole>} />
             <Route path="/warehouse" element={<Warehouse />} />
             {/* One list per hub number: /warehouse/on-hand, /putaway, /staged,
