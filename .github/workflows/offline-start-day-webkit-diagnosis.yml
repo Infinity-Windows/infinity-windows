@@ -8,6 +8,9 @@ on:
       - app/e2e/offline-reload-webkit-diagnostic.spec.ts
       - app/e2e/offline-shell-webkit-diagnostic.pwa.ts
       - app/e2e/start-day-offline.pwa.ts
+      - app/e2e/start-day-request-outage.spec.ts
+      - app/e2e/support/savedClockPunch.ts
+      - app/e2e/support/pwaHarness.ts
       - app/e2e/start-day.spec.ts
 
 permissions:
@@ -28,19 +31,23 @@ jobs:
         working-directory: app
       - run: npx --no-install playwright install --with-deps webkit
         working-directory: app
-      - name: Verify installed app retains one clock punch through a blocked-network reload
+      - name: Verify installed app retention and request retry in WebKit
         working-directory: app
         run: |
+          set +e
           IW_PWA_OLD_REF=HEAD npx --no-install playwright test --config playwright.pwa.config.ts --browser=webkit start-day-offline.pwa.ts > ../offline-start-day-pwa-webkit.log 2>&1
-          test_status=$?
-          cat ../offline-start-day-pwa-webkit.log
-          exit "$test_status"
+          pwa_status=$?
+          npm run e2e -- start-day-request-outage.spec.ts --browser=webkit > ../offline-start-day-request-webkit.log 2>&1
+          request_status=$?
+          cat ../offline-start-day-pwa-webkit.log ../offline-start-day-request-webkit.log
+          test "$pwa_status" -eq 0 && test "$request_status" -eq 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: offline-start-day-webkit-${{ github.sha }}
           path: |
             offline-start-day-pwa-webkit.log
+            offline-start-day-request-webkit.log
             app/e2e/test-results/
           if-no-files-found: ignore
           retention-days: 14
