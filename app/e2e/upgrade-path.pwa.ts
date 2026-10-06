@@ -70,6 +70,7 @@ type CdpStack = { callFrames: CdpCallFrame[]; parent?: CdpStack };
 const PROVENANCE_MAX_EVENTS = 500;
 const PROVENANCE_MAX_REQUESTS = 250;
 const PROVENANCE_MAX_FRAMES_TRACKED = 64;
+const PROVENANCE_MAX_CRITICAL_EVENTS = 100;
 const PROVENANCE_STACK_FRAMES = 4;
 const PROVENANCE_STACK_DEPTH = 2;
 
@@ -88,11 +89,16 @@ const PROVENANCE_STACK_DEPTH = 2;
  */
 async function observeProvenance(cdp: CDPSession, admittedOrigin: string | null) {
   const events: Record<string, unknown>[] = [];
-  const requests = new Map<string, { path: string; loaderId: string; frameId: string | null; resourceType: string | null }>();
+  const criticalEvents: Record<string, unknown>[] = [];
+  const requests = new Map<string, { path: string; loaderId: string; frameId: string | null; resourceType: string | null; initiator: unknown }>();
   const frames = new Set<string>();
   const enableErrors: string[] = [];
   let droppedEvents = 0;
   let evictedRequests = 0;
+  let droppedCriticalEvents = 0;
+  let unmatchedEvents = 0;
+  let unmatchedFailures = 0;
+  let sequence = 0;
   const admitted = (raw: string | undefined) => {
     try { return !!raw && admittedOrigin !== null && new URL(raw).origin === admittedOrigin; } catch { return false; }
   };
@@ -101,14 +107,23 @@ async function observeProvenance(cdp: CDPSession, admittedOrigin: string | null)
     try { const url = new URL(raw); return url.origin === admittedOrigin ? url.pathname : "(other origin)"; } catch { return "(unparsed)"; }
   };
   const push = (event: Record<string, unknown>) => {
-    events.push({ ...event, observedAtEpochMs: Date.now() });
+    const recorded = { ...event, sequence: sequence++, observedAtEpochMs: Date.now() };
+    events.push(recorded);
     if (events.length > PROVENANCE_MAX_EVENTS) { events.shift(); droppedEvents += 1; }
+    // Recovery traffic overwrote the initial cancellation window in retained
+    // CI 37403423832. Keep a bounded first critical window beside the tail.
+    if (event.kind === "loadingFailed" || event.kind === "frameNavigated" ||
+        event.resourceType === "Document" || /^\/assets\/index-[\w-]+\.js$/.test(String(event.path ?? ""))) {
+      if (criticalEvents.length < PROVENANCE_MAX_CRITICAL_EVENTS) criticalEvents.push(recorded);
+      else droppedCriticalEvents += 1;
+    }
   };
   const stackOf = (stack: CdpStack | undefined, depth = 0): unknown =>
     stack && depth < PROVENANCE_STACK_DEPTH
       ? {
           callFrames: stack.callFrames.slice(0, PROVENANCE_STACK_FRAMES).map((f) => ({
-            path: pathOf(f.url), functionName: (f.functionName || "").slice(0, 80), line: f.lineNumber, column: f.columnNumber,
+            path: pathOf(f.url), functionName: admitted(f.url) ? (f.functionName || "").slice(0, 80) : "",
+            line: admitted(f.url) ? f.lineNumber : null, column: admitted(f.url) ? f.columnNumber : null,
           })),
           parent: stackOf(stack.parent, depth + 1),
         }
@@ -130,14 +145,15 @@ async function observeProvenance(cdp: CDPSession, admittedOrigin: string | null)
       evictedRequests += 1;
     }
     const path = pathOf(e.request.url);
-    requests.set(e.requestId, { path, loaderId: e.loaderId, frameId: e.frameId ?? null, resourceType: e.type ?? null });
+    const initiator = { type: e.initiator.type, path: e.initiator.url ? pathOf(e.initiator.url) : null,
+      line: admitted(e.initiator.url) ? e.initiator.lineNumber ?? null : null, stack: stackOf(e.initiator.stack) };
+    requests.set(e.requestId, { path, loaderId: e.loaderId, frameId: e.frameId ?? null, resourceType: e.type ?? null, initiator });
     track(e.frameId);
     push({
       kind: "requestWillBeSent", requestId: e.requestId, loaderId: e.loaderId, frameId: e.frameId ?? null,
       cdpMonotonicSec: e.timestamp, browserWallTimeSec: e.wallTime, path, resourceType: e.type ?? null,
       redirect: e.redirectResponse !== undefined,
-      initiator: { type: e.initiator.type, path: e.initiator.url ? pathOf(e.initiator.url) : null,
-        line: e.initiator.lineNumber ?? null, stack: stackOf(e.initiator.stack) },
+      initiator,
     });
   };
   const onResponse = (e: {
@@ -145,28 +161,30 @@ async function observeProvenance(cdp: CDPSession, admittedOrigin: string | null)
     response: { status: number; fromServiceWorker?: boolean; fromDiskCache?: boolean; fromPrefetchCache?: boolean; protocol?: string };
   }) => {
     const r = requests.get(e.requestId);
-    if (!r) return;
+    if (!r) { unmatchedEvents += 1; return; }
     push({
       kind: "responseReceived", requestId: e.requestId, loaderId: e.loaderId, frameId: e.frameId ?? null,
-      cdpMonotonicSec: e.timestamp, path: r.path, status: e.response.status,
+      cdpMonotonicSec: e.timestamp, path: r.path, resourceType: r.resourceType, status: e.response.status,
       fromServiceWorker: e.response.fromServiceWorker ?? null, fromDiskCache: e.response.fromDiskCache ?? null,
       fromPrefetchCache: e.response.fromPrefetchCache ?? null, protocol: e.response.protocol ?? null,
     });
   };
   const onFailed = (e: { requestId: string; timestamp: number; errorText: string; canceled?: boolean; blockedReason?: string }) => {
     const r = requests.get(e.requestId);
-    if (!r) return;
+    if (!r) { unmatchedEvents += 1; unmatchedFailures += 1; return; }
+    requests.delete(e.requestId);
     push({
       kind: "loadingFailed", requestId: e.requestId, loaderId: r.loaderId, frameId: r.frameId, cdpMonotonicSec: e.timestamp,
-      path: r.path, resourceType: r.resourceType, errorText: e.errorText, canceled: Boolean(e.canceled), blockedReason: e.blockedReason ?? null,
+      path: r.path, resourceType: r.resourceType, initiator: r.initiator, errorText: e.errorText, canceled: Boolean(e.canceled), blockedReason: e.blockedReason ?? null,
     });
   };
   const onFinished = (e: { requestId: string; timestamp: number; encodedDataLength: number }) => {
     const r = requests.get(e.requestId);
-    if (!r) return;
+    if (!r) { unmatchedEvents += 1; return; }
+    requests.delete(e.requestId);
     push({
       kind: "loadingFinished", requestId: e.requestId, loaderId: r.loaderId, frameId: r.frameId, cdpMonotonicSec: e.timestamp,
-      path: r.path, encodedDataLength: e.encodedDataLength,
+      path: r.path, resourceType: r.resourceType, encodedDataLength: e.encodedDataLength,
     });
   };
   const onNavigated = (e: { frame: { id: string; parentId?: string; loaderId: string; url: string } }) => {
@@ -202,7 +220,11 @@ async function observeProvenance(cdp: CDPSession, admittedOrigin: string | null)
         admittedOrigin,
         recorded: "admitted harness origin only, as origin+path; other origins omitted or shown as '(other origin)'; no query, hash, headers, cookies or bodies",
         session: "this page's CDP session; service-worker target requests are not visible here",
-        bounds: { maxEvents: PROVENANCE_MAX_EVENTS, maxRequests: PROVENANCE_MAX_REQUESTS, stackFrames: PROVENANCE_STACK_FRAMES, stackDepth: PROVENANCE_STACK_DEPTH },
+        bounds: { maxEvents: PROVENANCE_MAX_EVENTS, maxCriticalEvents: PROVENANCE_MAX_CRITICAL_EVENTS, maxRequests: PROVENANCE_MAX_REQUESTS, stackFrames: PROVENANCE_STACK_FRAMES, stackDepth: PROVENANCE_STACK_DEPTH },
+        criticalRetention: "first 100 admitted failure/document/entry/frame records; lifecycle remains in the normal tail; overflow means later critical evidence is incomplete",
+        trackedRequests: "currently pending admitted bindings; finished/failed bindings removed; capacity eviction may lose later terminal evidence",
+        unmatchedFailures: "subset of unmatched events that are loadingFailed; still no origin or actor attribution",
+        unmatchedEvents: "response/failure/finish without an admitted request binding, including external, evicted or late events; no actor attribution",
       },
       clockScope: {
         cdpMonotonicSec: "Chromium monotonic event time in seconds; comparable only between events of this browser; not an epoch",
@@ -210,8 +232,9 @@ async function observeProvenance(cdp: CDPSession, admittedOrigin: string | null)
         observedAtEpochMs: "Node Date.now() when the event reached the test process; includes delivery delay; not the browser event time",
         note: "A gap between a request's browser start time and a failure's observedAtEpochMs is delivery and ordering across clocks, not a clock offset. Compare like with like.",
       },
-      droppedEvents, evictedRequests, trackedRequests: requests.size, enableErrors: [...enableErrors],
+      droppedEvents, droppedCriticalEvents, unmatchedEvents, unmatchedFailures, evictedRequests, trackedRequests: requests.size, enableErrors: [...enableErrors],
       events: events.slice(),
+      criticalEvents: criticalEvents.slice(),
     }),
     dispose: () => {
       cdp.off("Network.requestWillBeSent", onRequest);
@@ -223,6 +246,7 @@ async function observeProvenance(cdp: CDPSession, admittedOrigin: string | null)
       requests.clear();
       frames.clear();
       events.length = 0;
+      criticalEvents.length = 0;
     },
   };
 }
