@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getRealProfileForPilot, isProfileReadNetworkFailure } from "../install/api";
+import { getRealProfileForPilot } from "../install/api";
+import { isProfileReadNetworkFailure } from "../install/profileReadFailure";
 import { signInGeneration, signedInUserId, signInMark, stillSignedInAs, subscribeSignedIn } from "../signedIn";
 import { signInOnThisPhone, supabase } from "../supabase";
 import { forgetOfflinePilotProof, readOfflinePilotProof, rememberOfflinePilotProof } from "./offlinePilotProof";

@@ -10,7 +10,7 @@ import { OFFLINE_PILOT_PROOF_KEY } from "./offlinePilotProof";
 
 const OWNER = "00000000-0000-4000-8000-000000000101";
 const CREW = "00000000-0000-4000-8000-000000000102";
-const rpc = vi.fn(async (_name: string): Promise<{ data: boolean | null; error: { message: string } | null }> => ({
+const rpc = vi.fn(async (_name: string): Promise<{ data: boolean | null; error: { message: string; status?: number } | null }> => ({
   data: true, error: null,
 }));
 let role = "owner";
@@ -22,8 +22,7 @@ vi.mock("../supabase", () => ({
   supabase: { rpc: (name: string) => rpc(name) },
   signInOnThisPhone: () => ({ user: { id: signedInUserId() }, access_token: token(loginId) }),
 }));
-vi.mock("../install/api", async (importOriginal) => ({
-  isProfileReadNetworkFailure: (await importOriginal<typeof import("../install/api")>()).isProfileReadNetworkFailure,
+vi.mock("../install/api", () => ({
   getRealProfile: async () => profileUnreachable ? null : ({
     id: signedInUserId(), role, ui_design: choice, active: true, retired_at: null,
   }),
@@ -160,6 +159,17 @@ describe("owner redesign pilot admission", () => {
     rpc.mockResolvedValue({ data: null, error: { message: "Failed to fetch" } });
     await mount();
     expect(answer).toBe(true);
+  });
+
+  it("lets a server refusal beat an older offline proof even when its wording resembles a fetch failure", async () => {
+    await mount();
+    expect(answer).toBe(true);
+    act(() => root?.unmount());
+    qc?.clear(); host?.remove(); root = null; qc = null; host = null;
+    rpc.mockResolvedValue({ data: null, error: { status: 403, message: "Failed to fetch" } });
+    await mount();
+    expect(answer).toBe(false);
+    expect(localStorage.getItem(OFFLINE_PILOT_PROOF_KEY)).toBeNull();
   });
 
   it("does not use a stored yes before an online server attempt finishes", async () => {
