@@ -203,6 +203,58 @@ run
 assert_rc 0
 assert_lacks "error-string"
 
+# Copy the allowed line from the real native formatter, rather than inventing
+# a passing fixture alongside the checker. Near misses must still fail.
+IDB_PRIMITIVE_LINE="$(sed -n '/if (typeof reason !== "object" && typeof reason !== "function") return String(reason);/p' app/src/lib/offline/outboxStore.ts)"
+if [ -z "$IDB_PRIMITIVE_LINE" ]; then
+  echo "FAIL: the real primitive diagnostic line is missing"
+  exit 1
+fi
+
+new_case "the exact primitive-only native formatter line is allowed"
+mkdir -p "$root/app/src/lib/offline"
+echo "export const x = 1;" >"$root/app/src/lib/offline/outboxStore.ts"
+base_commit
+printf '%s\n' "$IDB_PRIMITIVE_LINE" >>"$root/app/src/lib/offline/outboxStore.ts"
+head_commit "Describe a primitive native storage failure"
+run
+assert_rc 0
+assert_lacks "error-string"
+
+new_case "a guarded formatter line does not exempt an unguarded line beside it"
+mkdir -p "$root/app/src/lib/offline"
+echo "export const x = 1;" >"$root/app/src/lib/offline/outboxStore.ts"
+base_commit
+printf '%s\n' "$IDB_PRIMITIVE_LINE" >>"$root/app/src/lib/offline/outboxStore.ts"
+echo 'toast(String(reason));' >>"$root/app/src/lib/offline/outboxStore.ts"
+head_commit "Report a storage problem to the crew"
+run
+assert_rc 1
+assert_has "error-string"
+assert_has "app/src/lib/offline/outboxStore.ts:3"
+assert_lacks "app/src/lib/offline/outboxStore.ts:2"
+
+new_case "the guarded line is still reported in an ordinary UI module"
+echo "export const x = 1;" >"$root/app/src/pages/Sheet.tsx"
+base_commit
+printf '%s\n' "$IDB_PRIMITIVE_LINE" >>"$root/app/src/pages/Sheet.tsx"
+head_commit "Explain a save problem in the sheet"
+run
+assert_rc 1
+assert_has "error-string"
+assert_has "app/src/pages/Sheet.tsx:2"
+
+new_case "a weaker native formatter guard is still reported"
+mkdir -p "$root/app/src/lib/offline"
+echo "export const x = 1;" >"$root/app/src/lib/offline/outboxStore.ts"
+base_commit
+printf '%s\n' "$IDB_PRIMITIVE_LINE" | sed 's/&&/||/' >>"$root/app/src/lib/offline/outboxStore.ts"
+head_commit "Describe another native storage failure"
+run
+assert_rc 1
+assert_has "error-string"
+assert_has "app/src/lib/offline/outboxStore.ts:2"
+
 # ---------------------------------------------------------------------------
 # profiles select("*")
 # ---------------------------------------------------------------------------

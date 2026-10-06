@@ -157,6 +157,15 @@ error_rule_exempt() {
   return 1
 }
 
+# This native-storage formatter converts primitives only. Error/PostgREST
+# objects and functions cannot reach this exact line. Exempt this finding,
+# never the module: an unguarded conversion beside it must still be reported.
+idb_primitive_detail_line() {
+  [ "$1" = "app/src/lib/offline/outboxStore.ts" ] || return 1
+  [ "$(printf '%s' "$2" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')" = \
+    'if (typeof reason !== "object" && typeof reason !== "function") return String(reason);' ]
+}
+
 # The modules that are ALLOWED to name a Postgres code, and why each one is.
 #
 # `schemaErrors.ts` is the home the law names. The three formatters are the
@@ -190,7 +199,8 @@ for f in ${changed_files[@]+"${changed_files[@]}"}; do
     case "$(printf '%s' "$text" | sed 's/^[[:space:]]*//')" in "//"*|"*"*|"/*"*) continue ;; esac
 
     if ! error_rule_exempt "$f"; then
-      if printf '%s' "$text" | grep -qE 'String\([[:space:]]*(err|error|e|ex|caught|reason)[[:space:]]*\)'; then
+      if printf '%s' "$text" | grep -qE 'String\([[:space:]]*(err|error|e|ex|caught|reason)[[:space:]]*\)' &&
+         ! idb_primitive_detail_line "$f" "$text"; then
         report "$f:$ln" error-string \
           "An error becomes text through String(...), which shows an installer raw Postgres wording. Use formatApiError(err)." "$LAW_ERR"
       fi

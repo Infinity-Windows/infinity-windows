@@ -183,12 +183,35 @@ interface MetaRow {
   meta: string;
 }
 
+/** One property of a failure, or undefined if reading it throws: a diagnostic
+ * must never replace the failure it is describing. */
+function readProp(value: unknown, key: "name" | "message" | "error" | "target"): unknown {
+  if (value === null || (typeof value !== "object" && typeof value !== "function")) return undefined;
+  try { return (value as Record<string, unknown>)[key]; } catch { return undefined; }
+}
+
+/** "Name: message" for an Error, a DOMException or an error-like object from
+ * another realm (not only `instanceof Error`), the text of a primitive, or
+ * null when there is nothing safe to say. Only name and message are read. */
+function errorDetail(reason: unknown): string | null {
+  if (reason === null || reason === undefined) return null;
+  if (typeof reason !== "object" && typeof reason !== "function") return String(reason);
+  const name = readProp(reason, "name");
+  const message = readProp(reason, "message");
+  if (typeof name === "string" && typeof message === "string" && (name || message)) return `${name}: ${message}`;
+  if (typeof message === "string" && message) return message;
+  if (typeof name === "string" && name) return name;
+  return null;
+}
+
 function storageError(phase: string, reason: unknown): Error {
   if (reason instanceof UnreadableOutboxEntryError) return reason;
-  if (reason instanceof Error && reason.message.startsWith("Photo queue storage ")) return reason;
-  const detail = reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason ?? "no browser error detail");
+  const message = readProp(reason, "message");
+  if (reason instanceof Error && typeof message === "string" && message.startsWith("Photo queue storage ")) return reason;
+  const detail = errorDetail(reason) ?? "no browser error detail";
   const error = new Error(`Photo queue storage ${phase} failed (${detail})`, { cause: reason });
-  if (reason instanceof Error) error.name = reason.name;
+  const name = readProp(reason, "name");
+  if (reason instanceof Error && typeof name === "string") error.name = name;
   return error;
 }
 
@@ -248,26 +271,73 @@ function txDone(tx: IDBTransaction): Promise<void> {
   });
 }
 
+/** Fixed labels for the requests put() watches. Never ids, keys or rows. */
+type WatchedOperation = "entries.get" | "entries.put" | "metadata.delete" | "metadata.put";
+
+/** Hand back the same request, with a passive error listener that remembers
+ * which watched request failed first and what it said. */
+type WatchRequest = <R extends IDBRequest>(request: R, operation: WatchedOperation) => R;
+
 /** Schedule dependent writes from IDB success callbacks, while Safari's
  * transaction is certainly active. Resolve only after the whole transaction
- * commits, so a queued photo is never reported saved on a partial write. */
+ * commits, so a queued photo is never reported saved on a partial write.
+ *
+ * Diagnostics only (photo queue put failure, CI 37407023694): a request error
+ * can reach this handler before the transaction has an error of its own.
+ * CI's toast had no detail; the underlying native cause remains unknown. `watch`
+ * latches the FIRST watched request's operation and error; it never cancels,
+ * stops or aborts anything, so the browser's default abort and rollback, and
+ * when this promise settles, are exactly as before. */
 function writeTransaction<T>(
   db: IDBDatabase,
   phase: string,
-  schedule: (tx: IDBTransaction, result: (value: T) => void, fail: (reason: unknown) => void) => void,
+  schedule: (tx: IDBTransaction, result: (value: T) => void, fail: (reason: unknown) => void, watch: WatchRequest) => void,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction([STORE, META_STORE], "readwrite");
     let value: T;
+    let first: { operation: WatchedOperation; reason: unknown } | null = null;
+    const watch: WatchRequest = (request, operation) => {
+      try {
+        request.addEventListener("error", () => {
+          if (first) return;
+          // An explicit record, even when the browser gave no error: the
+          // first failure is never handed to a later request's cause.
+          first = { operation, reason: readProp(request, "error") ?? null };
+        });
+      } catch { /* a diagnostic must never stop the write */ }
+      return request;
+    };
+    /** The first watched request's own cause; else, with no detail there, the
+     * transaction's (labelled as the transaction, not as that request); else
+     * the first operation with no detail. Unwatched requests keep the old
+     * transaction error, falling back to the failed request's own error. */
+    const failure = (aborted: boolean, event?: Event): Error => {
+      const label = aborted ? `${phase} aborted` : phase;
+      try {
+        const txReason = readProp(tx, "error") ?? null;
+        if (first) {
+          if (errorDetail(first.reason) !== null) return storageError(`${label} (${first.operation})`, first.reason);
+          if (errorDetail(txReason) !== null) return storageError(`${phase} transaction${aborted ? " aborted" : ""}`, txReason);
+          return storageError(`${label} (${first.operation})`, first.reason);
+        }
+        if (errorDetail(txReason) !== null) return storageError(label, txReason);
+        const target = readProp(event, "target");
+        const requestReason = target && target !== tx ? readProp(target, "error") ?? null : null;
+        return storageError(label, errorDetail(requestReason) !== null ? requestReason : txReason);
+      } catch {
+        return new Error(`Photo queue storage ${label} failed (no browser error detail)`);
+      }
+    };
     const fail = (reason: unknown) => {
       reject(storageError(phase, reason));
       try { tx.abort(); } catch { /* already ended */ }
     };
     tx.oncomplete = () => resolve(value);
-    tx.onerror = () => reject(storageError(phase, tx.error));
-    tx.onabort = () => reject(storageError(`${phase} aborted`, tx.error));
+    tx.onerror = (event) => reject(failure(false, event));
+    tx.onabort = () => reject(failure(true));
     try {
-      schedule(tx, (next) => { value = next; }, fail);
+      schedule(tx, (next) => { value = next; }, fail, watch);
     } catch (error) {
       fail(error);
     }
@@ -414,19 +484,21 @@ export class IndexedDbOutboxStore implements OutboxStore {
   async put(entry: OutboxEntry, blob?: Blob | null): Promise<void> {
     const db = await openDb();
     try {
-      await writeTransaction<void>(db, "put", (tx, _result, fail) => {
+      await writeTransaction<void>(db, "put", (tx, _result, fail, watch) => {
         const store = tx.objectStore(STORE);
         const metadata = tx.objectStore(META_STORE);
-        const read = store.get(entry.id);
+        const read = watch(store.get(entry.id), "entries.get");
         read.onsuccess = () => {
           try {
             const existing = read.result as Row | undefined;
             // Null, like an omitted blob in the memory store, means no replacement.
             // Only a real replacement Blob may touch an existing photo row.
-            if (existing && blob == null) metadata.put({ id: entry.id, meta: serializeEntry(entry) } satisfies MetaRow);
+            // A synchronous throw from put/delete happens before watch() sees
+            // a request, so it keeps going through fail() with no label.
+            if (existing && blob == null) watch(metadata.put({ id: entry.id, meta: serializeEntry(entry) } satisfies MetaRow), "metadata.put");
             else {
-              store.put({ id: entry.id, meta: serializeEntry(entry), blob: blob ?? null } satisfies Row);
-              metadata.delete(entry.id);
+              watch(store.put({ id: entry.id, meta: serializeEntry(entry), blob: blob ?? null } satisfies Row), "entries.put");
+              watch(metadata.delete(entry.id), "metadata.delete");
             }
           } catch (error) { fail(error); }
         };
