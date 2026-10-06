@@ -1,0 +1,86 @@
+{
+  "purpose": "Workshop branch only: inherited production workflows are inert, never merge these removals into production",
+  "base": "ee08f7f55f3af9ce81372e47c3883ecc4401a6b5",
+  "workflows": [
+    {
+      "original": ".github/workflows/advisory-review.yml",
+      "quarantined": "workshop/quarantined-workflows/advisory-review.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/ai-field-memo-sweep.yml",
+      "quarantined": "workshop/quarantined-workflows/ai-field-memo-sweep.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/backup-nightly.yml",
+      "quarantined": "workshop/quarantined-workflows/backup-nightly.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/ci.yml",
+      "quarantined": "workshop/quarantined-workflows/ci.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/db-dry-run.yml",
+      "quarantined": "workshop/quarantined-workflows/db-dry-run.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/deploy-backend.yml",
+      "quarantined": "workshop/quarantined-workflows/deploy-backend.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/deploy-pages.yml",
+      "quarantined": "workshop/quarantined-workflows/deploy-pages.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/e2e-nightly.yml",
+      "quarantined": "workshop/quarantined-workflows/e2e-nightly.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/import-time-entries.yml",
+      "quarantined": "workshop/quarantined-workflows/import-time-entries.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/migration-drift.yml",
+      "quarantined": "workshop/quarantined-workflows/migration-drift.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/notify-failure.yml",
+      "quarantined": "workshop/quarantined-workflows/notify-failure.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/provision-test-foreman.yml",
+      "quarantined": "workshop/quarantined-workflows/provision-test-foreman.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/provision-test-installer.yml",
+      "quarantined": "workshop/quarantined-workflows/provision-test-installer.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/restore-test.yml",
+      "quarantined": "workshop/quarantined-workflows/restore-test.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/run-seed.yml",
+      "quarantined": "workshop/quarantined-workflows/run-seed.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/slack-changelog.yml",
+      "quarantined": "workshop/quarantined-workflows/slack-changelog.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/vault-sync.yml",
+      "quarantined": "workshop/quarantined-workflows/vault-sync.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/verify-crew-invites.yml",
+      "quarantined": "workshop/quarantined-workflows/verify-crew-invites.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/verify-invariants.yml",
+      "quarantined": "workshop/quarantined-workflows/verify-invariants.yml.disabled"
+    },
+    {
+      "original": ".github/workflows/verify-warehouse.yml",
+      "quarantined": "workshop/quarantined-workflows/verify-warehouse.yml.disabled"
+    }
+  ]
+}

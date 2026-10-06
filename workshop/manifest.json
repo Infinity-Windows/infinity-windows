@@ -1,0 +1,14 @@
+{
+  "name": "Forge Workshop — Test Data Only",
+  "code_base": "ee08f7f55f3af9ce81372e47c3883ecc4401a6b5",
+  "branch": "codex/forge-workshop-20261006",
+  "supabase_project_ref": "magcghmnbjiukidyalxd",
+  "supabase_url": "https://magcghmnbjiukidyalxd.supabase.co",
+  "local_origin": "http://127.0.0.1:5278",
+  "hosted_origin": null,
+  "data_policy": "Synthetic records and newly generated identities only",
+  "integrations": "Disabled; no production secrets, jobs, functions or provider actions",
+  "native_time_engine": "Held; first baseline uses established real Auth/workday backend",
+  "hosting": {"database_monthly_compute_usd": 10, "owner_approved": true},
+  "production_changes_authorized": false
+}
