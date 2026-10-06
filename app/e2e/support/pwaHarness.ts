@@ -37,6 +37,8 @@
 //                                            way a deploy in progress does
 //   GET  /__pwa-harness/state                which build is served, and both
 //                                            builds' entry file and build id
+//   POST /__pwa-harness/network/offline|online  refuse/restore page traffic
+//                                            below the browser's service worker
 //
 // Both builds use the same fixture project as playwright.config.ts — a host
 // that does not resolve and a placeholder key — so nothing here can reach the
@@ -186,6 +188,7 @@ function main(): void {
 
   let serving: BuildName = "new";
   let missing = new Set<string>();
+  let networkDown = false;
 
   const send = (res: ServerResponse, status: number, type: string, body: Buffer | string) => {
     res.writeHead(status, {
@@ -203,7 +206,14 @@ function main(): void {
   const control = (req: IncomingMessage, res: ServerResponse, url: URL): boolean => {
     if (!url.pathname.startsWith("/__pwa-harness/")) return false;
     if (url.pathname === "/__pwa-harness/state") {
-      send(res, 200, TYPES[".json"], JSON.stringify({ serving, missing: [...missing], builds }));
+      send(res, 200, TYPES[".json"], JSON.stringify({ serving, missing: [...missing], networkDown, builds }));
+      return true;
+    }
+    const network = /^\/__pwa-harness\/network\/(offline|online)$/.exec(url.pathname);
+    if (network && req.method === "POST") {
+      networkDown = network[1] === "offline";
+      log(`page network ${networkDown ? "offline" : "online"}`);
+      send(res, 200, TYPES[".json"], JSON.stringify({ networkDown }));
       return true;
     }
     const m = /^\/__pwa-harness\/serve\/(old|new)$/.exec(url.pathname);
@@ -226,6 +236,10 @@ function main(): void {
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
     if (control(req, res, url)) return;
+    if (networkDown) {
+      res.destroy();
+      return;
+    }
 
     const build = builds[serving];
     // Query strings never change which file is meant (Pages ignores them too).
