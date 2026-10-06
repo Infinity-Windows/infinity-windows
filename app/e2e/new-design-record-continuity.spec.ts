@@ -26,7 +26,8 @@
 // deleted — they make no claim that a classic crew record maps into the new
 // design's contributors summary.
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./support/nativeBlobTest";
 import { readMark, shiftReadsSince } from "./support/designContinuityFixtures";
 import {
   createRecordContinuityServer,
@@ -117,6 +118,10 @@ function expectFinalPreferenceAndMaster(server: RecordContinuityServer) {
   expect(server.base.profile.ui_design).toBe("new");
   expect(server.base.company.new_design_r1_enabled).toBe(true);
 }
+
+// Keep the native photo and all identity checks; only WebKit uses a fresh normal profile.
+test.describe("normal-profile native Blob storage", () => {
+  test.use({ nativeBlobProfile: true });
 
 test("a photo saved on the phone with no signal stays the same queued photo through classic → new → classic → new and master off → on, and nothing is sent", async ({ page }) => {
   await page.addInitScript(installNativePhotoOutboxRecorder);
@@ -226,6 +231,7 @@ test("a photo saved on the phone with no signal stays the same queued photo thro
     } catch { /* Preserve the test's original outcome. */ }
   }
 });
+});
 
 async function buildCrewRecord(page: Page) {
   await page.goto(`/current-work?job=${OAKRIDGE}`);
@@ -254,6 +260,7 @@ async function expectClassicCrewRecord(page: Page, server: RecordContinuityServe
   await expect(page.locator(".cw-crew-history")).toContainText("Filed by");
   for (const ids of server.ledgers.crewRecordReads) expect(ids.every((id) => id === recordId)).toBe(true);
 }
+
 
 test("a crew record saved in classic keeps its one id through new → classic → new and master off → on, with no resend", async ({ page }) => {
   const server = createRecordContinuityServer();

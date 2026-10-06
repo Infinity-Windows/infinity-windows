@@ -566,8 +566,8 @@ jobs:
       # release paths for the crew; keep them in the PR browser gate.
       - name: Schedule job handoff and ordinary Start day on phone browsers
         run: |
-          npm run e2e -- schedule-start-work.spec.ts start-day.spec.ts schedule-offline.spec.ts
-          npm run e2e -- schedule-start-work.spec.ts start-day.spec.ts schedule-offline.spec.ts --browser=webkit
+          npm run e2e -- schedule-start-work.spec.ts start-day.spec.ts schedule-offline.spec.ts --grep-invert 'Start day with no signal stays on the phone; a reload with no signal shows you clocked in and never offers a second Start day$'
+          npm run e2e -- schedule-start-work.spec.ts start-day.spec.ts schedule-offline.spec.ts --browser=webkit --grep-invert 'Start day with no signal stays on the phone; a reload with no signal shows you clocked in and never offers a second Start day$'
       - run: npm run e2e -- new-design-work.spec.ts
       - run: npx playwright test --browser webkit new-design-work.spec.ts -g "New unit stays within the phone"
       - name: Saved work survives design switches and owner rollback on phone browsers
@@ -577,6 +577,12 @@ jobs:
           webkit_status=0
           npm run e2e -- new-design-continuity.spec.ts new-design-record-continuity.spec.ts new-design-daily-log-continuity.spec.ts new-design-qc-continuity.spec.ts new-design-supplies-continuity.spec.ts --browser=webkit || webkit_status=$?
           test "$chromium_status" -eq 0 && test "$webkit_status" -eq 0
+      # Still mandatory, with the original offline context and assertions. Run
+      # after saved-record checks so an offline reload failure cannot hide them.
+      - name: Start day survives a reload with no signal on phone browsers
+        run: |
+          npm run e2e -- start-day.spec.ts --grep 'Start day with no signal stays on the phone; a reload with no signal shows you clocked in and never offers a second Start day$'
+          npm run e2e -- start-day.spec.ts --browser=webkit --grep 'Start day with no signal stays on the phone; a reload with no signal shows you clocked in and never offers a second Start day$'
       # Expired sign-ins and shared-phone queues need their own browser gate:
       # they can lose a saved punch or send it as the next person even while
       # the ordinary clock screen tests remain green.

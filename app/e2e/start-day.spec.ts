@@ -5,7 +5,8 @@
 // here: Start day → working in ONE tap when the talk is signed, TWO
 // (Start day, Sign) when it is not — in either order the rule puts them.
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./support/nativeBlobTest";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
 import { dayISO, hideWrongProjectBanner, json, stubGeolocationDenied } from "./support/specHelpers";
 import { GENERAL, morningFixtures, OAKRIDGE, signTalk } from "./support/release1Fixtures";
@@ -39,6 +40,10 @@ test("already signed: Start day is the clock-in — one tap, today's job, no sec
   await expect(page.getByTestId("ws-unit-start")).toBeEnabled();
   expect(world.clockIns).toHaveLength(1);
 });
+
+// Signed talks store a native PDF Blob; this gate qualifies a normal WebKit profile.
+test.describe("normal-profile native Blob storage", () => {
+  test.use({ nativeBlobProfile: true });
 
 test("unsigned, rule off (today's timing): Start day opens the talk; signing it is the clock-in — two taps", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "installer", uiDesign: "new" });
@@ -91,6 +96,8 @@ test("unsigned, rule ON: paid time starts at the tap; the talk waits on the cloc
   // Unit work unlocks from the signature held on this phone; the keyed RPC
   // follows asynchronously and still must reach Forge exactly once.
   await expect.poll(() => world.signatures).toBe(1);
+});
+
 });
 
 test("the rule scheduled for a future day still runs today's timing", async ({ page }) => {
