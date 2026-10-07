@@ -296,6 +296,10 @@ export interface PrepareMediaExportOptions {
   maxBytes?: number;
   /** Signing and reading one item share a deadline; tests may lower it. */
   timeoutMs?: number;
+  /** Optional owner fence, checked before and after every awaited sign, fetch
+   * and read. Once false the item aborts exactly as if `signal` had fired, so a
+   * stale export never starts another network read. Undefined = always current. */
+  isCurrent?: () => boolean;
 }
 
 /**
@@ -327,29 +331,50 @@ export async function prepareMediaExport(
     }
   };
 
+  const controllers = new WeakMap<AbortSignal, AbortController>();
+  /** partSignal.aborted, after first aborting the item if its owner went stale. */
+  function gone(partSignal: AbortSignal): boolean {
+    if (!partSignal.aborted && options.isCurrent && !options.isCurrent()) {
+      controllers.get(partSignal)?.abort(new PartFailure("aborted"));
+    }
+    return partSignal.aborted;
+  }
   function abortReason(partSignal: AbortSignal): PartFailure {
     return partSignal.reason instanceof PartFailure ? partSignal.reason : new PartFailure("aborted");
   }
-  function abortable<T>(read: () => Promise<T>, partSignal: AbortSignal): Promise<T> {
-    if (partSignal.aborted) return Promise.reject(abortReason(partSignal));
+  /** `dispose` receives a value that arrived after the read was abandoned
+   * (aborted, timed out or stale), so it can be released, never used. */
+  function abortable<T>(read: () => Promise<T>, partSignal: AbortSignal, dispose?: (late: T) => void): Promise<T> {
+    if (gone(partSignal)) return Promise.reject(abortReason(partSignal));
     return new Promise<T>((resolve, reject) => {
-      const onAbort = () => { partSignal.removeEventListener("abort", onAbort); reject(abortReason(partSignal)); };
+      let abandoned = false;
+      const onAbort = () => { abandoned = true; partSignal.removeEventListener("abort", onAbort); reject(abortReason(partSignal)); };
       partSignal.addEventListener("abort", onAbort, { once: true });
       // Signing has no AbortSignal parameter in the storage SDK. Its late
       // result is ignored; it can never start a fetch after cancellation.
       Promise.resolve().then(() => {
-        if (partSignal.aborted) throw abortReason(partSignal);
+        if (gone(partSignal)) throw abortReason(partSignal);
         return read();
-      }).then(resolve, reject).finally(() => partSignal.removeEventListener("abort", onAbort));
+      }).then((value) => {
+        if (abandoned || gone(partSignal)) {
+          try { dispose?.(value); } catch { /* Disposal is best effort. */ }
+          reject(abortReason(partSignal));
+        } else resolve(value);
+      }, reject).finally(() => partSignal.removeEventListener("abort", onAbort));
     });
   }
+  /** A response that arrived too late: close its body without waiting, since
+   * a transport's cancel promise may never settle. */
+  function discardResponse(res: Response): void {
+    try { void res.body?.cancel().catch(() => {}); } catch { /* Already locked or closed. */ }
+  }
   async function fetchPart(url: string, partSignal: AbortSignal): Promise<{ blob: Blob; contentType: string | null }> {
-    if (partSignal.aborted) throw abortReason(partSignal);
+    if (gone(partSignal)) throw abortReason(partSignal);
     if (capped) throw new PartFailure("too_large");
     let res: Response;
-    try { res = await abortable(() => fetch(url, { signal: partSignal, credentials: "omit", cache: "no-store" }), partSignal); }
-    catch { throw partSignal.aborted ? abortReason(partSignal) : new PartFailure("network"); }
-    if (partSignal.aborted) { void res.body?.cancel().catch(() => {}); throw abortReason(partSignal); }
+    try { res = await abortable(() => fetch(url, { signal: partSignal, credentials: "omit", cache: "no-store" }), partSignal, discardResponse); }
+    catch { throw gone(partSignal) ? abortReason(partSignal) : new PartFailure("network"); }
+    if (gone(partSignal)) { void res.body?.cancel().catch(() => {}); throw abortReason(partSignal); }
     if (!res.ok) { void res.body?.cancel().catch(() => {}); throw new PartFailure(`http_${res.status}`); }
     const declared = Number(res.headers.get("content-length"));
     if (Number.isFinite(declared) && declared > 0 && bytes + declared > maxBytes) {
@@ -362,7 +387,7 @@ export async function prepareMediaExport(
     try {
       while (true) {
         const { value, done } = await abortable(() => reader.read(), partSignal);
-        if (partSignal.aborted) throw abortReason(partSignal);
+        if (gone(partSignal)) throw abortReason(partSignal);
         if (done) break;
         if (bytes + value.byteLength > maxBytes) { capped = true; throw new PartFailure("too_large"); }
         const chunk = new Uint8Array(value);
@@ -382,6 +407,7 @@ export async function prepareMediaExport(
   async function runItem(item: MediaExportItem): Promise<Outcome> {
     const out: Outcome = { parts: [], failed: [] };
     const ctl = new AbortController();
+    controllers.set(ctl.signal, ctl);
     const onAbort = () => ctl.abort(new PartFailure("aborted"));
     if (signal?.aborted) onAbort();
     else signal?.addEventListener("abort", onAbort, { once: true });
@@ -389,7 +415,7 @@ export async function prepareMediaExport(
     const fail = (reason: string) => out.failed.push({ id: item.id, label: item.label, reason });
     try {
       try {
-        if (ctl.signal.aborted) throw abortReason(ctl.signal);
+        if (gone(ctl.signal)) throw abortReason(ctl.signal);
         if (capped) throw new PartFailure("too_large");
         const url = await abortable(() => signedMedia(item.storagePath), ctl.signal);
         if (!url) throw new PartFailure("sign_failed");

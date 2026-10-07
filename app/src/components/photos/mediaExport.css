@@ -31,3 +31,18 @@
 @media (max-width: 360px) { .media-export-dates { grid-template-columns: minmax(0, 1fr); } }
 
 .media-export-preview { display: block; max-width: 100%; max-height: 240px; object-fit: contain; margin: 10px auto; }
+.media-export-groups { display: grid; gap: 10px; margin: 12px 0; }
+.media-export-group { border: 1px solid var(--border); border-radius: 10px; padding: 10px; min-width: 0; }
+.media-export-group-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.media-export-group-heading label { display: flex; align-items: center; gap: 10px; min-width: 0; cursor: pointer; }
+.media-export-group-heading input { flex: 0 0 22px; width: 22px; height: 22px; margin: 0; }
+.media-export-group-heading span { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.media-export-group-heading small { display: block; font-weight: 400; opacity: .75; }
+.media-export-day { font-size: .9rem; margin: 12px 0 2px; }
+.media-export-group .media-export-items { max-height: none; overflow: visible; margin: 0; }
+.media-export-group .media-export-items li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.media-export-group .media-export-items .media-export-preview { grid-column: 1 / -1; }
+.media-export-thumb { width: 44px; height: 44px; flex: 0 0 44px; object-fit: cover; border-radius: 4px; background: var(--surface, #eee); }
+@media (max-width: 360px) { .media-export-group-heading { align-items: flex-start; } }
+.media-export-thumb img { width: 100%; height: 100%; display: block; object-fit: cover; border-radius: inherit; }
+.media-export-day .action-btn { font-weight: 600; min-height: 36px; }

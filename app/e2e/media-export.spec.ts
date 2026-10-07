@@ -15,7 +15,7 @@ const PNG = Buffer.from(TINY_PNG_BASE64, "base64");
 const PDF = Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n", "latin1");
 const ON_DAY = "2026-10-05T18:00:00Z";
 
-type PhotoRow = { id: string; kind: string; storage_path: string; project_id: string; created_at: string; taken_at: string; created_by: string; deleted_at: null; caption: null; lat: null; lng: null; accuracy_m: null };
+type PhotoRow = { id: string; kind: string; storage_path: string; project_id: string | null; created_at: string; taken_at: string; created_by: string; deleted_at: null; caption: null; lat: null; lng: null; accuracy_m: null };
 function photo(i: number, projectId = JOB.projectId, takenAt = ON_DAY): PhotoRow {
   return { id: `photo-${String(i).padStart(3, "0")}`, kind: "photo", storage_path: `install-media/${projectId}/photo-${i}.png`, project_id: projectId, created_at: ON_DAY, taken_at: takenAt, created_by: "fixture", deleted_at: null, caption: null, lat: null, lng: null, accuracy_m: null };
 }
@@ -39,7 +39,7 @@ function fulfillRows(route: Route, rows: RestRow[], total: number) {
     body: JSON.stringify(page) });
 }
 
-async function useMediaExportFixtures(page: Page, kind: "photo" | "receipt", rows: RestRow[], opts: { missing?: string; holdSign?: boolean; share?: "success" | "cancel"; language?: "en" | "es" } = {}) {
+async function useMediaExportFixtures(page: Page, kind: "photo" | "receipt", rows: RestRow[], opts: { missing?: string; holdSign?: boolean; share?: "success" | "cancel"; language?: "en" | "es"; photoPayload?: Buffer } = {}) {
   // Fixture setup is an async browser helper, not a React hook.
   // eslint-disable-next-line react-hooks/rules-of-hooks
   await useSupabaseFixtures(page, { role: kind === "receipt" ? "supervisor" : "foreman", language: opts.language });
@@ -62,11 +62,21 @@ async function useMediaExportFixtures(page: Page, kind: "photo" | "receipt", row
     const excludedPaths = url.searchParams.getAll("storage_path")
       .filter(value => value.startsWith("not.like."))
       .map(value => value.slice("not.like.".length).replace(/%$/, ""));
+    const or = url.searchParams.get("or") ?? "";
+    const cursorTimes = [...or.matchAll(/created_at\.lt\."([^"]+)"/g)];
+    const cursorTime = or.includes("id.lt") ? cursorTimes.at(-1)?.[1] : undefined;
+    const cursorId = /id\.lt\."([^"]+)"/.exec(or)?.[1];
+    const since = /taken_at\.gte\."([^"]+)"/.exec(or)?.[1];
+    const before = /taken_at\.lt\."([^"]+)"/.exec(or)?.[1];
     const scoped = rows.filter((r): r is PhotoRow => "storage_path" in r &&
       (!project || r.project_id === project) &&
       (!queryKind || r.kind === queryKind) &&
-      excludedPaths.every(prefix => !r.storage_path.startsWith(prefix)));
-    // PostgREST represents .range() as offset and limit query parameters.
+      excludedPaths.every(prefix => !r.storage_path.startsWith(prefix)) &&
+      (!since || (r.taken_at ?? r.created_at) >= since) &&
+      (!before || (r.taken_at ?? r.created_at) < before) &&
+      (!cursorTime || r.created_at < cursorTime || (r.created_at === cursorTime && !!cursorId && r.id < cursorId)))
+      .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
+    // Keyset reads use limit with no offset. Other feed reads still use offset.
     return fulfillRows(route, scoped, scoped.length);
   });
   await page.route("**/rest/v1/receipts**", route => {
@@ -96,7 +106,7 @@ async function useMediaExportFixtures(page: Page, kind: "photo" | "receipt", row
     }
     const path = decodeURIComponent(url.pathname.split("/object/authenticated/install-media/")[1] ?? "");
     if (opts.missing && path.includes(opts.missing)) return route.fulfill({ status: 404, body: "missing" });
-    return route.fulfill({ status: 200, contentType: path.endsWith(".pdf") ? "application/pdf" : "image/png", body: path.endsWith(".pdf") ? PDF : PNG });
+    return route.fulfill({ status: 200, contentType: path.endsWith(".pdf") ? "application/pdf" : "image/png", body: path.endsWith(".pdf") ? PDF : (opts.photoPayload ?? PNG) });
   });
   if (opts.share) {
     await page.addInitScript(mode => {
@@ -127,7 +137,7 @@ async function downloadedZip(page: Page, buttonName: string, testInfo: TestInfo)
   const event = page.waitForEvent("download");
   await page.getByRole("button", { name: buttonName }).click();
   const download = await event;
-  const path = testInfo.outputPath("media-export.zip");
+  const path = testInfo.outputPath(`media-export-${Date.now()}-${Math.random().toString(36).slice(2)}.zip`);
   await download.saveAs(path);
   return JSZip.loadAsync(readFileSync(path));
 }
@@ -157,44 +167,57 @@ for (const { width, height } of [{ width: 390, height: 844 }, { width: 859, heig
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await expect(dialog.getByRole("button", { name: "Close" })).toBeInViewport();
-      const prepare = dialog.getByRole("button", { name: "Prepare export" });
+      const prepare = dialog.getByRole("button", { name: kind === "photo" ? "Export selected job" : "Prepare export" });
       await prepare.scrollIntoViewIfNeeded();
       await expect(prepare).toBeInViewport();
     });
   }
 }
 
-test("photo export pages past 60, keeps the chosen job and both date edges, and honors individual selection", async ({ page }, testInfo) => {
+test("photo export pages past 60 and packages all 500 selected photos across numbered parts", async ({ page }, testInfo) => {
   const rows = Array.from({ length: 501 }, (_, i) => photo(i));
-  rows[0] = photo(0, JOB.projectId, "2026-10-05T06:00:00Z"); // midnight in Denver
-  rows[500] = photo(500, JOB.projectId, "2026-10-06T05:59:00Z"); // 23:59 in Denver
+  rows[0] = photo(0, JOB.projectId, "2026-10-05T06:00:00Z");
+  rows[500] = photo(500, JOB.projectId, "2026-10-06T05:59:00Z");
   rows.push(photo(999, OTHER.projectId), photo(998, JOB.projectId, "2026-10-04T18:00:00Z"));
-  const { exportQueries, exportRanges } = await useMediaExportFixtures(page, "photo", rows);
+  const { exportQueries } = await useMediaExportFixtures(page, "photo", rows);
   const dialog = await openExport(page, "photo");
   await dialog.getByLabel("Custom dates").check();
   await dialog.getByLabel("From date").fill("2026-10-05");
   await dialog.getByLabel("Through date").fill("2026-10-05");
-  await expect(dialog.getByText("501 / 501 selected")).toBeVisible();
-  await expect(dialog.locator('.media-export-items input[type="checkbox"]')).toHaveCount(501);
-  await dialog.locator('.media-export-items input[type="checkbox"]').first().uncheck();
-  await expect(dialog.getByText("500 / 501 selected")).toBeVisible();
-  await dialog.locator('.media-export-items input[type="checkbox"]').first().check();
-  await dialog.locator('.media-export-items input[type="checkbox"]').nth(1).uncheck();
-  await expect(dialog.getByText("500 / 501 selected")).toBeVisible();
-  await dialog.getByRole("button", { name: "Prepare export" }).click();
-  // CI signs and fetches 500 files through three workers; allow the batch to finish.
-  await expect(dialog.getByText("500 files ready")).toBeVisible({ timeout: 90_000 });
-  const zip = await downloadedZip(page, "Download ZIP", testInfo);
-  const entries = Object.values(zip.files).filter(file => !file.dir);
-  expect(entries).toHaveLength(500);
-  for (const entry of entries) expect(await entry.async("nodebuffer")).toEqual(PNG);
+  await expect(dialog.getByText("1 jobs · 501 / 501 photos selected")).toBeVisible();
+  await dialog.getByRole("button", { name: "Expand" }).click();
+  await expect(dialog.locator('.media-export-group .media-export-items input[type="checkbox"]')).toHaveCount(50);
+  await dialog.locator('.media-export-group .media-export-items input[type="checkbox"]').first().uncheck();
+  await expect(dialog.getByText("1 jobs · 500 / 501 photos selected")).toBeVisible();
+  await dialog.getByRole("button", { name: "Export selected job" }).click();
+  const seen = new Set<string>();
+  let parts = 0;
+  for (;;) {
+    await expect(dialog.getByRole("button", { name: "Download ZIP" })).toBeVisible({ timeout: 90_000 });
+    const zip = await downloadedZip(page, "Download ZIP", testInfo);
+    const entries = Object.values(zip.files).filter(file => !file.dir);
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.length).toBeLessThanOrEqual(200);
+    for (const entry of entries) {
+      expect(entry.name).toContain(JOB.jobCode);
+      const id = /photo-\d+/.exec(entry.name)?.[0];
+      expect(id).toBeTruthy();
+      expect(seen.has(id!)).toBe(false);
+      seen.add(id!);
+      expect(await entry.async("nodebuffer")).toEqual(PNG);
+    }
+    parts++;
+    const next = dialog.getByRole("button", { name: "I saved this part — prepare next" });
+    if (await next.count() === 0) break;
+    await next.click();
+  }
+  expect(parts).toBe(3);
+  expect(seen.size).toBe(500);
+  expect(seen.has("photo-000")).toBe(true);
+  expect(seen.has("photo-500")).toBe(false);
   expect(exportQueries.some(u => u.searchParams.get("project_id") === `eq.${JOB.projectId}`)).toBe(true);
   expect(exportQueries.some(u => u.searchParams.has("or"))).toBe(true);
-  expect(exportRanges).toContain("0-499");
-  expect(exportRanges).toContain("500-999");
-  expect(entries.every(entry => !entry.name.includes("999") && !entry.name.includes("998"))).toBe(true);
-  expect(entries.some(entry => entry.name.includes("photo-000"))).toBe(true);
-  expect(entries.some(entry => entry.name.includes("photo-500"))).toBe(true);
+  expect(exportQueries.some(u => (u.searchParams.get("or") ?? "").includes("id.lt"))).toBe(true);
 });
 
 test("job photo content excludes receipt attachments and receipt paths, and switching content resets prepared files", async ({ page }, testInfo) => {
@@ -206,14 +229,14 @@ test("job photo content excludes receipt attachments and receipt paths, and swit
   const dialog = await openExport(page, "photo");
   const content = dialog.getByLabel("Export content");
   await expect(content).toHaveValue("photo");
-  await expect(dialog.getByText("1 / 1 selected")).toBeVisible();
-  const photoQuery = exportQueries.find(url => url.pathname.endsWith("/attachments") && url.searchParams.has("offset"));
+  await expect(dialog.getByText("1 jobs · 1 / 1 photos selected")).toBeVisible();
+  const photoQuery = exportQueries.find(url => url.pathname.endsWith("/attachments") && url.searchParams.get("kind") === "eq.photo");
   expect(photoQuery?.searchParams.get("kind")).toBe("eq.photo");
   expect(photoQuery?.searchParams.getAll("storage_path")).toContain("not.like.install-media/receipts/%");
   expect(photoQuery?.searchParams.getAll("storage_path")).toContain("not.like.receipts/%");
   expect(exportQueries.some(url => url.pathname.endsWith("/receipts"))).toBe(false);
-  await dialog.getByRole("button", { name: "Prepare export" }).click();
-  await expect(dialog.getByText("1 files ready")).toBeVisible();
+  await dialog.getByRole("button", { name: "Export selected job" }).click();
+  await expect(dialog.getByText(/1 of 1 selected photos prepared/)).toBeVisible();
   const photoZip = await downloadedZip(page, "Download ZIP", testInfo);
   const photoNames = Object.values(photoZip.files).filter(file => !file.dir).map(file => file.name);
   expect(photoNames).toHaveLength(1);
@@ -229,7 +252,7 @@ test("job photo content excludes receipt attachments and receipt paths, and swit
   expect(receiptNames).toHaveLength(1);
   expect(receiptNames[0]).toContain("receipt-only");
   await receiptsDialog.getByLabel("Export content").selectOption("photo");
-  await expect(dialog.getByText("1 / 1 selected")).toBeVisible();
+  await expect(dialog.getByText("1 jobs · 1 / 1 photos selected")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Download ZIP" })).toHaveCount(0);
 });
 
@@ -288,9 +311,9 @@ test("Spanish export fits 320px and offers download when native sharing is absen
   await page.goto(`/photos?kind=photo&project=${JOB.projectId}`);
   await page.getByRole("button", { name: "Exportar fotos" }).click();
   const dialog = page.getByRole("dialog", { name: "Exportar fotos" });
-  await dialog.getByRole("button", { name: "Preparar exportación" }).click();
+  await dialog.getByRole("button", { name: "Exportar trabajo seleccionado" }).click();
   await expect(dialog.getByRole("button", { name: "Descargar ZIP" })).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Compartir / Correo" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Compartir ZIP" })).toBeDisabled();
   const width = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, content: document.documentElement.scrollWidth }));
   expect(width.content).toBeLessThanOrEqual(width.viewport);
   await expect(dialog.getByRole("button", { name: "Descargar ZIP" })).toBeInViewport();
@@ -300,13 +323,13 @@ test("Spanish export fits 320px and offers download when native sharing is absen
 test("incomplete and reversed custom dates disable Prepare without an export read", async ({ page }) => {
   const { exportQueries } = await useMediaExportFixtures(page, "photo", [photo(1)]);
   const dialog = await openExport(page, "photo");
-  await expect(dialog.getByText("1 / 1 selected")).toBeVisible();
+  await expect(dialog.getByText("1 jobs · 1 / 1 photos selected")).toBeVisible();
   const before = exportQueries.length;
   await dialog.getByLabel("Custom dates").check();
-  await expect(dialog.getByRole("button", { name: "Prepare export" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Export selected job" })).toBeDisabled();
   await dialog.getByLabel("From date").fill("2026-10-06");
   await dialog.getByLabel("Through date").fill("2026-10-05");
-  await expect(dialog.getByRole("button", { name: "Prepare export" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Export selected job" })).toBeDisabled();
   await expect(dialog.getByRole("alert")).toContainText(/valid start and end dates/);
   expect(exportQueries).toHaveLength(before);
 });
@@ -316,16 +339,16 @@ test("Cancel preparation releases a pending storage sign without sharing or down
   const downloads: string[] = [];
   page.on("download", download => downloads.push(download.suggestedFilename()));
   const dialog = await openExport(page, "photo");
-  await expect(dialog.getByText("1 / 1 selected")).toBeVisible();
+  await expect(dialog.getByText("1 jobs · 1 / 1 photos selected")).toBeVisible();
   await expect.poll(() => signed.length).toBeGreaterThan(0); // Let the feed's thumbnail sign finish first.
   armSignHold();
   try {
-    await dialog.getByRole("button", { name: "Prepare export" }).click();
+    await dialog.getByRole("button", { name: "Export selected job" }).click();
     await expect.poll(isSignHeld).toBe(true);
     await expect(dialog.getByRole("button", { name: "Cancel preparation" })).toBeVisible();
     await dialog.getByRole("button", { name: "Cancel preparation" }).click();
     await expect(dialog.getByRole("button", { name: "Cancel preparation" })).toHaveCount(0);
-    await expect(dialog.getByRole("button", { name: "Prepare again" })).toBeEnabled();
+    await expect(dialog.getByRole("button", { name: "Export selected job" })).toBeEnabled();
     await expect(dialog.getByText("Preparation was canceled.")).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Download ZIP" })).toHaveCount(0);
     releaseSign(); // A late signing response must not start a file fetch.
@@ -364,15 +387,73 @@ test("office month, category and billing filters carry into receipt files", asyn
   expect(exportQueries.some(url => url.searchParams.get("category") === "eq.gas" && url.searchParams.get("is_passthrough") === "eq.false" && url.searchParams.get("project_id") === `eq.${JOB.projectId}` && url.searchParams.getAll("created_at").some(clause => clause.startsWith("gte.2026-10-01")) && url.searchParams.getAll("created_at").some(clause => clause.startsWith("lt.2026-11-01")))).toBe(true);
 });
 
-test("Spanish photo export refuses more than 5000 rows with a useful narrowing prompt", async ({ page }) => {
+test("photo metadata keyset reads beyond 5000 without dropping rows", async ({ page }) => {
   const rows = Array.from({ length: 5001 }, (_, i) => photo(i));
-  const { exportRanges } = await useMediaExportFixtures(page, "photo", rows, { language: "es" });
-  await page.goto(`/photos?kind=photo&project=${JOB.projectId}`);
-  await page.getByRole("button", { name: "Exportar fotos" }).click();
-  const dialog = page.getByRole("dialog", { name: "Exportar fotos" });
-  await expect(dialog.getByRole("alert")).toContainText("Hay demasiados archivos. Elige un trabajo o un rango de fechas menor.");
-  expect(exportRanges).toContain("0-499");
-  expect(exportRanges).toContain("5000-5000");
-  await expect(dialog.getByRole("button", { name: "Preparar exportación" })).toBeDisabled();
-  await expect(dialog.getByRole("button", { name: "Descargar ZIP" })).toHaveCount(0);
+  const { exportQueries } = await useMediaExportFixtures(page, "photo", rows);
+  const dialog = await openExport(page, "photo");
+  await expect(dialog.getByText("1 jobs · 5001 / 5001 photos selected")).toBeVisible({ timeout: 90_000 });
+  expect(exportQueries.length).toBeGreaterThan(10);
+  expect(exportQueries.some(url => (url.searchParams.get("or") ?? "").includes("id.lt"))).toBe(true);
+  await expect(dialog.getByRole("button", { name: "Export selected job" })).toBeEnabled();
+});
+
+test("all-jobs photo ZIP contains job and Unassigned folders with independent job selection", async ({ page }, testInfo) => {
+  const unassigned = { ...photo(3, JOB.projectId), project_id: null };
+  const missingLabel = photo(4, "orphan-job-id");
+  await useMediaExportFixtures(page, "photo", [photo(1), photo(5), photo(2, OTHER.projectId), unassigned, missingLabel]);
+  const dialog = await openExport(page, "photo");
+  await dialog.getByRole("button", { name: "All jobs I can access" }).click();
+  await expect(dialog.getByText("4 jobs · 5 / 5 photos selected")).toBeVisible();
+  const other = dialog.locator(".media-export-group").filter({ hasText: OTHER.jobCode });
+  await other.locator('input[type="checkbox"]').first().uncheck();
+  await expect(dialog.getByText("3 jobs · 4 / 5 photos selected")).toBeVisible();
+  const orphan = dialog.locator(".media-export-group").filter({ hasText: "Job-orphan-job-id" });
+  await expect(orphan).toBeVisible();
+  const known = dialog.locator(".media-export-group").filter({ hasText: JOB.jobCode });
+  await known.getByRole("button", { name: "Expand" }).click();
+  const day = known.locator(".media-export-day button");
+  await day.click();
+  await expect(known.locator(".media-export-items li")).toHaveCount(0);
+  await day.click();
+  await expect(known.locator(".media-export-items li")).toHaveCount(2);
+  await known.locator('.media-export-items input[type="checkbox"]').first().uncheck();
+  await expect(dialog.getByText("3 jobs · 3 / 5 photos selected")).toBeVisible();
+  await dialog.getByRole("button", { name: "Export all selected projects" }).click();
+  const zip = await downloadedZip(page, "Download ZIP", testInfo);
+  const names = Object.values(zip.files).filter(file => !file.dir).map(file => file.name);
+  expect(names).toHaveLength(3);
+  expect(names.some(name => name.includes(JOB.jobCode) && name.includes("photo-001"))).toBe(true);
+  expect(names.some(name => name.startsWith("Unassigned/") && name.includes("photo-003"))).toBe(true);
+  expect(names.some(name => name.startsWith("Job-orphan-j/") && name.includes("photo-004"))).toBe(true);
+  expect(names.every(name => !name.includes(OTHER.jobCode) && !name.includes("photo-005"))).toBe(true);
+});
+
+
+test("more than 50 MB of selected photo bytes packs into separate ZIP parts", async ({ page }, testInfo) => {
+  const payload = Buffer.alloc(6 * 1024 * 1024, 0x5a);
+  const rows = Array.from({ length: 10 }, (_, i) => photo(i));
+  await useMediaExportFixtures(page, "photo", rows, { photoPayload: payload });
+  const dialog = await openExport(page, "photo");
+  await expect(dialog.getByText("1 jobs · 10 / 10 photos selected")).toBeVisible();
+  await dialog.getByRole("button", { name: "Export selected job" }).click();
+  const seen = new Set<string>();
+  let parts = 0;
+  for (;;) {
+    await expect(dialog.getByRole("button", { name: "Download ZIP" })).toBeVisible({ timeout: 90_000 });
+    const zip = await downloadedZip(page, "Download ZIP", testInfo);
+    const entries = Object.values(zip.files).filter(file => !file.dir);
+    expect(entries.length).toBeGreaterThan(0);
+    for (const entry of entries) {
+      expect(await entry.async("nodebuffer")).toEqual(payload);
+      const id = /photo-\d+/.exec(entry.name)?.[0];
+      expect(id).toBeTruthy(); expect(seen.has(id!)).toBe(false); seen.add(id!);
+    }
+    parts++;
+    const next = dialog.getByRole("button", { name: "I saved this part — prepare next" });
+    if (await next.count() === 0) break;
+    await next.click();
+  }
+  expect(parts).toBeGreaterThan(1);
+  expect(seen.size).toBe(10);
+  await expect(dialog.getByText(/10 of 10 selected photos prepared across/)).toBeVisible();
 });
