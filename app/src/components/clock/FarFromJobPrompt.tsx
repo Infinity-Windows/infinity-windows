@@ -51,6 +51,8 @@ import {
 } from "../../lib/timeclock";
 import { toastError, toastSuccess } from "../../lib/toast";
 import { useT } from "../../lib/i18n";
+import type { NativeClockFlow } from "../../lib/paidClock/flow";
+import { openClockGlobally } from "../../lib/clockContext";
 
 /** localStorage, but a private window or a locked-down browser can throw. */
 function readHold(shiftId: string): number | null {
@@ -74,9 +76,11 @@ function writeHold(shiftId: string, untilMs: number): void {
 export function FarFromJobPrompt({
   shift,
   onChanged,
+  nativeFlow=null,
 }: {
   shift: TimeShift | null;
   onChanged: () => void;
+  nativeFlow?:NativeClockFlow|null;
 }) {
   const t = useT();
   const qc = useQueryClient();
@@ -198,8 +202,13 @@ export function FarFromJobPrompt({
   // has driven away from a job; "no signal" is the normal state of the phone
   // that gets this question, and a switch that only worked in coverage would
   // fail exactly when it matters and leave the clock charging the job.
-  const switchToTravel = useMutation<{ queued: boolean }>({
+  const switchToTravel = useMutation<{ queued: boolean;openedWork?:boolean }>({
     mutationFn: async () => {
+      if(nativeFlow && nativeFlow.route!=="legacy") {
+        // Payroll stays on the same shift. The shared sheet owns the Work
+        // selection; a proximity suggestion never makes another clock-in.
+        openClockGlobally();return {queued:false,openedWork:true};
+      }
       // One id for this tap, live try and queued retry alike (K0.2), stamped
       // at the tap: before the Travel lookup and the location wait, either of
       // which can take seconds that are not when the person tapped.
@@ -267,6 +276,7 @@ export function FarFromJobPrompt({
       }
     },
     onSuccess: (r) => {
+      if(r.openedWork){setAsking(false);return;}
       toastSuccess(
         r.queued ? t("clock.toast.switchedQueued") : t("farjob.switched"),
       );

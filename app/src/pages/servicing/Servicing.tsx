@@ -34,7 +34,7 @@ import { listProjectsAnyStatus } from "../../lib/api";
 import { listProfiles, listOpenings } from "../../lib/install/api";
 import { listWorkUnits } from "../../lib/customWork/api";
 import { listVehicles } from "../../lib/vehicles/api";
-import { clockIn, listCostCodes } from "../../lib/timeclock";
+import { clockIn, listCostCodes, mintPunch } from "../../lib/timeclock";
 import { clockText } from "../../lib/customWork/model";
 import { formatApiError } from "../../lib/errors";
 import { isMissingTable, isMissingFunction } from "../../lib/schemaErrors";
@@ -514,9 +514,16 @@ export function Servicing() {
                         ) : (
                           <button
                             className="primary"
-                            disabled={blocked}
+                            disabled={blocked || service.clock.loading || !service.clock.nativeFlow}
                             onClick={() =>
                               void run(async () => {
+                                if(service.clock.loading || !service.clock.nativeFlow)throw Error(t("paidClock.actionHeld"));
+                                if(service.clock.nativeFlow && service.clock.nativeFlow.route!=="legacy") {
+                                  const result=await service.clock.nativeFlow.authorStart(mintPunch());
+                                  service.clock.refresh();
+                                  if(result.kind==="held")throw Error(t("paidClock.actionHeld"));
+                                  service.clock.openClock();return;
+                                }
                                 const code =
                                   refs.data?.codes.find(
                                     (c) => String(c.code) === "11",

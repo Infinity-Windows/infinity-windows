@@ -20,6 +20,7 @@ import type { DesignKey } from "./designCatalog";
 import type { ScheduleConflictKey } from "./scheduleConflictCatalog";
 import type { ValuesKey } from "./valuesCatalog";
 import type { WorkDataKey } from "./workDataCatalog";
+import type { PaidClockKey } from "./paidClockCatalog";
 
 /**
  * Keys whose Spanish still needs a bilingual crew member to verify it — the
@@ -323,6 +324,10 @@ export const CATALOG = {
     en: "Your clock-in is still being sent. Wait a moment and try again.",
     es: "Tu entrada todavía se está enviando. Espera un momento y vuelve a intentarlo.",
   },
+  "clock.error.requiresReview": {
+    en: "Your time records need review. This punch did not complete. Ask your foreman to check them.",
+    es: "Tus registros de tiempo necesitan revisión. Esta marcación no se completó. Pide a tu capataz que los revise.",
+  },
   // Release 0 (K0.1): a punch saved on this phone reads as real, with the
   // tap time and where it stands — sending, or waiting for signal.
   "clock.queued.clockIn": {
@@ -492,6 +497,8 @@ export const CATALOG = {
 
   // ---- Clock-in block (the one big clock-in spot on every landing) ------
   "clockblock.title": { en: "Clock in", es: "Marcar entrada" },
+  "clockblock.checking": { en:"Checking your clock…", es:"Revisando tu reloj…" },
+  "clockBadge.lastConfirmed": { en:"Last confirmed clock", es:"Último reloj confirmado" },
   "clockblock.subtitle": {
     en: "Pick your job and cost code — your time flows to payroll and job costing.",
     es: "Elige tu trabajo y código de costo — tu tiempo va a la nómina y al costo del trabajo.",
@@ -5606,7 +5613,7 @@ export const CATALOG = {
  * keys are part of this type through a type-only import, which costs the
  * entry chunk nothing, while its strings ride in the route's own chunk.
  */
-export type TKey = keyof typeof CATALOG | WorkKey | DesignKey | ScheduleConflictKey | ValuesKey | WorkDataKey;
+export type TKey = keyof typeof CATALOG | WorkKey | DesignKey | ScheduleConflictKey | ValuesKey | WorkDataKey | PaidClockKey;
 
 /**
  * Add a lazily loaded phrasebook to the live catalog. Called at module load

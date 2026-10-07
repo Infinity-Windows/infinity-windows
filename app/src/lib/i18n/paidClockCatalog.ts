@@ -1,0 +1,38 @@
+import { registerCatalog } from "./catalog";
+import type { CatalogEntry } from "./translate";
+export const PAID_CLOCK_CATALOG = {
+  "paidClock.title": { en:"Saved clock punches", es:"Marcaciones guardadas" },
+  "paidClock.loading": { en:"Reading saved punches…", es:"Leyendo marcaciones guardadas…" },
+  "paidClock.unavailable": { en:"Saved punches could not be read. Keep this device and check again before making a replacement punch.", es:"No se pudieron leer las marcaciones guardadas. Conserva este dispositivo y vuelve a revisar antes de crear otra marcación." },
+  "paidClock.clock_in": { en:"Clock in", es:"Entrada" },
+  "paidClock.break_start": { en:"Start break", es:"Comenzar descanso" },
+  "paidClock.break_end": { en:"End break", es:"Terminar descanso" },
+  "paidClock.clock_out": { en:"Clock out", es:"Salida" },
+  "paidClock.queued": { en:"Saved on this device · awaiting confirmation", es:"Guardada en este dispositivo · pendiente de confirmación" },
+  "paidClock.unknown": { en:"Confirmation pending · Forge may already have received this punch", es:"Confirmación pendiente · Forge puede haber recibido esta marcación" },
+  "paidClock.review": { en:"Needs review · no completion is assumed", es:"Necesita revisión · no se supone que se haya completado" },
+  "paidClock.firstDeliveryHeld": { en:"Saved request · sending was stopped before reaching Forge. Retry checks your current clock first; no shift is confirmed.", es:"Solicitud guardada · el envío se detuvo antes de llegar a Forge. Al reintentar se revisa primero tu reloj actual; no se confirma ningún turno." },
+  "paidClock.acknowledged": { en:"Delivery confirmed · historical receipt", es:"Entrega confirmada · comprobante histórico" },
+  "paidClock.historyHelp": { en:"A receipt confirms delivery of that punch. Current paid time and work status come from the latest shift and activity records.", es:"Un comprobante confirma la entrega de esa marcación. El tiempo pagado y el estado actual del trabajo vienen de los registros más recientes del turno y las actividades." },
+  "paidClock.check": { en:"Check confirmation", es:"Revisar confirmación" },
+  "paidClock.resend": { en:"Resend original punch", es:"Reenviar marcación original" },
+  "paidClock.resendHelp": { en:"This sends the same saved punch and original tap time. An unresolved reply stays unresolved until its matching confirmation arrives.", es:"Esto envía la misma marcación guardada y su hora original. Una respuesta sin resolver sigue sin resolverse hasta que llegue la confirmación correspondiente." },
+  "paidClock.working": { en:"Checking this punch…", es:"Revisando esta marcación…" },
+  "paidClock.offline": { en:"Reconnect to check or resend the original punch.", es:"Vuelve a conectarte para revisar o reenviar la marcación original." },
+  "paidClock.held": { en:"No new confirmation was found. This punch is not treated as complete; review the saved requests above.", es:"No se encontró una confirmación nueva. Esta marcación no se considera completa; revisa las solicitudes guardadas arriba." },
+  "paidClock.failed": { en:"This punch could not be checked. Read the saved requests again before trying another action.", es:"No se pudo revisar esta marcación. Vuelve a leer las solicitudes guardadas antes de intentar otra acción." },
+  "paidClock.refresh": { en:"Read saved punches again", es:"Volver a leer marcaciones guardadas" },
+  "paidClock.actionHeld": { en:"This clock action is not confirmed. Review saved punches before making a replacement.", es:"Esta acción del reloj no está confirmada. Revisa las marcaciones guardadas antes de crear otra." },
+  "paidClock.startHelp": { en:"Start paid time here. Choose your job and activity from Work.", es:"Comienza el tiempo pagado aquí. Elige tu obra y actividad en Trabajo." },
+  "paidClock.saveStartRequest": { en:"Save original clock-in request", es:"Guardar solicitud original de entrada" },
+  "paidClock.startRequestHelp": { en:"Current paid time is unknown. Save this tap on your device; Forge must check your clock before sending it. No shift is confirmed yet.", es:"El tiempo pagado actual es desconocido. Guarda este toque en tu dispositivo; Forge debe revisar tu reloj antes de enviarlo. Todavía no se confirma ningún turno." },
+  "paidClock.currentUnknown": { en:"Checking current paid time", es:"Revisando el tiempo pagado actual" },
+  "paidClock.lastConfirmed": { en:"Last confirmed clock", es:"Último reloj confirmado" },
+  "paidClock.requestResume": { en:"Save resume request · break still pending", es:"Guardar solicitud de reanudación · descanso pendiente" },
+  "paidClock.staleHelp": { en:"Showing the last confirmed state. New break or clock-out requests stay pending until Forge confirms them.", es:"Se muestra el último estado confirmado. Las nuevas solicitudes de descanso o salida siguen pendientes hasta que Forge las confirme." },
+  "paidClock.currentUnknownHelp": { en:"Current paid time is unavailable. Saved punches remain separate; read your clock again before starting another shift.", es:"El tiempo pagado actual no está disponible. Las marcaciones guardadas siguen separadas; vuelve a revisar el reloj antes de comenzar otro turno." },
+  "paidClock.startResendWarning": { en:"Before resending this clock-in, check for a later clock-out or a new shift. This resends the original time and may change which shift is open.", es:"Antes de reenviar esta entrada, revisa si hay una salida posterior o un turno nuevo. Esto reenvía la hora original y puede cambiar qué turno está abierto." },
+  "paidClock.chooseWorkJob": { en:"Choose the job and activity from Work. This will keep the same paid shift.", es:"Elige la obra y la actividad en Trabajo. Esto conservará el mismo turno pagado." },
+} satisfies Record<string,CatalogEntry>;
+export type PaidClockKey = keyof typeof PAID_CLOCK_CATALOG;
+registerCatalog(PAID_CLOCK_CATALOG);

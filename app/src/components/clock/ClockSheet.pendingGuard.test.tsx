@@ -200,6 +200,18 @@ describe("a punch on a clock-in that is still on the phone", () => {
 describe("a punch on a real shift", () => {
   const REAL = "11111111-2222-4333-8444-555555555555";
 
+  it('shows review without back-on-clock success or requeue when signal drops after the response',async()=>{
+    const prior=Object.getOwnPropertyDescriptor(navigator,'onLine');
+    try{
+      spies.endBreak.mockImplementationOnce(async()=>{Object.defineProperty(navigator,'onLine',{configurable:true,value:false});throw new ClockRefusal('requires_review');});
+      const el=mount(shift(REAL,{break_started_at:new Date(Date.now()-600000).toISOString(),break_type:'rest'}));
+      await flush();await click(el,'.clock-btn.resume');
+      expect(spies.enqueueBreakStop).not.toHaveBeenCalled();
+      expect(spies.pushToast.mock.calls.filter(c=>c[1]==='error').map(c=>c[0])).toEqual(['Your time records need review. This punch did not complete. Ask your foreman to check them.']);
+      expect(spies.pushToast.mock.calls.some(c=>c[1]==='success')).toBe(false);
+    }finally{if(prior)Object.defineProperty(navigator,'onLine',prior);else delete (navigator as unknown as {onLine?:boolean}).onLine;}
+  });
+
   it("goes to the server with the tap's id, and the same id queues if the network drops", async () => {
     spies.endBreak.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     const el = mount(shift(REAL, { break_started_at: new Date(Date.now() - 600_000).toISOString(), break_type: "rest" }));

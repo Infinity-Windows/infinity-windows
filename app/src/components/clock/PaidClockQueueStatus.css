@@ -1,0 +1,8 @@
+.paid-clock-queue { min-width:0; max-width:100%; }
+.paid-clock-queue section { padding:12px; border:1px solid var(--border,#ddd); border-radius:12px; }
+.paid-clock-queue h3 { margin:0 0 8px; font-size:1rem; }
+.paid-clock-queue article { min-width:0; padding:8px 0; overflow-wrap:anywhere; }
+.paid-clock-queue p { margin:5px 0; }
+.paid-clock-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.paid-clock-queue button { min-height:44px; max-width:100%; white-space:normal; }
+.paid-clock-help { font-size:.9rem; opacity:.85; }

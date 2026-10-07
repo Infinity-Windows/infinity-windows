@@ -1,0 +1,6 @@
+.selected-job-work { min-width: 0; width: 100%; display: grid; gap: .65rem; }
+.selected-job-work-controls { display: flex; flex-wrap: wrap; align-items: stretch; gap: .5rem; min-width: 0; padding-inline: .75rem; padding-bottom: .75rem; }
+.selected-job-work-controls button { flex: 1 1 11rem; min-width: 0; max-width: 100%; padding: .65rem .8rem; border: 1px solid var(--border, #bbb); border-radius: .6rem; background: var(--surface, #fff); color: inherit; font: inherit; white-space: normal; overflow-wrap: anywhere; }
+.selected-job-work-controls button:disabled { opacity: .6; }
+@media (max-width: 390px) { .selected-job-work-controls { padding-inline: .5rem; } .selected-job-work-controls button { flex-basis: 100%; } }
+

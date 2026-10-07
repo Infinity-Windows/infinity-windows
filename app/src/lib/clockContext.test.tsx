@@ -16,6 +16,20 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OutboxEntry } from "./offline/outbox-core";
+import { rememberSignedIn } from "./signedIn";
+
+// These tests own the classic outbox projection. Native protocol admission
+// is supplied separately so they do not accidentally authorize from unread
+// native storage or require a live account.
+vi.mock("./paidClock/ClockFlowBridge",async()=>{
+  const {useEffect}=await import("react");
+  const {signInMark}=await import("./signedIn");
+  function ClassicAdmission({profileId,onFlow}:{profileId:string;onFlow:(flow:unknown)=>void}) {
+    useEffect(()=>{onFlow({ownerId:profileId,loginGeneration:signInMark().generation,route:"legacy",refresh:()=>{}});return()=>onFlow(null);},[profileId,onFlow]);
+    return null;
+  }
+  return {default:ClassicAdmission};
+});
 
 vi.mock("../components/clock/ClockSheet", () => ({
   ClockSheet: (props: { initialPick: unknown; shift: { id: string } | null; pending: { kind: string } | null; onClose: () => void }) => (
@@ -118,6 +132,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  rememberSignedIn({user:{id:"me"}});
   rendered = [];
   fake.state.shiftMap = {};
   fake.setQueue([], true);
@@ -204,6 +219,12 @@ describe("openClockGlobally", () => {
 });
 
 describe("the clock provider", () => {
+  it("closes the sheet and discards the carried private pick at logout and same-person login",()=>{
+    const el=mount();act(()=>openClockGlobally(PICK));
+    expect(el.querySelector(".probe-sheet")?.getAttribute("data-pick")).toBe(JSON.stringify(PICK));
+    act(()=>{rememberSignedIn(null);rememberSignedIn({user:{id:"me"}});});
+    expect(el.querySelector(".probe-sheet")).toBeNull();
+  });
   it("opens the sheet with the carried pick, clears it on close, and a bare open is plain", () => {
     const el = mount();
     expect(el.querySelector(".probe-sheet")).toBeNull();

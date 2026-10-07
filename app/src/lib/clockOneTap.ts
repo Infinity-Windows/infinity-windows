@@ -3,6 +3,7 @@ import { endBreak as endBreakRpc, startBreak as startBreakRpc, type BreakType, t
 import { enqueueBreakStart, enqueueBreakStop, resolveShiftRef as outboxResolveShiftRef } from "./offline/outbox";
 import { isNetworkError } from "./offline/outbox-core";
 import { isPendingShiftRef, mintPunch as mintClockPunch, type ClockPunch } from "./clockPunch";
+import type { NativeClockFlow } from "./paidClock/flow";
 
 /**
  * One-tap clock buttons under an Ask reply (crew redesign K2.4).
@@ -32,6 +33,7 @@ import { isPendingShiftRef, mintPunch as mintClockPunch, type ClockPunch } from 
  * shift the clock-in becomes, and the clock view shows it there meanwhile.
  */
 export type OneTapOutcome =
+  | { kind:"native_result";status:"held"|"acknowledged"|"review"|"unknown" }
   | { kind: "done"; action: ClockButton["action"]; queued: boolean }
   | { kind: "open_clock"; action: ClockButton["action"] }
   | {
@@ -88,6 +90,7 @@ export async function runOneTap(
   shift: TimeShift | null,
   breakType: ClockBreakType | null,
   deps: OneTapDeps = defaultOneTapDeps(),
+  nativeFlow:NativeClockFlow|null=null,
 ): Promise<OneTapOutcome> {
   const unfit = oneTapFits(button.action, shift);
   if (unfit) return unfit;
@@ -99,6 +102,14 @@ export async function runOneTap(
   try {
     // The tap's one punch, before anything is tried (see the header).
     punch = deps.mintPunch();
+    if(nativeFlow && nativeFlow.route!=="legacy") {
+      const shiftRef={kind:"shift" as const,id:ref};
+      const intent=action==="start_break"?{...punch,action:"break_start" as const,shiftRef,breakType:type}:
+        {...punch,action:"break_end" as const,shiftRef};
+      const result=await nativeFlow.authorSafety(intent);
+      const status=result.kind==="saved" && result.dispatch.kind==="settled"?result.dispatch.record.delivery.status:null;
+      return {kind:"native_result",status:result.kind==="held"?"held":status==="acknowledged"?"acknowledged":status==="attention"?"review":"unknown"};
+    }
     // A real shift id, or the server's shift a landed clock-in became; null
     // while that clock-in is still on the phone.
     direct = isPendingShiftRef(ref) ? deps.resolveShiftRef(ref) : ref;

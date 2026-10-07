@@ -17,6 +17,14 @@ const q = vi.hoisted(() => ({
   outboxListeners: new Set<() => void>(),
   installListeners: new Set<() => void>(),
   throwOn: new Set<string>(),
+  nativePending: 0,
+  nativeSending: false,
+  nativeRead: undefined as undefined | (() => Promise<number>),
+}));
+vi.mock("../paidClock/reloadGuard", () => ({
+  PAID_CLOCK_BUSY_EVENT: "forge:paid-clock-in-flight",
+  paidClockOperationInFlight: () => q.nativeSending,
+  readPaidClockReloadHold: async () => q.nativeRead ? q.nativeRead() : q.nativePending,
 }));
 
 const maybeThrow = (name: string) => {
@@ -84,6 +92,9 @@ beforeEach(() => {
   q.service = [];
   q.media = [];
   q.throwOn.clear();
+  q.nativePending = 0;
+  q.nativeSending = false;
+  q.nativeRead = undefined;
 });
 
 afterEach(() => {
@@ -92,6 +103,17 @@ afterEach(() => {
 });
 
 describe("readQueuedWork", () => {
+  it("holds native unresolved or unknown storage and sees a sender starting during counts", async () => {
+    q.nativePending = 1;
+    expect(blocksReload(await readQueuedWork("crew-1"))).toBe(true);
+    let resolve!: (value: number) => void;
+    q.nativeRead = () => new Promise(done => { resolve = done; });
+    const read = readQueuedWork("crew-1");
+    q.nativeSending = true;
+    resolve(0);
+    expect(await read).toEqual({waiting: 0, sending: true});
+    expect(isSendingNow()).toBe(true);
+  });
   it("reads an idle phone as nothing queued", async () => {
     const r = await readQueuedWork("crew-1");
     expect(r).toEqual({ waiting: 0, sending: false });

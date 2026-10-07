@@ -1,0 +1,20 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { UnitObservationUnavailableError } from "./model";
+const UNIT="00000000-0000-4000-8000-000000000010", ME="00000000-0000-4000-8000-000000000020", OTHER="00000000-0000-4000-8000-000000000030";
+let user:string|null=ME, sessionUser:string|null=ME, generation=0;
+let afterSession:(()=>void)|null=null, afterRpc:(()=>void)|null=null, error:unknown=null, response:unknown;
+const calls:{token:string;name:string;args:unknown}[]=[];
+vi.mock("../supabase",()=>({supabase:{auth:{getSession:async()=>{const session=sessionUser?{access_token:`token-${sessionUser}`,user:{id:sessionUser}}:null;afterSession?.();return{data:{session},error:null};}}},clientWithToken:(token:string)=>({rpc:async(name:string,args:unknown)=>{calls.push({token,name,args});afterRpc?.();return{data:response,error};}})}));
+vi.mock("../signedIn",()=>({signInMark:()=>({userId:user,generation}),stillSignedInAs:(mark:{userId:string|null;generation:number},who:string)=>mark.userId===who&&mark.generation===generation&&user===who}));
+const {fetchUnitFactSnapshot}=await import("./api");
+beforeEach(()=>{user=ME;sessionUser=ME;generation=0;afterSession=null;afterRpc=null;error=null;calls.length=0;response={protocolVersion:1,unitId:UNIT,revision:0,observation:null};});
+describe("fresh unit observation read",()=>{
+  it("pins the checked token and exact unit RPC",async()=>{expect((await fetchUnitFactSnapshot(UNIT)).revision).toBe(0);expect(calls).toEqual([{token:`token-${ME}`,name:"work_unit_fact_current_read",args:{p_unit_id:UNIT}}]);});
+  it("never requests as a missing or different login",async()=>{for(const who of [null,OTHER]){sessionUser=who;await expect(fetchUnitFactSnapshot(UNIT)).rejects.toBeInstanceOf(UnitObservationUnavailableError);}expect(calls).toHaveLength(0);});
+  it("refuses account ABA before dispatch",async()=>{afterSession=()=>{generation+=2;};await expect(fetchUnitFactSnapshot(UNIT)).rejects.toThrow();expect(calls).toHaveLength(0);});
+  it("never runs an old query scope as a new login",async()=>{const old={userId:ME,generation};generation+=2;await expect(fetchUnitFactSnapshot(UNIT,old)).rejects.toThrow();expect(calls).toHaveLength(0);});
+  it("discards a late response after logout and same-user login",async()=>{afterRpc=()=>{generation+=2;};await expect(fetchUnitFactSnapshot(UNIT)).rejects.toThrow();expect(calls).toHaveLength(1);});
+  it("never translates hidden source or network errors into empty evidence",async()=>{for(const failure of [{code:"42501",message:"Private source"},{code:"23514"},new Error("network")]){error=failure;await expect(fetchUnitFactSnapshot(UNIT)).rejects.toThrow("current unit measurement is unavailable");}});
+  it("rejects malformed and mismatched responses",async()=>{for(const value of [null,{...response as object,unitId:OTHER},{...response as object,revision:"0"}]){response=value;await expect(fetchUnitFactSnapshot(UNIT)).rejects.toThrow();}});
+  it("refuses malformed unit identity before network",async()=>{await expect(fetchUnitFactSnapshot("unknown")).rejects.toThrow();expect(calls).toHaveLength(0);});
+});

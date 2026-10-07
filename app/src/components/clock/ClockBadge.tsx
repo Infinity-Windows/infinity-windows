@@ -38,16 +38,18 @@ export function ClockBadge() {
   if (!shift) return null;
 
   const onBreak = Boolean(shift.break_started_at);
-  const guard = shiftGuard(shift, now);
+  const stale=clock.nativeFlow?.currentRead==="stale";
+  const displayNow=stale?Date.parse(clock.nativeFlow?.current?.observedAt ?? shift.clock_in_at):now;
+  const guard = shiftGuard(shift, displayNow);
   const inAt = clockInLabel(shift.clock_in_at);
   // Past the believable maximum the total stops being evidence of a working
   // day (lib/shiftGuard.ts) — say what is needed instead of a number.
   const needsFinish = guard.workedSeconds == null;
   const breakSeconds = shift.break_started_at
-    ? Math.max(0, Math.floor((now - new Date(shift.break_started_at).getTime()) / 1000))
+    ? Math.max(0, Math.floor((displayNow - new Date(shift.break_started_at).getTime()) / 1000))
     : 0;
 
-  const text = needsFinish
+  const text = stale?t("clockBadge.lastConfirmed"):needsFinish
     ? t("clockBadge.finish")
     : onBreak
       ? `${t("clockBadge.break")} · ${formatClock(breakSeconds)}`
@@ -57,7 +59,7 @@ export function ClockBadge() {
     <button
       type="button"
       className={`clock-badge${onBreak ? " clock-badge--break" : ""}${needsFinish ? " clock-badge--finish" : ""}`}
-      aria-label={onBreak ? t("clockBadge.a11yBreak") : t("clockBadge.a11y", { time: inAt })}
+      aria-label={stale?t("clockBadge.lastConfirmed"):onBreak ? t("clockBadge.a11yBreak") : t("clockBadge.a11y", { time: inAt })}
       onClick={clock.openClock}
       data-testid="clock-badge"
     >
