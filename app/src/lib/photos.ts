@@ -321,6 +321,114 @@ export async function listPhotosForExport(
   }));
 }
 
+// ---------------------------------------------------------------------------
+// Grouped photo export reads (lib/groupedPhotoExport.ts). Past the flat
+// export's 5000-row ceiling, so it pages by keyset (created_at DESC, id DESC)
+// rather than by offset: an insert or delete between pages can neither repeat
+// nor skip a row. Still unsigned, still RLS-scoped, still refusing loudly — at
+// 50,000 rows or 20 MiB of row metadata it refuses the WHOLE listing rather
+// than offer a partial "all".
+// ---------------------------------------------------------------------------
+
+export const GROUPED_PHOTO_EXPORT_PAGE_SIZE = 500;
+export const GROUPED_PHOTO_EXPORT_MAX_ROWS = 50_000;
+export const GROUPED_PHOTO_EXPORT_MAX_METADATA_BYTES = 20 * 1024 * 1024;
+
+/** Tests only; production uses the constants above. */
+export interface GroupedPhotoListingOptions {
+  pageSize?: number;
+  maxRows?: number;
+  maxMetadataBytes?: number;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DOMException("Export canceled", "AbortError");
+}
+
+/**
+ * Every live photo listPhotosForExport would return — same RLS, kind, trash,
+ * receipt-namespace and schema-refusal rules — without its 5000-row ceiling.
+ * The cursor is the RAW last row of each page (before the local receipt-path
+ * filter), and it is ANDed with the date window, never replacing it.
+ */
+export async function listAllPhotosForGroupedExport(
+  projectId?: string | null,
+  window?: ExportWindow | null,
+  signal?: AbortSignal,
+  options: GroupedPhotoListingOptions = {},
+): Promise<PhotoExportRow[]> {
+  type Row = {
+    id: string;
+    storage_path: string;
+    created_at: string;
+    taken_at: string | null;
+    project_id: string | null;
+  };
+  const pageSize = Math.max(1, options.pageSize ?? GROUPED_PHOTO_EXPORT_PAGE_SIZE);
+  const maxRows = options.maxRows ?? GROUPED_PHOTO_EXPORT_MAX_ROWS;
+  const maxMetadataBytes = options.maxMetadataBytes ?? GROUPED_PHOTO_EXPORT_MAX_METADATA_BYTES;
+  // Capture time when there is one, else insert time — photoTime's rule.
+  const dateExpr = window
+    ? `and(taken_at.gte."${window.since}",taken_at.lt."${window.before}"),` +
+      `and(taken_at.is.null,created_at.gte."${window.since}",created_at.lt."${window.before}")`
+    : null;
+  const seen = new Map<string, Row>();
+  // UTF-8 bytes of each row as serialized, not UTF-16 code units. A budget on
+  // the listing's size, not a measurement of the JS heap.
+  const encoder = new TextEncoder();
+  let rawRows = 0;
+  let metadataBytes = 0;
+  let cursor: { createdAt: string; id: string } | null = null;
+  try {
+    for (;;) {
+      throwIfAborted(signal);
+      // At the ceiling this asks for exactly one more row: the boundary probe.
+      const want = Math.min(pageSize, maxRows - rawRows + 1);
+      let query = supabase
+        .from("attachments")
+        .select("id, storage_path, created_at, taken_at, project_id")
+        .eq("kind", "photo")
+        .is("deleted_at", null)
+        .not("storage_path", "like", "install-media/receipts/%")
+        .not("storage_path", "like", "receipts/%");
+      if (projectId) query = query.eq("project_id", projectId);
+      const cursorExpr = cursor
+        ? `created_at.lt."${cursor.createdAt}",and(created_at.eq."${cursor.createdAt}",id.lt."${cursor.id}")`
+        : null;
+      // One `or` parameter: (date window) AND (after cursor) when both apply.
+      if (dateExpr && cursorExpr) query = query.or(`and(or(${dateExpr}),or(${cursorExpr}))`);
+      else if (dateExpr) query = query.or(dateExpr);
+      else if (cursorExpr) query = query.or(cursorExpr);
+      let page = query.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(want);
+      if (signal) page = page.abortSignal(signal);
+      const { data, error } = await page;
+      throwIfAborted(signal);
+      if (error) throw error;
+      const rows = (data ?? []) as Row[];
+      rawRows += rows.length;
+      if (rawRows > maxRows) throw new MediaExportDataError("too_many", maxRows);
+      for (const r of rows) {
+        metadataBytes += encoder.encode(JSON.stringify(r)).byteLength;
+        if (metadataBytes > maxMetadataBytes) throw new MediaExportDataError("too_many", maxRows);
+        if (!seen.has(r.id)) seen.set(r.id, r);
+      }
+      if (rows.length < want) break;
+      const last = rows[rows.length - 1];
+      cursor = { createdAt: last.created_at, id: last.id };
+    }
+  } catch (err) {
+    if (isMissingColumn(err)) throw new MediaExportDataError("schema_missing");
+    throw err;
+  }
+  return [...seen.values()].filter((r) => !isReceiptStoragePath(r.storage_path)).map((r) => ({
+    id: r.id,
+    storagePath: r.storage_path,
+    createdAt: r.created_at,
+    takenAt: r.taken_at ?? null,
+    projectId: r.project_id ?? null,
+  }));
+}
+
 /** Prefer the true capture time; fall back to the server insert time. */
 export function photoTime(p: Pick<FeedPhoto, "takenAt" | "createdAt">): string {
   return p.takenAt ?? p.createdAt;
