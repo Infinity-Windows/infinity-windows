@@ -9,6 +9,7 @@ import { signedMedia } from "../../lib/photos";
 import { formatApiError } from "../../lib/errors";
 import { canShareMediaFiles, downloadMediaBlob, listMediaExportItems, mediaExportName, mediaExportRangeError, mediaExportZip, prepareMediaExport, shareMediaFiles, MediaExportDataError, isMediaShareCancel, type MediaExportItem, type MediaExportKind, type PreparedMediaExport } from "../../lib/mediaExport";
 import { canSharePhotoPart, createPhotoExportSession, downloadPhotoPart, listGroupedPhotoExportItems, sharePhotoPart, type PhotoExportSession, type PreparedPhotoPart, type PhotoPartDownload } from "../../lib/groupedPhotoExport";
+import { abortable, canSaveZipsToFolder, createExportFolder, createFolderSaveTally, exportFolderName, FolderExportError, isFolderPickerCancel, pickExportFolder, saveSessionToFolder, type ExportFolderHandle, type FolderSaveTally } from "../../lib/photoFolderExport";
 import { signInMark, stillSignedInAs, subscribeSignedIn } from "../../lib/signedIn";
 import type { ReceiptFilter } from "../../lib/receipts";
 import "./mediaExport.css";
@@ -83,6 +84,14 @@ export default function MediaExportDialog({ kind, projectId, fromDate = "", thro
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [collapsedDays, setCollapsedDays] = useState<Set<string>>(new Set());
   const [visible, setVisible] = useState<Record<string, number>>({});
+  // Save-all-to-folder is opt-in; one ZIP at a time stays the default.
+  const [exportMode, setExportMode] = useState<"manual" | "folder">("manual");
+  const [folderSupported] = useState(() => canSaveZipsToFolder());
+  const [folderRun, setFolderRun] = useState<{ folder: string; savedParts: number; savedFiles: number; manualParts: number; state: "running" | "write_failed" | "paused" | "done" | "stopped" } | null>(null);
+  // Folder handles live only as long as this operation — never persisted.
+  const folderHandle = useRef<ExportFolderHandle | null>(null);
+  const folderTally = useRef<FolderSaveTally | null>(null);
+  const folderManualParts = useRef(0);
   const prepareController = useRef<AbortController | null>(null);
   const listingControllers = useRef(new Set<AbortController>());
   const photoSession = useRef<PhotoExportSession | null>(null);
@@ -100,12 +109,13 @@ export default function MediaExportDialog({ kind, projectId, fromDate = "", thro
     revokeDownload.current?.revoke(); revokeDownload.current = null;
     photoSession.current?.cancel(); photoSession.current = null;
     photoPartRef.current = null; setPhotoPart(null); setPhotoSummary(null); setPartStarted(false); setPhotoNeedsResume(false);
+    folderHandle.current = null; folderTally.current = null; folderManualParts.current = 0;
   }, []);
   const reset = useCallback(() => {
     operationEpoch.current++;
     prepareController.current?.abort();
     for (const ctl of listingControllers.current) ctl.abort();
-    releasePhoto(); operationLock.current = false;
+    releasePhoto(); setFolderRun(null); operationLock.current = false;
     setPreview(null); setPreviewBusy(false); setPrepared(null); setSelection(null);
     setExpanded(new Set()); setCollapsedDays(new Set()); setVisible({}); setError(null); setNotice(null); setProgress(""); setBusy(false);
   }, [releasePhoto]);
@@ -175,8 +185,9 @@ export default function MediaExportDialog({ kind, projectId, fromDate = "", thro
   const title = activeKind === "photo" ? say("Export photos", "Exportar fotos") : say("Export receipts", "Exportar recibos");
   const jobLabel = jobCodeById.get(job) ?? (job || "all-jobs");
   const filename = mediaExportName(activeKind, jobLabel, filter.fromDate, filter.throughDate);
+  const folderMode = activeKind === "photo" && exportMode === "folder" && folderSupported;
   function changeSelection(next: Set<string>) {
-    operationEpoch.current++; releasePhoto(); setSelection(next); setPrepared(null); setPreview(null); setNotice(null); setError(null);
+    operationEpoch.current++; releasePhoto(); setFolderRun(null); setSelection(next); setPrepared(null); setPreview(null); setNotice(null); setError(null);
   }
   function readError(e: unknown) {
     if (e instanceof MediaExportDataError) return e.code === "too_many" ? say("Too many files to load at once. Choose one job or a smaller date range.", "Hay demasiados archivos. Elige un trabajo o un rango de fechas menor.") : say("Photo export is unavailable right now. Please try again later.", "La exportación de fotos no está disponible. Inténtalo más tarde.");
@@ -198,7 +209,7 @@ export default function MediaExportDialog({ kind, projectId, fromDate = "", thro
   async function prepare() {
     if (!currentViewer() || !ready || operationLock.current) return;
     operationLock.current = true;
-    releasePhoto(); setBusy(true); setError(null); setNotice(null); setPrepared(null);
+    releasePhoto(); setFolderRun(null); setBusy(true); setError(null); setNotice(null); setPrepared(null);
     const ctl = new AbortController(); prepareController.current = ctl;
     const epoch = operationEpoch.current;
     const isCurrent = () => currentViewer() && epoch === operationEpoch.current && !ctl.signal.aborted;
@@ -244,6 +255,120 @@ export default function MediaExportDialog({ kind, projectId, fromDate = "", thro
       }
     } finally { if (prepareController.current === ctl) prepareController.current = null; if (epoch === operationEpoch.current) { operationLock.current = false; if (currentViewer()) setBusy(false); } }
   }
+  function changeMode(mode: "manual" | "folder") {
+    operationEpoch.current++; prepareController.current?.abort(); releasePhoto(); setFolderRun(null);
+    setError(null); setNotice(null); setProgress(""); setExportMode(mode);
+  }
+  function folderWriteMessage(e: FolderExportError) {
+    if (e.code === "file_exists") return say("A file with this ZIP's name is already in the export folder, so Forge did not replace it. Download this ZIP instead.", "Ya hay un archivo con el nombre de este ZIP en la carpeta de exportación; Forge no lo reemplazó. Descarga este ZIP.");
+    const cause = (e.cause as { name?: string } | undefined)?.name;
+    const why = cause === "QuotaExceededError" ? say("The device is out of space. ", "El dispositivo no tiene espacio. ") : cause === "NotAllowedError" || cause === "SecurityError" ? say("Forge no longer has permission to save in that folder. ", "Forge ya no tiene permiso para guardar en esa carpeta. ") : "";
+    return why + say("This ZIP was not saved. Try again, or download it instead.", "Este ZIP no se guardó. Reintenta o descárgalo.");
+  }
+  function folderGuard() {
+    const ctl = new AbortController(); prepareController.current = ctl;
+    const epoch = operationEpoch.current;
+    const isCurrent = () => currentViewer() && epoch === operationEpoch.current && !ctl.signal.aborted;
+    return { ctl, epoch, isCurrent };
+  }
+  function finishFolder(ctl: AbortController, epoch: number) {
+    if (prepareController.current === ctl) prepareController.current = null;
+    if (epoch === operationEpoch.current) { operationLock.current = false; if (currentViewer()) setBusy(false); }
+  }
+  function startFolder() {
+    if (!currentViewer() || !ready || operationLock.current || activeKind !== "photo") return;
+    if (!folderSupported) { setError(say("This browser can't save to a folder. Use One ZIP at a time.", "Este navegador no puede guardar en una carpeta. Usa Un ZIP a la vez.")); return; }
+    // The lock first, then the picker straight from the tap: browsers refuse
+    // it once anything has been awaited.
+    operationLock.current = true;
+    let picking: Promise<ExportFolderHandle>;
+    try { picking = pickExportFolder(); }
+    catch { operationLock.current = false; setError(say("The folder picker could not open. Use One ZIP at a time.", "No se pudo abrir el selector de carpetas. Usa Un ZIP a la vez.")); return; }
+    void beginFolder(picking);
+  }
+  async function beginFolder(picking: Promise<ExportFolderHandle>) {
+    releasePhoto(); setFolderRun(null); setBusy(true); setError(null); setNotice(null); setPrepared(null); setProgress("");
+    const { ctl, epoch, isCurrent } = folderGuard();
+    try {
+      const parent = await abortable(picking, ctl.signal);
+      if (!isCurrent()) return;
+      const folder = await createExportFolder(parent, exportFolderName(filename), { signal: ctl.signal, isCurrent });
+      if (!isCurrent()) return;
+      folderHandle.current = folder; folderTally.current = createFolderSaveTally();
+      setFolderRun({ folder: `${parent.name}/${folder.name}`, savedParts: 0, savedFiles: 0, manualParts: 0, state: "running" });
+      const session = createPhotoExportSession([...selected], { signal: ctl.signal, isCurrent, projectLabels: jobLabels, archiveBaseName: filename.replace(/\.zip$/i, ""), onProgress: progress => { if (isCurrent()) setProgress(`${progress.processed} / ${progress.selected}`); } });
+      photoSession.current = session;
+      await driveFolder(session, null, ctl.signal, isCurrent);
+    } catch (e) {
+      // Closing the picker is not an error; nothing was created.
+      if (!isCurrent() || isFolderPickerCancel(e)) return;
+      setError(e instanceof FolderExportError && e.code === "folder_exists" ? say("A folder with this export's name is already there, so Forge did not use it. Try again.", "Ya existe una carpeta con ese nombre; Forge no la usó. Reintenta.") : say("Forge could not create a folder there. Choose another folder, or use One ZIP at a time.", "Forge no pudo crear una carpeta ahí. Elige otra carpeta o usa Un ZIP a la vez."));
+    } finally { finishFolder(ctl, epoch); }
+  }
+  /** Never throws: every outcome is published only while still current. */
+  async function driveFolder(session: PhotoExportSession, retained: PreparedPhotoPart | null, signal: AbortSignal, isCurrent: () => boolean) {
+    const folder = folderHandle.current; const tally = folderTally.current;
+    if (!folder || !tally) return;
+    setFolderRun(prev => prev && { ...prev, state: "running" });
+    try {
+      const result = await saveSessionToFolder({ signal, isCurrent, session, folder, tally, retained,
+        onPart: part => { if (!isCurrent()) return; if (photoPartRef.current?.token !== part.token) setPartStarted(false); photoPartRef.current = part; setPhotoPart(part); setPhotoSummary(session.summary()); },
+        onSaved: part => {
+          if (!isCurrent()) return;
+          if (photoPartRef.current?.token === part.token) { revokeDownload.current?.revoke(); revokeDownload.current = null; photoPartRef.current = null; setPhotoPart(null); setPartStarted(false); }
+          setFolderRun(prev => prev && { ...prev, savedParts: tally.parts, savedFiles: tally.files });
+        } });
+      if (!isCurrent()) return;
+      const summary = session.summary(); setPhotoSummary(summary);
+      if (result.status === "write_failed") {
+        // The same part stays held — same token, same bytes — for retry or download.
+        photoPartRef.current = result.part; setPhotoPart(result.part);
+        setFolderRun(prev => prev && { ...prev, state: "write_failed" });
+        setError(folderWriteMessage(result.error));
+        return;
+      }
+      setFolderRun(prev => prev && { ...prev, state: "done", savedParts: tally.parts, savedFiles: tally.files });
+      const manualParts = folderManualParts.current;
+      if (tally.parts === 0 && manualParts === 0) setError(say("No selected photos could be saved to the folder.", "No se pudo guardar ninguna foto seleccionada en la carpeta."));
+      else if (manualParts > 0) {
+        const finished = tally.parts > 0 ? say("Folder saving finished.", "Terminó el guardado en la carpeta.") : say("No ZIPs finished saving to this folder.", "Ningún ZIP terminó de guardarse en esta carpeta.");
+        const confirmed = say(`You confirmed ${manualParts} ZIP${manualParts === 1 ? " was" : "s were"} saved separately.`, `Confirmaste que ${manualParts} ZIP ${manualParts === 1 ? "se guardó" : "se guardaron"} por separado.`);
+        const missing = summary.failed.length ? say(" The photos listed below could not be included.", " No se pudieron incluir las fotos indicadas abajo.") : "";
+        setNotice(`${finished} ${confirmed}${missing}`);
+      } else setNotice(summary.failed.length ? say("Finished. The photos listed below could not be included.", "Terminado. Las fotos de abajo no se pudieron incluir.") : say("All ZIPs are saved in the folder.", "Todos los ZIP están guardados en la carpeta."));
+    } catch (e) {
+      if (!isCurrent()) return;
+      const summary = session.summary(); setPhotoSummary(summary);
+      setFolderRun(prev => prev && { ...prev, state: "paused" });
+      const archiveFailed = summary.failed.some(f => f.reason === "zip_failed");
+      setError(archiveFailed ? say("A ZIP part could not be prepared. The affected photos are listed below. You can continue saving the remaining photos.", "No se pudo preparar una parte ZIP. Las fotos afectadas aparecen abajo. Puedes seguir guardando las fotos restantes.") : formatApiError(e));
+      setPhotoNeedsResume(summary.remaining > 0 && photoPartRef.current === null && !(e instanceof DOMException && e.name === "AbortError"));
+    }
+  }
+  /** retry: write the held part again. skip: the person downloaded the held
+   * part themselves — release it uncounted and carry on. resume: after a ZIP
+   * could not be built, continue with the remaining photos. */
+  async function continueFolder(mode: "retry" | "skip" | "resume") {
+    const session = photoSession.current; const part = photoPartRef.current;
+    if (!session || !folderHandle.current || !currentViewer() || busy || operationLock.current) return;
+    if (mode === "resume" ? !photoNeedsResume || part !== null : folderRun?.state !== "write_failed" || !part || part.token !== photoPart?.token || (mode === "skip" && !partStarted)) return;
+    operationLock.current = true; setBusy(true); setError(null); setNotice(null); setPhotoNeedsResume(false);
+    const { ctl, epoch, isCurrent } = folderGuard();
+    if (mode === "skip" && part) {
+      revokeDownload.current?.revoke(); revokeDownload.current = null; session.releasePart(part.token);
+      // This is the person's acknowledgement, separate from successful folder writes.
+      const manualParts = ++folderManualParts.current;
+      setFolderRun(prev => prev && { ...prev, manualParts });
+      photoPartRef.current = null; setPhotoPart(null); setPartStarted(false);
+    }
+    try { await driveFolder(session, mode === "retry" ? part : null, ctl.signal, isCurrent); }
+    finally { finishFolder(ctl, epoch); }
+  }
+  function stopFolder() {
+    operationEpoch.current++; prepareController.current?.abort(); releasePhoto(); operationLock.current = false;
+    setBusy(false); setProgress(""); setError(null); setFolderRun(prev => prev && { ...prev, state: "stopped" });
+    setNotice(say("Stopped; the current ZIP may have finished saving. ZIPs already saved stay in the folder.", "Detenido; el ZIP actual pudo haberse guardado. Los ZIP ya guardados quedan en la carpeta."));
+  }
   function downloadPhoto() {
     if (!currentViewer() || !photoPart || photoPartRef.current?.token !== photoPart.token || busy || operationLock.current) return;
     operationLock.current = true;
@@ -277,6 +402,11 @@ export default function MediaExportDialog({ kind, projectId, fromDate = "", thro
     <fieldset disabled={busy} className="media-export-filters">
       <label>{say("Export content", "Contenido a exportar")}<select value={activeKind} onChange={e => { reset(); setActiveKind(e.target.value === "receipt" ? "receipt" : "photo"); }}><option value="photo">{say("Job photos only (exclude receipts)", "Solo fotos del trabajo (sin recibos)")}</option><option value="receipt">{say("Receipts only", "Solo recibos")}</option></select></label>
       <p className="muted">{activeKind === "photo" ? say("Receipt captures are left out. Choose Receipts only to export receipts.", "Los recibos se dejan fuera. Elige Solo recibos para exportar recibos.") : say("Only receipts are included. Each receipt exports its saved image, plus the original PDF when there is one.", "Solo se incluyen recibos. Cada recibo exporta su imagen guardada y el PDF original si lo tiene.")}</p>
+      {activeKind === "photo" && <div className="media-export-mode" role="radiogroup" aria-label={say("How to save ZIPs", "Cómo guardar los ZIP")}>
+        <label className="media-export-choice"><input type="radio" name="media-export-mode" checked={!folderMode} onChange={() => changeMode("manual")} />{say("One ZIP at a time", "Un ZIP a la vez")}</label>
+        <label className="media-export-choice"><input type="radio" name="media-export-mode" checked={folderMode} disabled={!folderSupported} onChange={() => changeMode("folder")} />{say("Save all ZIPs to a folder", "Guardar todos los ZIP en una carpeta")}</label>
+        <p className="muted">{!folderSupported ? say("This browser can't save straight to a folder, so ZIPs download one at a time.", "Este navegador no puede guardar directo en una carpeta, así que los ZIP se descargan uno a la vez.") : folderMode ? say("Keep Forge open while ZIPs save. Each ZIP opens separately.", "Mantén Forge abierto mientras se guardan los ZIP. Cada ZIP se abre por separado.") : say("Download or share each ZIP part yourself.", "Descarga o comparte cada parte ZIP tú mismo.")}</p>
+      </div>}
       <JobSearchSelect jobs={projects.data ?? []} value={job} onChange={id => { reset(); setJob(id); }} label={say("Export job", "Trabajo a exportar")} loading={projects.isFetching} />
       <button type="button" className="action-btn" aria-pressed={!job} onClick={() => { reset(); setJob(""); }}>{say("All jobs I can access", "Todos los trabajos a los que tengo acceso")}</button>
       <label className="media-export-choice"><input type="checkbox" checked={custom} onChange={e => { reset(); setCustom(e.target.checked); }} />{say("Custom dates", "Fechas personalizadas")}</label>
@@ -306,19 +436,31 @@ export default function MediaExportDialog({ kind, projectId, fromDate = "", thro
       })}</div> : <ul className="media-export-items">{items.map(item => <li key={item.id}><label><input type="checkbox" checked={selection === null || selection.has(item.id)} disabled={busy} onChange={() => { const next = new Set(selection ?? items.map(i => i.id)); if (next.has(item.id)) next.delete(item.id); else next.add(item.id); changeSelection(next); }} /><span><strong>{item.label}</strong><small>{projectLabel(item.projectId)} · {item.date} · {item.id.slice(0, 8)}{item.documentPath ? say(" · PDF + image", " · PDF + imagen") : ""}</small></span></label><button type="button" className="action-btn" disabled={busy || previewBusy} onClick={() => void showPreview(item.id, item.storagePath)}>{preview?.id === item.id ? say("Hide preview", "Ocultar vista previa") : say("Preview", "Vista previa")}</button>{preview?.id === item.id && <img className="media-export-preview" src={preview.url} alt={item.label} />}</li>)}</ul>}
     </>}
     {error && <p role="alert" className="error">{error}</p>}
-    {busy && prepareController.current && <button type="button" className="action-btn" onClick={() => { operationEpoch.current++; prepareController.current?.abort(); releasePhoto(); operationLock.current = false; setError(say("Preparation was canceled.", "Se canceló la preparación.")); setBusy(false); }}>{say("Cancel preparation", "Cancelar preparación")}</button>}
-    {busy && <p role="status">{say("Preparing files…", "Preparando archivos…")} {progress}</p>}
+    {busy && prepareController.current && folderRun?.state !== "running" && <button type="button" className="action-btn" onClick={() => { operationEpoch.current++; prepareController.current?.abort(); releasePhoto(); operationLock.current = false; setError(say("Preparation was canceled.", "Se canceló la preparación.")); setBusy(false); }}>{say("Cancel preparation", "Cancelar preparación")}</button>}
+    {busy && folderRun?.state === "running" && <button type="button" className="action-btn" onClick={stopFolder}>{say("Stop saving", "Detener guardado")}</button>}
+    {busy && <p role="status">{folderRun?.state === "running" ? say("Preparing and saving ZIPs…", "Preparando y guardando ZIP…") : say("Preparing files…", "Preparando archivos…")} {progress}</p>}
     {photoSummary && activeKind === "photo" && <div role="status"><p><strong>{say(`${photoSummary.packaged} of ${photoSummary.selected} selected photos prepared across ${photoSummary.partsPrepared} part${photoSummary.partsPrepared === 1 ? "" : "s"}.`, `${photoSummary.packaged} de ${photoSummary.selected} fotos preparadas en ${photoSummary.partsPrepared} parte${photoSummary.partsPrepared === 1 ? "" : "s"}.`)}</strong></p>{photoSummary.remaining > 0 && <p>{photoSummary.remaining} {say("photos remain queued.", "fotos aún pendientes.")}</p>}{photoSummary.failed.length > 0 && <div className="error"><p>{say("These files could not be prepared:", "No se pudieron preparar estos archivos:")}</p><ul>{photoSummary.failed.map(f => <li key={f.id}>{f.label}: {failureMessage(f.reason)}</li>)}</ul></div>}</div>}
+    {activeKind === "photo" && folderRun && <div role="status" className="media-export-folder">
+      <p><strong>{say(`Saved in folder ${folderRun.folder}: ${folderRun.savedParts} ZIP${folderRun.savedParts === 1 ? "" : "s"} (${folderRun.savedFiles} photo${folderRun.savedFiles === 1 ? "" : "s"}).`, `Guardado en la carpeta ${folderRun.folder}: ${folderRun.savedParts} ZIP (${folderRun.savedFiles} foto${folderRun.savedFiles === 1 ? "" : "s"}).`)}</strong></p>
+      {folderRun.manualParts > 0 && <p>{say(`${folderRun.manualParts} ZIP${folderRun.manualParts === 1 ? "" : "s"} confirmed saved separately.`, `${folderRun.manualParts} ZIP confirmado${folderRun.manualParts === 1 ? "" : "s"} como guardado${folderRun.manualParts === 1 ? "" : "s"} por separado.`)}</p>}
+      {folderRun.state === "write_failed" && photoPart && <div className="media-export-actions">
+        <button type="button" className="action-btn primary" disabled={busy} onClick={() => void continueFolder("retry")}>{say("Try saving this ZIP again", "Reintentar guardar este ZIP")}</button>
+        <button type="button" className="action-btn" disabled={busy} onClick={downloadPhoto}><Download size={18} aria-hidden />{say("Download this ZIP instead", "Descargar este ZIP")}</button>
+        {partStarted && <button type="button" className="action-btn" disabled={busy} onClick={() => void continueFolder("skip")}>{say("I saved this ZIP — continue with the rest", "Guardé este ZIP — continuar con el resto")}</button>}
+      </div>}
+      {folderRun.state === "paused" && photoNeedsResume && !photoPart && (photoSummary?.remaining ?? 0) > 0 && <button type="button" className="action-btn" disabled={busy} onClick={() => void continueFolder("resume")}>{say("Continue saving remaining photos", "Seguir guardando las fotos restantes")}</button>}
+    </div>}
     {prepared && <div role="status"><p><strong>{prepared.files.length} {say("files ready", "archivos listos")}</strong></p>{prepared.failed.length > 0 && <div className="error"><p>{say("Some files could not be exported. Only the available files below will be downloaded or shared. Retry preparation to try the missing files again.", "No se pudieron exportar algunos archivos. Solo se descargarán o compartirán los disponibles. Prepara de nuevo para reintentar.")}</p><ul>{prepared.failed.map((f, i) => <li key={`${f.id}-${i}`}>{f.label}: {failureMessage(f.reason)}</li>)}</ul></div>}</div>}
     <div className="media-export-actions">
-      <button type="button" className="action-btn primary" onClick={() => void prepare()} disabled={!ready}>{activeKind === "photo" ? photoPart ? say("Prepare again", "Preparar de nuevo") : job ? say("Export selected job", "Exportar trabajo seleccionado") : say("Export all selected projects", "Exportar todos los proyectos seleccionados") : prepared ? say("Prepare again", "Preparar de nuevo") : say("Prepare export", "Preparar exportación")}</button>
-      {activeKind === "photo" && photoPart && <><button type="button" className="action-btn" disabled={busy} onClick={downloadPhoto}><Download size={18} aria-hidden />{say("Download ZIP", "Descargar ZIP")}</button><button type="button" className="action-btn" disabled={busy || !canSharePhotoPart(photoPart)} onClick={() => void share([photoPart.zip], true, photoPart.token, photoPart)}><Share2 size={18} aria-hidden />{say("Share ZIP", "Compartir ZIP")}</button>{!photoPart.last && <button type="button" className="action-btn" disabled={busy || !partStarted} onClick={() => void nextPhotoPart()}>{say("I saved this part — prepare next", "Guardé esta parte — preparar siguiente")}</button>}</>}
-      {activeKind === "photo" && photoNeedsResume && !photoPart && (photoSummary?.remaining ?? 0) > 0 && <button type="button" className="action-btn" disabled={busy} onClick={() => void nextPhotoPart()}>{say("Prepare next part", "Preparar siguiente parte")}</button>}
+      {folderMode ? <button type="button" className="action-btn primary" onClick={startFolder} disabled={!ready}>{folderRun ? say("Start over in a new folder", "Empezar de nuevo en otra carpeta") : say("Choose folder and start", "Elegir carpeta y empezar")}</button>
+        : <button type="button" className="action-btn primary" onClick={() => void prepare()} disabled={!ready}>{activeKind === "photo" ? photoPart ? say("Prepare again", "Preparar de nuevo") : job ? say("Export selected job", "Exportar trabajo seleccionado") : say("Export all selected projects", "Exportar todos los proyectos seleccionados") : prepared ? say("Prepare again", "Preparar de nuevo") : say("Prepare export", "Preparar exportación")}</button>}
+      {activeKind === "photo" && photoPart && !folderRun && <><button type="button" className="action-btn" disabled={busy} onClick={downloadPhoto}><Download size={18} aria-hidden />{say("Download ZIP", "Descargar ZIP")}</button><button type="button" className="action-btn" disabled={busy || !canSharePhotoPart(photoPart)} onClick={() => void share([photoPart.zip], true, photoPart.token, photoPart)}><Share2 size={18} aria-hidden />{say("Share ZIP", "Compartir ZIP")}</button>{!photoPart.last && <button type="button" className="action-btn" disabled={busy || !partStarted} onClick={() => void nextPhotoPart()}>{say("I saved this part — prepare next", "Guardé esta parte — preparar siguiente")}</button>}</>}
+      {activeKind === "photo" && photoNeedsResume && !photoPart && !folderRun && (photoSummary?.remaining ?? 0) > 0 && <button type="button" className="action-btn" disabled={busy} onClick={() => void nextPhotoPart()}>{say("Prepare next part", "Preparar siguiente parte")}</button>}
       {activeKind === "receipt" && prepared?.files.length ? <><button type="button" className="action-btn" disabled={busy} onClick={() => void downloadReceipt()}><Download size={18} aria-hidden />{prepared.failed.length ? say("Download available files", "Descargar disponibles") : say("Download ZIP", "Descargar ZIP")}</button><button type="button" className="action-btn" disabled={busy || !canShareMediaFiles(prepared.files)} onClick={() => void share(prepared.files, false)}><Share2 size={18} aria-hidden />{say("Share / Email", "Compartir / Correo")}</button></> : null}
     </div>
     {activeKind === "receipt" && prepared?.files.length ? <><p className="muted">{say("Choose Mail or another app in your device’s share sheet. If sharing is unavailable, download the ZIP or individual files and attach them yourself.", "Elige Correo u otra app en el menú de compartir. Si no está disponible, descarga el ZIP o los archivos y adjúntalos.")}</p><ul className="media-export-files">{prepared.files.map(file => <li key={file.name}><span>{file.name}</span><button type="button" className="action-btn" disabled={busy} aria-label={`${say("Download", "Descargar")} ${file.name}`} onClick={() => { if (currentViewer()) downloadMediaBlob(file, file.name); }}><Download size={16} aria-hidden /></button></li>)}</ul></> : null}
     {notice && <p role="status">{notice}</p>}
-    <p className="muted">{activeKind === "photo" ? say("Large photo exports are packed into numbered ZIP parts. Download or share each part before preparing the next.", "Las exportaciones grandes se dividen en partes ZIP numeradas. Descarga o comparte cada parte antes de preparar la siguiente.") : say("Exports hold up to 50 MB at a time. Choose fewer files or a smaller date range for larger jobs.", "Las exportaciones incluyen hasta 50 MB. Elige menos archivos o fechas más cortas para trabajos grandes.")}</p>
+    <p className="muted">{folderMode ? say("Each ZIP part is saved, one after another, into a new export subfolder inside the folder you choose.", "Cada parte ZIP se guarda, una tras otra, en una subcarpeta de exportación nueva dentro de la que elijas.") : activeKind === "photo" ? say("Large photo exports are packed into numbered ZIP parts. Download or share each part before preparing the next.", "Las exportaciones grandes se dividen en partes ZIP numeradas. Descarga o comparte cada parte antes de preparar la siguiente.") : say("Exports hold up to 50 MB at a time. Choose fewer files or a smaller date range for larger jobs.", "Las exportaciones incluyen hasta 50 MB. Elige menos archivos o fechas más cortas para trabajos grandes.")}</p>
     <p className="muted">{say("Only saved files you can view in Forge are included. Photos waiting to upload stay on your device.", "Solo se incluyen los archivos guardados que puedes ver en Forge. Las fotos pendientes quedan en tu dispositivo.")}</p>
   </Sheet>;
 }
