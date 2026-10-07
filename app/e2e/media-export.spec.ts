@@ -125,6 +125,53 @@ async function useMediaExportFixtures(page: Page, kind: "photo" | "receipt", row
   return { exportQueries, exportRanges, signed, isSignHeld: () => signHeld, releaseSign, armSignHold: () => { signHoldArmed = true; } };
 }
 
+// Fixture-only directory handles. Real ZIP generation stays in the app; these
+// handles expose committed bytes so the test can reopen every independent part.
+async function useFolderSaveFixture(page: Page, opts: { holdClose?: boolean; failWriteOnce?: boolean; pickerCancel?: boolean } = {}) {
+  await page.addInitScript((options) => {
+    type Saved = { name: string; bytes: number[] };
+    const state = { picked: 0, activation: false, folder: "", saved: [] as Saved[], started: [] as string[], aborted: 0, closeWaiting: false, releaseClose: () => {}, failed: false };
+    (window as Window & { __photoFolder?: typeof state }).__photoFolder = state;
+    const gate = new Promise<void>(resolve => { state.releaseClose = resolve; });
+    const directories = new Map<string, object>();
+    const picker = () => {
+      state.picked++; state.activation = navigator.userActivation?.isActive ?? false;
+      if (options.pickerCancel) return Promise.reject(new DOMException("Canceled", "AbortError"));
+      return Promise.resolve({ name: "Fixture downloads", getDirectoryHandle: async (name: string, mode: { create?: boolean } = {}) => {
+        if (!mode.create) {
+          const existing = directories.get(name);
+          if (!existing) throw new DOMException("Not found", "NotFoundError");
+          return existing;
+        }
+        state.folder = name;
+        const directory = { name, getFileHandle: async (fileName: string, fileMode: { create?: boolean } = {}) => {
+          if (!fileMode.create) throw new DOMException("Not found", "NotFoundError");
+          return { name: fileName, createWritable: async () => {
+            let payload: Blob | null = null; let aborted = false;
+            return {
+              write: async (data: Blob) => {
+                state.started.push(fileName);
+                if (options.failWriteOnce && !state.failed) { state.failed = true; throw new DOMException("Disk full", "QuotaExceededError"); }
+                payload = data;
+              },
+              close: async () => {
+                if (options.holdClose) { state.closeWaiting = true; await gate; }
+                if (aborted || !payload) return;
+                state.saved.push({ name: fileName, bytes: Array.from(new Uint8Array(await payload.arrayBuffer())) });
+                payload = null;
+              },
+              abort: async () => { aborted = true; payload = null; state.aborted++; },
+            };
+          } };
+        } };
+        directories.set(name, directory);
+        return directory;
+      } });
+    };
+    Object.defineProperty(window, "showDirectoryPicker", { configurable: true, value: picker });
+  }, opts);
+}
+
 async function openExport(page: Page, kind: "photo" | "receipt", office = false) {
   await page.goto(office ? "/receipts" : `/photos?kind=${kind}&project=${JOB.projectId}`);
   await page.getByRole("button", { name: office ? "Export receipt files" : kind === "photo" ? "Export photos" : "Export receipts" }).click();
@@ -456,4 +503,168 @@ test("more than 50 MB of selected photo bytes packs into separate ZIP parts", as
   expect(parts).toBeGreaterThan(1);
   expect(seen.size).toBe(10);
   await expect(dialog.getByText(/10 of 10 selected photos prepared across/)).toBeVisible();
+});
+
+
+test("folder batch saves 500 all-job photos in three independently extractable ZIPs", async ({ page }) => {
+  const rows = Array.from({ length: 500 }, (_, i) => photo(i, i < 250 ? JOB.projectId : OTHER.projectId));
+  const excluded = { ...photo(999), storage_path: "install-media/receipts/known-receipt.png" };
+  await useMediaExportFixtures(page, "photo", [...rows, excluded]);
+  await useFolderSaveFixture(page);
+  const dialog = await openExport(page, "photo");
+  await dialog.getByRole("button", { name: "All jobs I can access" }).click();
+  await expect(dialog.getByText("2 jobs · 500 / 500 photos selected")).toBeVisible();
+  await dialog.getByLabel("Save all ZIPs to a folder", { exact: true }).check();
+  await dialog.getByRole("button", { name: "Choose folder and start" }).click();
+  await expect(dialog.getByText("All ZIPs are saved in the folder.")).toBeVisible({ timeout: 90_000 });
+  const result = await page.evaluate(() => {
+    const s = (window as Window & { __photoFolder?: { picked: number; activation: boolean; folder: string; saved: { name: string; bytes: number[] }[] } }).__photoFolder!;
+    return { picked: s.picked, activation: s.activation, folder: s.folder, saved: s.saved };
+  });
+  expect(result.picked).toBe(1);
+  expect(result.activation).toBe(true);
+  expect(result.folder).toBeTruthy();
+  expect(result.saved).toHaveLength(3);
+  expect(new Set(result.saved.map(p => p.name)).size).toBe(3);
+  const seen = new Set<string>();
+  const folders = new Set<string>();
+  for (const part of result.saved) {
+    expect(part.name).toMatch(/_part-0[123]\.zip$/);
+    const zip = await JSZip.loadAsync(Buffer.from(part.bytes));
+    const entries = Object.values(zip.files).filter(f => !f.dir);
+    expect(entries.length).toBeGreaterThan(0); expect(entries.length).toBeLessThanOrEqual(200);
+    for (const file of entries) {
+      expect(file.name).not.toContain(".."); expect(file.name).not.toContain("receipt");
+      const id = /photo-(\d+)/.exec(file.name)?.[0]; expect(id).toBeTruthy(); expect(seen.has(id!)).toBe(false); seen.add(id!);
+      folders.add(file.name.split("/")[0]);
+      expect(await file.async("nodebuffer")).toEqual(PNG);
+    }
+  }
+  expect(seen).toEqual(new Set(rows.map(r => r.id)));
+  expect(folders.size).toBe(2);
+  expect([...folders].some(f => f.includes(JOB.jobCode))).toBe(true);
+  expect([...folders].some(f => f.includes(OTHER.jobCode))).toBe(true);
+});
+
+test("folder batch waits for close before preparing another ZIP and stops pending writing", async ({ page }) => {
+  await useMediaExportFixtures(page, "photo", Array.from({ length: 201 }, (_, i) => photo(i)));
+  await useFolderSaveFixture(page, { holdClose: true });
+  const dialog = await openExport(page, "photo");
+  await dialog.getByLabel("Save all ZIPs to a folder", { exact: true }).check();
+  await dialog.getByRole("button", { name: "Choose folder and start" }).click();
+  await expect.poll(() => page.evaluate(() => (window as Window & { __photoFolder?: { closeWaiting: boolean } }).__photoFolder?.closeWaiting)).toBe(true);
+  expect(await page.evaluate(() => {
+    const s = (window as Window & { __photoFolder?: { started: string[]; saved: unknown[] } }).__photoFolder!;
+    return { started: s.started.length, saved: s.saved.length };
+  })).toEqual({ started: 1, saved: 0 });
+  await dialog.getByRole("button", { name: "Stop saving" }).click();
+  await expect(dialog.getByText(/Stopped; the current ZIP may have finished saving/)).toBeVisible();
+  await page.evaluate(() => (window as Window & { __photoFolder?: { releaseClose: () => void } }).__photoFolder?.releaseClose());
+  await expect.poll(() => page.evaluate(() => (window as Window & { __photoFolder?: { aborted: number } }).__photoFolder?.aborted ?? 0)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => (window as Window & { __photoFolder?: { started: string[] } }).__photoFolder!.started.length)).toBe(1);
+  await expect(dialog.getByText("All ZIPs are saved in the folder.")).toHaveCount(0);
+});
+
+test("folder picker cancellation stays quiet and leaves the selection ready", async ({ page }) => {
+  await useMediaExportFixtures(page, "photo", [photo(1)]);
+  await useFolderSaveFixture(page, { pickerCancel: true });
+  const dialog = await openExport(page, "photo");
+  await dialog.getByLabel("Save all ZIPs to a folder", { exact: true }).check();
+  await dialog.getByRole("button", { name: "Choose folder and start" }).click();
+  await expect(dialog.getByRole("button", { name: "Choose folder and start" })).toBeEnabled();
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  expect(await page.evaluate(() => (window as Window & { __photoFolder?: { started: string[] } }).__photoFolder!.started)).toEqual([]);
+});
+
+test("unsupported browser keeps the manual ZIP download path", async ({ page }, testInfo) => {
+  await useMediaExportFixtures(page, "photo", [photo(1)]);
+  await page.addInitScript(() => Object.defineProperty(window, "showDirectoryPicker", { configurable: true, value: undefined }));
+  const dialog = await openExport(page, "photo");
+  await expect(dialog.getByLabel("Save all ZIPs to a folder", { exact: true })).toBeDisabled();
+  await expect(dialog.getByLabel("One ZIP at a time", { exact: true })).toBeChecked();
+  await dialog.getByRole("button", { name: "Export selected job" }).click();
+  const zip = await downloadedZip(page, "Download ZIP", testInfo);
+  const files = Object.values(zip.files).filter(f => !f.dir); expect(files).toHaveLength(1);
+  expect(await files[0].async("nodebuffer")).toEqual(PNG);
+});
+
+
+test("folder write failure keeps the exact ZIP for manual download and retry without refetch", async ({ page }, testInfo) => {
+  const { signed } = await useMediaExportFixtures(page, "photo", [photo(1), photo(2), photo(3)]);
+  await useFolderSaveFixture(page, { failWriteOnce: true });
+  const dialog = await openExport(page, "photo");
+  await dialog.getByLabel("Save all ZIPs to a folder", { exact: true }).check();
+  await dialog.getByRole("button", { name: "Choose folder and start" }).click();
+  await expect(dialog.getByRole("button", { name: "Try saving this ZIP again" })).toBeEnabled();
+  await expect(dialog.getByText("All ZIPs are saved in the folder.")).toHaveCount(0);
+  const signedAfterFailure = signed.length;
+  const zip = await downloadedZip(page, "Download this ZIP instead", testInfo);
+  const entries = Object.values(zip.files).filter(f => !f.dir); expect(entries).toHaveLength(3);
+  for (const file of entries) expect(await file.async("nodebuffer")).toEqual(PNG);
+  await dialog.getByRole("button", { name: "Try saving this ZIP again" }).click();
+  await expect(dialog.getByText("All ZIPs are saved in the folder.")).toBeVisible();
+  expect(signed.length).toBe(signedAfterFailure);
+  const saved = await page.evaluate(() => (window as Window & { __photoFolder?: { saved: { name: string; bytes: number[] }[] } }).__photoFolder!.saved);
+  expect(saved).toHaveLength(1);
+  const retried = await JSZip.loadAsync(Buffer.from(saved[0].bytes));
+  expect(Object.values(retried.files).filter(f => !f.dir).map(f => f.name).sort()).toEqual(entries.map(f => f.name).sort());
+  for (const file of Object.values(retried.files).filter(f => !f.dir)) expect(await file.async("nodebuffer")).toEqual(PNG);
+});
+
+
+test("real browser-private filesystem stores separate ZIPs with every selected job photo once", async ({ page }, testInfo) => {
+  const rows = Array.from({ length: 210 }, (_, i) => photo(i, i < 105 ? JOB.projectId : OTHER.projectId));
+  await useMediaExportFixtures(page, "photo", rows);
+  // Only the picker is a fixture. Directory/file handles and writable streams
+  // below are the browser's real OPFS APIs in this isolated test profile.
+  // This does not verify the operating-system folder chooser or owner Files.
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "showDirectoryPicker", { configurable: true, value: async () => {
+      const native = await navigator.storage.getDirectory();
+      return { name: "Browser-private files",
+        getDirectoryHandle: async (name: string, options?: { create?: boolean }) => {
+          const directory = await native.getDirectoryHandle(name, options);
+          if (options?.create) (window as Window & { __nativePhotoFolder?: string }).__nativePhotoFolder = name;
+          return directory;
+        },
+        getFileHandle: (name: string, options?: { create?: boolean }) => native.getFileHandle(name, options),
+      };
+    } });
+  });
+  const dialog = await openExport(page, "photo");
+  const supported = await page.evaluate(async () => {
+    if (!navigator.storage?.getDirectory) return false;
+    const root = await navigator.storage.getDirectory();
+    const probe = await root.getFileHandle("capability-probe", { create: true });
+    return typeof probe.createWritable === "function";
+  });
+  test.skip(!supported, "This browser lacks real writable-file support; manual fallback has a separate test.");
+  await dialog.getByRole("button", { name: "All jobs I can access" }).click();
+  await expect(dialog.getByText("2 jobs · 210 / 210 photos selected")).toBeVisible();
+  await dialog.getByLabel("Save all ZIPs to a folder", { exact: true }).check();
+  await dialog.getByRole("button", { name: "Choose folder and start" }).click();
+  await expect(dialog.getByText("All ZIPs are saved in the folder.")).toBeVisible({ timeout: 90_000 });
+  const files = await page.evaluate(async () => {
+    const name = (window as Window & { __nativePhotoFolder?: string }).__nativePhotoFolder!;
+    const root = await navigator.storage.getDirectory();
+    const directory = await root.getDirectoryHandle(name) as FileSystemDirectoryHandle & { values(): AsyncIterable<FileSystemHandle> };
+    const stored: { name: string; bytes: number[] }[] = [];
+    for await (const handle of directory.values()) {
+      if (handle.kind !== "file") continue;
+      const file = await (handle as FileSystemFileHandle).getFile();
+      stored.push({ name: file.name, bytes: Array.from(new Uint8Array(await file.arrayBuffer())) });
+    }
+    return stored;
+  });
+  expect(files).toHaveLength(2);
+  const seen = new Set<string>(); const jobFolders = new Set<string>();
+  for (const file of files) {
+    await testInfo.attach(file.name, { body: Buffer.from(file.bytes), contentType: "application/zip" });
+    const zip = await JSZip.loadAsync(Buffer.from(file.bytes), { checkCRC32: true });
+    for (const entry of Object.values(zip.files).filter(e => !e.dir)) {
+      const id = /photo-(\d+)/.exec(entry.name)?.[0]; expect(id).toBeTruthy(); expect(seen.has(id!)).toBe(false); seen.add(id!);
+      jobFolders.add(entry.name.split("/")[0]); expect(await entry.async("nodebuffer")).toEqual(PNG);
+    }
+  }
+  expect(seen).toEqual(new Set(rows.map(r => r.id))); expect(jobFolders.size).toBe(2);
 });
