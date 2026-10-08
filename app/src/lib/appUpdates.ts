@@ -69,6 +69,7 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-10-07-photo-zip-batch',
   '2026-10-08-site-readiness',
   '2026-10-08-job-location',
+  '2026-10-08-glass-shimmer-icon',
 ] as const;
 export interface AppUpdate {
   id: string; published_on: string; audience: number[]; kind: 'fix' | 'improvement';
