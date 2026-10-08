@@ -915,16 +915,18 @@ library, general code first. A job does not pick its own subset (owner,
 2026-09-07; the earlier per-job checklist and its `project_cost_codes` table
 are retired and unread).
 
-**Green-light checklist** — the itemised list behind a job's ready state:
+**Green-light checklist** — the itemised setup reminders beside a job's site readiness:
 six questions (`green_light_items`), computed fresh from the tables that
 already hold each answer rather than kept in a table of its own — a planset
 on file and extracted, exterior finish and set depth recorded, the materials
 ETA ahead of the crew's first day, the GC contact and site rules recorded, a
 crew and truck assigned for day one, and a toolbox talk pinned to that
-morning. WARNS, NEVER BLOCKS: the manual flip of `ready_state` to `ready` is
-refused while any item is open, in one plain sentence naming them, and
-nothing else about the job — clocking in, installing, filing a receipt — is
-gated by it. A supervisor's Home and Heartbeat both surface a job's open
+morning. WARNS, NEVER BLOCKS (owner amendment, 2026-10-08): a foreman or
+above can mark the site ready with items still open. The Pipeline card shows
+unfinished items and responsibilities as reminders; marking ready never
+completes or erases those answers. Nothing about the job — marking the site
+ready, clocking in, installing, filing a receipt — is gated by this checklist.
+The separate toolbox and clock admission requirements still apply. A supervisor's Home and Heartbeat both surface a job's open
 count under "Awaiting you". Not the same thing as `projects.green_light` (an
 older, unrelated supervisor-set go/no-go toggle shown on Heartbeat) — two
 different ideas that happen to share a word.

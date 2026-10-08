@@ -1398,6 +1398,48 @@ export const CATALOG = {
   // The job card's own line: "Not ready · start ~Sep 22 · windows ETA Sep 15".
   "pipeline.card.start": { en: "start ~{date}", es: "inicia ~{date}" },
   "pipeline.card.eta": { en: "windows ETA {date}", es: "ventanas {date}" },
+  // The green-light items, shown on the Pipeline card to foreman+ as reminders
+  // beside Mark ready (owner, 2026-10-08: site readiness stands on its own).
+  // The six labels are the server's green_light_items text, translated here
+  // because label_en is English only; a key this bundle does not know reads
+  // as the generic "other" line instead of raw text.
+  "pipeline.setup.title": { en: "Setup reminders", es: "Pendientes de preparación" },
+  "pipeline.setup.intro": {
+    en: "Reminders only — they never stop you marking the job ready.",
+    es: "Solo son recordatorios — nunca impiden marcar el trabajo como listo.",
+  },
+  "pipeline.setup.unavailable": {
+    en: "Setup reminders didn't load. You can still mark the job ready.",
+    es: "No se cargaron los recordatorios. Aún puedes marcar el trabajo como listo.",
+  },
+  "pipeline.setup.item.planSet": {
+    en: "A planset is uploaded and its extraction has finished",
+    es: "Los planos están subidos y ya se terminaron de leer",
+  },
+  "pipeline.setup.item.buildFacts": {
+    en: "An exterior finish and its set depth are recorded",
+    es: "Hay un acabado exterior con su profundidad registrada",
+  },
+  "pipeline.setup.item.materialsEta": {
+    en: "The materials ETA is set and lands on or before the first day on site",
+    es: "La fecha de llegada del material está puesta y es antes o el primer día en el sitio",
+  },
+  "pipeline.setup.item.gcSite": {
+    en: "The GC contact and site rules are recorded",
+    es: "El contacto del GC y las reglas del sitio están registrados",
+  },
+  "pipeline.setup.item.dayOneCrew": {
+    en: "A crew and a truck are assigned for the first day on site",
+    es: "Hay cuadrilla y camioneta asignadas para el primer día en el sitio",
+  },
+  "pipeline.setup.item.toolbox": {
+    en: "A toolbox talk is pinned to the first day",
+    es: "Hay una charla de seguridad asignada al primer día",
+  },
+  "pipeline.setup.item.other": {
+    en: "Another setup item is still open",
+    es: "Otro punto de preparación sigue pendiente",
+  },
   // The New project form's toggle. Ready is the default here and only here:
   // somebody is filling this in by hand, so they know. A job that ARRIVES —
   // imported from Monday, built in one tap from the clock-in — is born Not
@@ -4397,8 +4439,8 @@ export const CATALOG = {
   // the six sources live in SQL — only the chrome around the list is here.
   "buildFacts.checklist.title": { en: "Green light checklist", es: "Lista de luz verde" },
   "buildFacts.checklist.intro": {
-    en: "Warns, never blocks — the job runs either way.",
-    es: "Advierte, nunca bloquea — el trabajo sigue de todas formas.",
+    en: "Warnings only — open items never stop anyone marking the job ready.",
+    es: "Solo son avisos — lo pendiente nunca impide marcar el trabajo como listo.",
   },
   "buildFacts.checklist.who": { en: "Who answers: {who}", es: "Quién responde: {who}" },
   "buildFacts.checklist.answered": { en: "Answered", es: "Contestado" },

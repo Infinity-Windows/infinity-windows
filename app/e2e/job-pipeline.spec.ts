@@ -178,7 +178,11 @@ function usePipelineFixtures(page: Page) {
   });
 
   void page.route("**/rest/v1/rpc/set_project_readiness", async (r) => {
-    calls.push({ fn: "set_project_readiness", body: r.request().postDataJSON() });
+    const body = r.request().postDataJSON() as { p_project_id: string; p_ready_state: string };
+    calls.push({ fn: "set_project_readiness", body });
+    state.rows = state.rows.map((row) => row.id !== body.p_project_id ? row : {
+      ...row, project_pipeline: { ...(row.project_pipeline as Record<string, unknown>), ready_state: body.p_ready_state },
+    });
     return json(r, null, 0);
   });
 
@@ -396,4 +400,33 @@ test("an installer reads the Pipeline card but cannot change it", async ({ page 
   await expect(card.getByText(/Not ready/i).first()).toBeVisible();
   await expect(card.getByRole("button", { name: /Materials arrived/i })).toHaveCount(0);
   await expect(card.getByRole("button", { name: /Mark ready/i })).toHaveCount(0);
+});
+
+// Regression for the owner's Oct8 blocker: an incomplete setup checklist is
+// advisory, while the readiness RPC persists the site's state across reloads.
+test("a foreman marks the site ready with setup reminders still open", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  const fixtures = usePipelineFixtures(page);
+  await page.route("**/rest/v1/rpc/green_light_items", (r) => json(r, [
+    { item_key: "plan_set", label_en: "A planset is uploaded and its extraction has finished", answered: true, who: "supervisor" },
+    { item_key: "build_facts", label_en: "An exterior finish and its set depth are recorded", answered: false, who: "foreman" },
+    { item_key: "gc_site", label_en: "The GC contact and site rules are recorded", answered: false, who: "foreman" },
+    { item_key: "day_one_crew", label_en: "A crew and a truck are assigned for the first day on site", answered: false, who: "supervisor" },
+    { item_key: "toolbox", label_en: "A toolbox talk is pinned to the first day", answered: false, who: "supervisor" },
+  ], 5));
+  await page.goto(`/projects/${NOT_READY_ID}`);
+  const card = page.locator("section.detail-card").filter({ hasText: "Pipeline" }).first();
+  await expect(card.getByRole("button", { name: "Mark ready", exact: true })).toBeEnabled();
+  await card.getByRole("button", { name: "Mark ready", exact: true }).click();
+  await expect(card.getByRole("button", { name: "Mark not ready", exact: true })).toBeVisible();
+  expect(fixtures.calls.filter((c) => c.fn === "set_project_readiness")).toEqual([
+    { fn: "set_project_readiness", body: { p_project_id: NOT_READY_ID, p_ready_state: "ready" } },
+  ]);
+  await expect(card).toContainText(/setup|reminder/i);
+  await expect(card).toContainText(/GC/);
+  await expect(card.locator(".error")).toHaveCount(0);
+  await page.reload();
+  await expect(card.getByRole("button", { name: "Mark not ready", exact: true })).toBeVisible();
+  await expect(card).toContainText(/GC/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

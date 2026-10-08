@@ -12,6 +12,15 @@
 // each row of this card is drawn only when its own fact exists. The card never
 // disappears entirely — Expected start comes from start_date, which has been
 // there since 20260718080000.
+//
+// Site readiness is its own answer (owner, 2026-10-08): "Ready" means the site
+// is ready for a crew, and the green-light checklist does not gate it. The
+// checklist's open items show here as REMINDERS to the people who can mark a
+// job ready (foreman+), never as a lock — the button stays live while they
+// load, when they fail to load, and however many are open. Before that answer
+// set_project_readiness refused Ready with every open item named in one long
+// sentence, and the error formatter cut it to a generic line, so a foreman saw
+// "something went wrong" and no way forward.
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,9 +33,37 @@ import {
 import { formatApiError } from "../../lib/errors";
 import { gcCheckinsKey, listGcCheckins } from "../../lib/gc";
 import { useLanguage, useT } from "../../lib/i18n";
+import type { TKey } from "../../lib/i18n/catalog";
+import {
+  WHO_KEYS,
+  greenLightItemsKey,
+  listGreenLightItems,
+  openGreenLightItems,
+  type GreenLightItem,
+} from "../../lib/install/buildFacts";
 import { needsCall, shortDay } from "../../lib/pipeline";
 import type { Project } from "../../lib/types";
 import { ReadinessBadge } from "./ReadinessBadge";
+
+/** The six green-light items by key, each to its translated label. An
+ * allowlist on purpose: the server's label_en is English only, and a key this
+ * bundle has never heard of reads as a generic reminder rather than raw text. */
+const SETUP_ITEM_KEYS: Record<string, TKey> = {
+  plan_set: "pipeline.setup.item.planSet",
+  build_facts: "pipeline.setup.item.buildFacts",
+  materials_eta: "pipeline.setup.item.materialsEta",
+  gc_site: "pipeline.setup.item.gcSite",
+  day_one_crew: "pipeline.setup.item.dayOneCrew",
+  toolbox: "pipeline.setup.item.toolbox",
+};
+
+const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+
+function setupItemLabelKey(item: GreenLightItem): TKey {
+  return hasOwn(SETUP_ITEM_KEYS, item.item_key)
+    ? SETUP_ITEM_KEYS[item.item_key]
+    : "pipeline.setup.item.other";
+}
 
 /** Today as a YYYY-MM-DD day string in the device's own timezone. */
 function todayLocal(): string {
@@ -53,6 +90,8 @@ export function PipelinePanel({
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["projects"] });
     await queryClient.invalidateQueries({ queryKey: ["projectsAll"] });
+    // ETA/start edits can change a reminder just as readiness edits can.
+    await queryClient.invalidateQueries({ queryKey: greenLightItemsKey(project.id) });
   };
 
   const readiness = useMutation({
@@ -63,6 +102,16 @@ export function PipelinePanel({
     },
     onError: (e) => setMessage(formatApiError(e)),
   });
+
+  // The same key and reader the Job facts card uses, so the two share one
+  // read. Only foreman+ asks: an installer has no Mark ready to be reminded
+  // about. Never feeds `busy` — a slow or failed read must not lock the button.
+  const checklist = useQuery({
+    queryKey: greenLightItemsKey(project.id),
+    queryFn: () => listGreenLightItems(project.id),
+    enabled: isLead,
+  });
+  const openSetupItems = openGreenLightItems(checklist.data ?? []);
 
   const materials = useMutation({
     mutationFn: (input: { eta?: string | null; clearEta?: boolean; arrived?: boolean }) =>
@@ -305,6 +354,40 @@ export function PipelinePanel({
             )
             .join(" · ")}
         </p>
+      )}
+
+      {/* Reminders, not a gate. An empty list says nothing at all rather than
+          "all set": a database without the checklist answers [] too, so empty
+          is not proof every item is answered. */}
+      {isLead && checklist.isError && (
+        <p className="muted" style={{ marginTop: 8 }}>
+          {t("pipeline.setup.unavailable")}
+        </p>
+      )}
+      {isLead && openSetupItems.length > 0 && (
+        <div className="green-light-checklist" style={{ marginTop: 8 }}>
+          <h3 style={{ margin: "4px 0 2px" }}>{t("pipeline.setup.title")}</h3>
+          <p className="muted" style={{ margin: "0 0 6px" }}>
+            {t("pipeline.setup.intro")}
+          </p>
+          <ul className="green-light-list">
+            {openSetupItems.map((item) => (
+              <li key={item.item_key} className="green-light-row is-open">
+                <span className="green-light-mark" aria-hidden="true">
+                  ○
+                </span>
+                <span className="green-light-text">
+                  <span className="green-light-label">{t(setupItemLabelKey(item))}</span>
+                  {hasOwn(WHO_KEYS, item.who) && (
+                    <span className="green-light-who">
+                      {t("buildFacts.checklist.who", { who: t(WHO_KEYS[item.who]) })}
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {message && <p className="error">{message}</p>}
