@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  CrossDocumentMarkCollisionError,
   describeMarkCount,
   draftSourcePlansetId,
   extractScheduleRows,
+  findCrossDocumentMarkCollisions,
   markBase,
   matchWindowType,
   parseScheduleRows,
@@ -634,23 +636,26 @@ describe("planDraftPersistence (per-slot re-extract, root-cause fix)", () => {
     expect(plan.inserts.map((d) => d.opening_code).sort()).toEqual(["1", "2", "3"]);
   });
 
-  it("a specs upload that DOES share a mark with an existing planset replaces that whole document, leaving an unrelated one alone", () => {
+  // This used to be inferred from overlapping marks ("shares a mark, so it
+  // must be a re-read"), which is the PV 40 fault — see the suite below. The
+  // re-read is now named by planset id, and only that document's drafts go.
+  it("re-reading one specs planset replaces that whole document, leaving an unrelated one alone", () => {
     const originalCutSheet = ["4", "5", "6"].map((c) =>
       existing(c, "specs", { planset_id: "original-cut-sheet" }),
     );
     const addendum = ["1", "2", "3"].map((c) =>
-      existing(c, "specs", { planset_id: "addendum-sheet" }),
+      existing(c, "specs", { id: `add:${c}`, planset_id: "addendum-sheet" }),
     );
-    // The original cut sheet gets corrected: mark 6 drops, mark 11 appears.
-    // Its marks overlap the correction (4, 5) — this is a re-read of THAT
-    // document, so its whole stale set goes, but the unrelated addendum
-    // (no overlap at all) is untouched.
+    // The original cut sheet is re-read with corrections: mark 6 drops, mark
+    // 11 appears. Its whole stale set goes; the addendum is untouched.
     const correctedDrafts = ["4", "5", "11"].map((c) => draft(c));
 
     const plan = planDraftPersistence(
       [...originalCutSheet, ...addendum],
       correctedDrafts,
       "specs",
+      false,
+      "original-cut-sheet",
     );
 
     expect(plan.deleteIds.sort()).toEqual(
@@ -713,6 +718,201 @@ describe("planDraftPersistence (per-slot re-extract, root-cause fix)", () => {
   // undo_install — actively resets an installed opening back to
   // planned/unconfirmed while deliberately KEEPING the install event. Deleting
   // that row cascades the install event and the QC check away with it.
+  // PV 40, 2026-10-05: one job, a vinyl CAD set (marks 1, 2, 3) and an
+  // aluminum CAD set (marks 1, 9). Both are specs. Loading the aluminum set
+  // shared mark 1 with the vinyl set, was taken for a re-read of it, and the
+  // vinyl set's whole unconfirmed group was deleted.
+  describe("two CAD sets on one job (PV 40)", () => {
+    const vinyl = () =>
+      ["1", "2", "3"].map((c) =>
+        existing(c, "specs", { id: `vinyl:${c}`, planset_id: "vinyl-cad" }),
+      );
+
+    it("refuses a new set that shares a mark, naming the mark, and plans nothing", () => {
+      let thrown: unknown;
+      try {
+        planDraftPersistence(
+          vinyl(),
+          [draft("1"), draft("9")],
+          "specs",
+          true,
+          "aluminum-cad",
+        );
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(CrossDocumentMarkCollisionError);
+      const err = thrown as CrossDocumentMarkCollisionError;
+      expect(err.marks).toEqual(["1"]);
+      expect(err.plansetIds).toEqual(["vinyl-cad"]);
+      expect(err.message).toContain("#1");
+      expect(err.message).toMatch(/No windows were loaded from this file/);
+      // Mark 9 is not a clash and must not be named as one.
+      expect(err.message).not.toContain("#9");
+    });
+
+    it("finds the collision without planning, so a caller can refuse before any write", () => {
+      expect(
+        findCrossDocumentMarkCollisions(
+          vinyl(),
+          [draft("1"), draft("9")],
+          "specs",
+          "aluminum-cad",
+        ),
+      ).toEqual({ marks: ["1"], plansetIds: ["vinyl-cad"] });
+    });
+
+    it("compares normalized marks, not raw opening codes", () => {
+      // 1-1 on one sheet and 1-2 on the other are both mark 1.
+      const existingRows = [
+        existing("1-1", "specs", { planset_id: "vinyl-cad" }),
+      ];
+      expect(
+        findCrossDocumentMarkCollisions(
+          existingRows,
+          [draft("1-2")],
+          "specs",
+          "aluminum-cad",
+        ).marks,
+      ).toEqual(["1"]);
+    });
+
+    it("sorts collided marks the way a person counts them", () => {
+      const rows = ["10", "2", "1"].map((c) =>
+        existing(c, "specs", { planset_id: "vinyl-cad" }),
+      );
+      expect(
+        findCrossDocumentMarkCollisions(
+          rows,
+          [draft("10"), draft("2"), draft("1")],
+          "specs",
+          "aluminum-cad",
+        ).marks,
+      ).toEqual(["1", "2", "10"]);
+    });
+
+    it("re-reading the vinyl set itself replaces only its own drafts", () => {
+      const aluminum = ["7", "9"].map((c) =>
+        existing(c, "specs", { id: `alu:${c}`, planset_id: "aluminum-cad" }),
+      );
+      const plan = planDraftPersistence(
+        [...vinyl(), ...aluminum],
+        [draft("1"), draft("2"), draft("4")],
+        "specs",
+        true,
+        "vinyl-cad",
+      );
+      expect(plan.deleteIds.sort()).toEqual(["vinyl:1", "vinyl:2", "vinyl:3"]);
+      expect(plan.inserts.map((d) => d.opening_code).sort()).toEqual(["1", "2", "4"]);
+    });
+
+    it("a second set with disjoint marks coexists: nothing of the first set is deleted", () => {
+      const plan = planDraftPersistence(
+        vinyl(),
+        [draft("8"), draft("9")],
+        "specs",
+        true,
+        "aluminum-cad",
+      );
+      expect(plan.deleteIds).toEqual([]);
+      expect(plan.inserts.map((d) => d.opening_code).sort()).toEqual(["8", "9"]);
+    });
+
+    it("a protected row in the other set still collides — it is not silently stepped over", () => {
+      const rows = [
+        existing("1", "specs", {
+          id: "vinyl:1",
+          planset_id: "vinyl-cad",
+          confirmed: true,
+        }),
+        existing("2", "specs", {
+          id: "vinyl:2",
+          planset_id: "vinyl-cad",
+          assigned_to: "profile-1",
+        }),
+      ];
+      expect(() =>
+        planDraftPersistence(rows, [draft("2"), draft("9")], "specs", true, "aluminum-cad"),
+      ).toThrow(CrossDocumentMarkCollisionError);
+      expect(
+        findCrossDocumentMarkCollisions(rows, [draft("1"), draft("2")], "specs", "aluminum-cad")
+          .marks,
+      ).toEqual(["1", "2"]);
+    });
+
+    it("a protected row survives a re-read of its own set and blocks a duplicate", () => {
+      const rows = [
+        existing("1", "specs", {
+          id: "vinyl:1",
+          planset_id: "vinyl-cad",
+          confirmed: true,
+        }),
+        existing("2", "specs", { id: "vinyl:2", planset_id: "vinyl-cad" }),
+      ];
+      const plan = planDraftPersistence(
+        rows,
+        [draft("1"), draft("2")],
+        "specs",
+        true,
+        "vinyl-cad",
+      );
+      expect(plan.deleteIds).toEqual(["vinyl:2"]);
+      expect(plan.inserts.map((d) => d.opening_code)).toEqual(["2"]);
+      expect(plan.skipped).toBe(1);
+    });
+
+    it("plans and specs sharing a mark is the normal pairing, not a collision", () => {
+      // The building plan's callout #1 and the CAD sheet's #1 are the same
+      // window seen twice. Neither direction may refuse.
+      const plansRows = [
+        existing("1-1", "building", { planset_id: "floor-plan" }),
+        existing("1-2", "building", { planset_id: "floor-plan" }),
+      ];
+      const specsSave = planDraftPersistence(
+        plansRows,
+        [draft("1")],
+        "specs",
+        true,
+        "vinyl-cad",
+      );
+      expect(specsSave.deleteIds.sort()).toEqual(["building:1-1", "building:1-2"]);
+
+      const plansSave = planDraftPersistence(
+        vinyl(),
+        [draft("1-1"), draft("2-1")],
+        "building",
+        false,
+        "floor-plan",
+      );
+      expect(plansSave.deleteIds).toEqual([]);
+      expect(plansSave.skipped).toBe(2);
+    });
+
+    it("legacy rows with no planset id are still the one slot being re-read", () => {
+      const legacy = ["1", "2"].map((c) =>
+        existing(c, "specs", { id: `legacy:${c}`, planset_id: null }),
+      );
+      const plan = planDraftPersistence(
+        legacy,
+        [draft("1"), draft("5")],
+        "specs",
+        true,
+        "vinyl-cad",
+      );
+      expect(plan.deleteIds.sort()).toEqual(["legacy:1", "legacy:2"]);
+      expect(plan.inserts.map((d) => d.opening_code).sort()).toEqual(["1", "5"]);
+    });
+
+    it("without a planset id, no identified document is ever treated as the one being re-read", () => {
+      // Unknown source: the old overlap guess would have deleted vinyl 1-3.
+      expect(() =>
+        planDraftPersistence(vinyl(), [draft("1")], "specs", true),
+      ).toThrow(CrossDocumentMarkCollisionError);
+      const plan = planDraftPersistence(vinyl(), [draft("8")], "specs", true);
+      expect(plan.deleteIds).toEqual([]);
+    });
+  });
+
   describe("field work is never deleted by a re-extract", () => {
     it("keeps an opening someone has measured (set_opening_rough_opening)", () => {
       const prior = [existing("14-1", "building", { ro_width_in: 35.5, ro_height_in: 60 })];

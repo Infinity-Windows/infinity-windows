@@ -909,16 +909,15 @@ export async function importWindowTypes(
 ): Promise<CatalogImportResult> {
   if (rows.length === 0) return { inserted: 0, updated: 0, total: 0 };
 
-  const codes = rows.map((r) => r.type_code);
-  const { data: existing, error: exErr } = await supabase
-    .from("window_types")
-    .select("type_code")
-    .in("type_code", codes);
-  if (exErr) throw exErr;
-  const existingCodes = new Set((existing ?? []).map((r) => r.type_code));
-
-  const { error } = await supabase.from("window_types").upsert(
-    rows.map((r) => ({
+  // One validated function, not a browser upsert: the database now refuses
+  // direct browser writes to a type's category, size and notes (a cached old
+  // app used exactly those writes to fill the global catalog from plan sets
+  // it was then refused). The function upserts on type_code exactly as this
+  // did, touching only the eight columns sent, and checks the role itself.
+  // required_capability is parsed from the file but was never sent, and still
+  // isn't — the whitelist on the server is these eight keys.
+  const { data, error } = await supabase.rpc("import_window_types", {
+    p_rows: rows.map((r) => ({
       type_code: r.type_code,
       name: r.name,
       category: r.category,
@@ -928,14 +927,39 @@ export async function importWindowTypes(
       tutorial_url: r.tutorial_url,
       notes: r.notes,
     })),
-    { onConflict: "type_code" },
-  );
-  if (error) throw error;
-
-  const updated = rows.filter((r) => existingCodes.has(r.type_code)).length;
+  });
+  if (error) throw catalogImportError(error);
+  const out = (data ?? {}) as Partial<Record<keyof CatalogImportResult, unknown>>;
   return {
-    inserted: rows.length - updated,
-    updated,
-    total: rows.length,
+    inserted: Number(out.inserted ?? 0) || 0,
+    updated: Number(out.updated ?? 0) || 0,
+    total: Number(out.total ?? rows.length) || 0,
   };
+}
+
+/** The refusals import_window_types raises, carried in PostgREST's `hint`. */
+export const CATALOG_REFUSAL_CODES = [
+  "forge.catalog.auth",
+  "forge.catalog.test_account",
+  "forge.catalog.invalid",
+  "forge.catalog.update_required",
+] as const;
+
+export const CATALOG_IMPORT_SERVER_UPDATE_NEEDED =
+  "Importing the catalog needs a server update that hasn't been installed yet. Nothing was changed — ask the office to finish the update, then try again.";
+
+/**
+ * One sentence for a refused import. PURE. Coded refusals carry the crew's
+ * sentence already; a server without the function fails closed rather than
+ * falling back to the direct upsert; anything else is left for formatApiError.
+ */
+export function catalogImportError(error: unknown): unknown {
+  if (isMissingFunction(error)) return new Error(CATALOG_IMPORT_SERVER_UPDATE_NEEDED);
+  const e = (error ?? {}) as { hint?: unknown; message?: unknown };
+  const code = typeof e.hint === "string" ? e.hint.trim() : "";
+  if ((CATALOG_REFUSAL_CODES as readonly string[]).includes(code)) {
+    const message = typeof e.message === "string" ? e.message.trim() : "";
+    return new Error(message || "The catalog could not be imported. Nothing was changed.");
+  }
+  return error;
 }

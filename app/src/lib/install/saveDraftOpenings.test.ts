@@ -18,6 +18,9 @@ const db = vi.hoisted(() => ({
   fieldAddedColumnMissing: false,
   /** Any other failure the openings read should return instead of rows. */
   openingsError: null as unknown,
+  /** Every atomic commit (reconcile_planset_openings) and what it was sent. */
+  commits: [] as Record<string, unknown>[],
+  referenceRequests: [] as string[][],
 }));
 
 vi.mock("../supabase", () => {
@@ -35,6 +38,7 @@ vi.mock("../supabase", () => {
   const make = (table: string) => {
     let columns = "";
     let deleting = false;
+    let activeOnly = false;
     const builder: Record<string, unknown> = {};
     builder.select = (cols: string) => {
       columns = cols;
@@ -50,6 +54,10 @@ vi.mock("../supabase", () => {
       return Promise.resolve({ data: null, error: null });
     };
     builder.eq = () => builder;
+    builder.is = (column: string, value: unknown) => {
+      if (column === "removed_at" && value === null) activeOnly = true;
+      return builder;
+    };
     builder.in = (_column: string, ids: string[]) => {
       if (deleting) db.deletedIds.push(...ids);
       return builder;
@@ -66,13 +74,28 @@ vi.mock("../supabase", () => {
         return resolve({ data: null, error: FIELD_ADDED_MISSING });
       if (columns.includes("ro_quick_ok") && db.quickOkColumnMissing)
         return resolve({ data: null, error: QUICK_OK_MISSING });
-      return resolve({ data: db.openings, error: null });
+      return resolve({
+        data: activeOnly
+          ? db.openings.filter((row) => row.removed_at == null)
+          : db.openings,
+        error: null,
+      });
     };
     return builder;
   };
 
   return {
-    supabase: { from: (table: string) => make(table) },
+    supabase: {
+      from: (table: string) => make(table),
+      rpc: (name: string, args: Record<string, unknown>) => {
+        if (name === "planset_referenced_openings") {
+          db.referenceRequests.push(args.p_opening_ids as string[]);
+          return Promise.resolve({ data: [], error: null });
+        }
+        db.commits.push(args);
+        return Promise.resolve({ data: { inserted: 0 }, error: null });
+      },
+    },
     supabaseConfigured: true,
   };
 });
@@ -109,6 +132,8 @@ beforeEach(() => {
   db.quickOkColumnMissing = false;
   db.fieldAddedColumnMissing = false;
   db.openingsError = null;
+  db.commits = [];
+  db.referenceRequests = [];
   db.openings = [
     {
       id: "op-1",
@@ -157,7 +182,11 @@ describe("reading existing openings before a re-extract", () => {
       `project_openings:${EXISTING_OPENING_COLS_NO_QUICK_OK}`,
     ]);
     expect(result.inserted).toBe(1);
-    expect(db.inserted.map((r) => r.opening_code)).toEqual(["7-1"]);
+    const inserts = db.commits[0].p_inserts as { opening_code: string }[];
+    expect(inserts.map((r) => r.opening_code)).toEqual(["7-1"]);
+    // Nothing is written around the atomic commit.
+    expect(db.inserted).toHaveLength(0);
+    expect(db.deletedIds).toHaveLength(0);
   });
 
   // The rungs are separate for this exact case: the two migrations can land
@@ -178,7 +207,23 @@ describe("reading existing openings before a re-extract", () => {
   it("keeps a quick-checked opening a re-extract would otherwise delete", async () => {
     await saveDraftOpenings("proj-1", "ps-1", [draft("7-1")]);
 
-    expect(db.deletedIds).not.toContain("op-1");
+    expect(db.commits[0].p_delete_ids).not.toContain("op-1");
+  });
+
+  it("does not ask the reference RPC about a removed opening", async () => {
+    db.openings.push({
+      ...db.openings[0],
+      id: "removed-1",
+      removed_at: "2026-10-05T00:00:00Z",
+    });
+
+    const result = await saveDraftOpenings("proj-1", "ps-1", [draft("7-1")]);
+
+    expect(result.inserted).toBe(1);
+    expect(db.referenceRequests).toEqual([["op-1"]]);
+    expect(
+      (db.commits[0].p_snapshot as { id: string }[]).map((row) => row.id),
+    ).toEqual(["op-1"]);
   });
 
   it("does not swallow a read that failed for any other reason", async () => {
@@ -195,6 +240,7 @@ describe("reading existing openings before a re-extract", () => {
     ).rejects.toMatchObject({ code: "42501" });
     expect(openingsSelects()).toHaveLength(1);
     expect(db.inserted).toHaveLength(0);
+    expect(db.commits).toHaveLength(0);
   });
 });
 
