@@ -1,33 +1,40 @@
 import { useState } from "react";
 import { Navigation } from "lucide-react";
-import { hasStreetAddress } from "../../lib/mapsLinks";
+import { directionsDestination, hasStreetAddress } from "../../lib/mapsLinks";
+import { useT } from "../../lib/i18n";
 import { MapsChooserSheet } from "./MapsChooserSheet";
 
 /**
- * One-tap "Directions" chip. Renders nothing when there's no real address.
+ * One-tap "Directions" chip. Renders nothing when there is neither an address nor a valid site point.
  * Opens the Apple/Google/Waze chooser sheet.
  */
 export function DirectionsButton({
   address,
-  label = "Directions",
+  latitude,
+  longitude,
+  label,
   className = "directions-chip",
   title,
 }: {
   address: string | null | undefined;
+  latitude?: number | null;
+  longitude?: number | null;
   label?: string;
   className?: string;
   title?: string;
 }) {
   const [open, setOpen] = useState(false);
-  if (!hasStreetAddress(address)) return null;
-  const addr = address as string;
+  const t = useT();
+  const destination = directionsDestination(address, latitude, longitude);
+  if (!destination) return null;
+  const addr = hasStreetAddress(address) ? address!.trim() : destination;
 
   return (
     <>
       <button
         type="button"
         className={className}
-        aria-label={`Get directions to ${addr}`}
+        aria-label={t("maps.to", { destination: addr })}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -35,12 +42,14 @@ export function DirectionsButton({
         }}
       >
         <Navigation size={14} aria-hidden />
-        <span>{label}</span>
+        <span>{label ?? t("maps.directions")}</span>
       </button>
       <MapsChooserSheet
         open={open}
         onClose={() => setOpen(false)}
         address={addr}
+        latitude={latitude}
+        longitude={longitude}
         title={title ?? "Get directions"}
       />
     </>

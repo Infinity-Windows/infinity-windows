@@ -41,7 +41,7 @@ export interface ScheduleAssignment {
   updated_at: string;
   members: AssignmentMember[];
   /** Joined project for board/agenda labels (best-effort). */
-  project?: Pick<Project, "id" | "job_code" | "name" | "address"> | null;
+  project?: Pick<Project, "id" | "job_code" | "name" | "address" | "latitude" | "longitude"> | null;
   /** 'ai' when wave A2's draft_assignments tool wrote this row; null for a
    * human-created one. Permanent — publishing never clears it (CONTEXT.md:
    * AI-proposed). Optional only because rows fetched before this column

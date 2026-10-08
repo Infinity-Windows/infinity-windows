@@ -129,7 +129,7 @@ export function TodayCard({ meId, todayISO, pick, query, now }: TodayCardProps) 
                   <span className="ws-meta ws-inline">
                     <MapPin size={16} aria-hidden /> {a.project.address}
                   </span>
-                  <DirectionsButton address={a.project?.address} label={t("work.today.directions")} className="ws-btn ws-btn--ghost ws-btn--inline" />
+                  <DirectionsButton address={a.project?.address} latitude={a.project?.latitude} longitude={a.project?.longitude} label={t("work.today.directions")} className="ws-btn ws-btn--ghost ws-btn--inline" />
                 </div>
               )}
             </div>

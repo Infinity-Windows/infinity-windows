@@ -157,7 +157,7 @@ export function MySchedule() {
                           DirectionsButton already swallows its click (preventDefault +
                           stopPropagation) so tapping it here can't also trigger the
                           card's navigation. */}
-                      <DirectionsButton address={a.project?.address} />
+                      <DirectionsButton address={a.project?.address} latitude={a.project?.latitude} longitude={a.project?.longitude} />
                       {mates.length > 0 && (
                         <span className="sched-agenda-crew">
                           <Users size={13} aria-hidden /> {t("mySchedule.withCrew", { names: mates.join(", ") })}

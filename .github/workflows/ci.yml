@@ -325,6 +325,10 @@ jobs:
         run: |
           npm run e2e -- job-phone-layout.spec.ts
           npm run e2e -- job-phone-layout.spec.ts --browser=webkit
+      - name: Manual job address and GPS on Chromium and Safari
+        run: |
+          npm run e2e -- job-location.spec.ts
+          npm run e2e -- job-location.spec.ts --browser=webkit
       # Home unit creation, job handoff, and the phone keyboard viewport are
       # release paths for the crew; keep them in the PR browser gate.
       - run: npm run e2e -- new-design-work.spec.ts

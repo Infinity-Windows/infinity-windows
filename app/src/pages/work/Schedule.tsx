@@ -205,7 +205,7 @@ export function Schedule() {
                     </p>
                   )}
                   <div className="ws-row-between">
-                    <DirectionsButton address={a.project?.address} label={t("work.today.directions")} className="ws-btn ws-btn--ghost ws-btn--inline" />
+                    <DirectionsButton address={a.project?.address} latitude={a.project?.latitude} longitude={a.project?.longitude} label={t("work.today.directions")} className="ws-btn ws-btn--ghost ws-btn--inline" />
                     <span className="ws-meta ws-updated">{t("work.today.updated", { time: formatUpdatedAt(a.updated_at, now) })}</span>
                   </div>
                   {view === "mine" && day.day === today && entry.isFirstDay && (

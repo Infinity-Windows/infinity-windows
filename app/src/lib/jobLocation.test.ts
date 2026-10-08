@@ -1,0 +1,20 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+const db=vi.hoisted(()=>({rpc:vi.fn()}));vi.mock("./supabase",()=>({supabase:{rpc:db.rpc}}));
+import {parseJobCoordinates,saveProjectLocation,readWithJobCoordinates,invalidateJobLocation} from "./jobLocation";
+import type { QueryClient } from "@tanstack/react-query";
+const empty={address:null,latitude:null,longitude:null};
+describe("job location",()=>{
+ beforeEach(()=>db.rpc.mockReset().mockResolvedValue({error:null}));
+ it("blank explicitly clears coordinates",()=>expect(parseJobCoordinates(" ")).toEqual({latitude:null,longitude:null}));
+ it.each([["0,0",0,0],["+90, -180",90,-180],["-90,180",-90,180],["37.123456789,-113.543210987",37.123456789,-113.543210987],[".5,-.75",.5,-.75],["1e-7,-1e-7",0.0000001,-0.0000001]])("valid decimal pair %s",(s,latitude,longitude)=>expect(parseJobCoordinates(String(s))).toEqual({latitude,longitude}));
+ it.each(["37","37,",",-113","37,-113,2","NaN,0","Infinity,0","37 degrees,-113","37;-113","37,0x10"])("invalid pair %s",s=>expect(()=>parseJobCoordinates(s)).toThrow("coordinatesPair"));
+ it.each(["90.01,0","-90.01,0","0,180.01","0,-180.01","1e2,0"])("range %s",s=>expect(()=>parseJobCoordinates(s)).toThrow("coordinatesRange"));
+ it("sends only location and exact expected snapshot",async()=>{await saveProjectLocation("p1",{address:" New ",latitude:37,longitude:-113},{address:"Old",latitude:0,longitude:0});expect(db.rpc).toHaveBeenCalledWith("set_project_location",{p_project_id:"p1",p_address:"New",p_latitude:37,p_longitude:-113,p_expected_address:"Old",p_expected_latitude:0,p_expected_longitude:0});});
+ it("deliberately clears all fields",async()=>{await saveProjectLocation("p1",empty,empty);expect(db.rpc.mock.calls[0][1]).toMatchObject({p_address:null,p_latitude:null,p_longitude:null});});
+ it.each([[0,null,"coordinatesPair"],[NaN,0,"coordinatesRange"],[0,Infinity,"coordinatesRange"],[91,0,"coordinatesRange"]])("invalid numeric API input",async(latitude,longitude,error)=>{await expect(saveProjectLocation("p1",{address:null,latitude:Number(latitude),longitude:longitude===null?null:Number(longitude)},empty)).rejects.toThrow(String(error));expect(db.rpc).not.toHaveBeenCalled();});
+ it("preserves stale-write refusal",async()=>{const error={code:"P0001",message:"This job location changed. Reopen the editor and try again."};db.rpc.mockResolvedValue({error});await expect(saveProjectLocation("p1",empty,empty)).rejects.toEqual(error);});
+ it("old RPC asks to refresh instead of claiming save",async()=>{db.rpc.mockResolvedValue({error:{code:"PGRST202",message:"Could not find the function public.set_project_location"}});await expect(saveProjectLocation("p1",empty,empty)).rejects.toThrow(/Refresh Forge/);});
+ it("invalidates embedding views",async()=>{const invalidateQueries=vi.fn().mockResolvedValue(undefined);await invalidateJobLocation({invalidateQueries} as unknown as QueryClient);expect(invalidateQueries.mock.calls.map(([s])=>s.queryKey[0])).toEqual(["projects","projectsAll","mySchedule","myScheduleTomorrow","workSchedule","schedule","scheduleAssignments","scheduleDrafts","projectSchedule","homeTodayCrews","trip","trips"]);});
+ it.each(["latitude","longitude"])("old schema falls back for %s",async column=>{const read=vi.fn().mockResolvedValueOnce({data:null,error:{code:"42703",message:`column projects.${column} does not exist`}}).mockResolvedValueOnce({data:["kept"],error:null});expect(await readWithJobCoordinates(read,"*, projects(id, address, latitude, longitude)")).toEqual({data:["kept"],error:null});expect(read.mock.calls[1][0]).toBe("*, projects(id, address)");});
+ it("does not hide unrelated failures",async()=>{const error={code:"42501",message:"permission denied"};const read=vi.fn().mockResolvedValue({data:null,error});expect((await readWithJobCoordinates(read,"projects(id, latitude, longitude)")).error).toBe(error);expect(read).toHaveBeenCalledTimes(1);});
+});
