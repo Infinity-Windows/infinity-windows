@@ -15,7 +15,35 @@ export interface PreviewPerson {
   role: CrewRole | string;
 }
 
+/** Additive authority seam for sensitive mounted work. Legacy consumers keep
+ * their presentation-only preview values. A missing seam must fail closed. */
+export interface SensitivePreviewLifetime {
+  getSnapshot: () => number;
+  subscribe: (listener: () => void) => () => void;
+  admitted: (ownerId: string, realRole: string) => boolean;
+  hasPreview: () => boolean;
+}
+export function createSensitivePreviewLifetime(readAuthority: () => { stamp: string; ownerId: string | null; role: string | null; ready: boolean }, initialBlocked: boolean) {
+  let version = 0, blocked = initialBlocked, stamp = readAuthority().stamp;
+  const listeners = new Set<() => void>();
+  const sync = () => { const next = readAuthority().stamp; if (next !== stamp) { stamp = next; version++; return true; } return false; };
+  const notify = () => { for (const listener of listeners) listener(); };
+  return {
+    getSnapshot: () => { sync(); return version; },
+    hasPreview: () => blocked,
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    admitted: (ownerId: string, realRole: string) => { sync(); const a = readAuthority(); return !blocked && a.ready && a.ownerId === ownerId && a.role === realRole; },
+    // Always advance, including batched preview A -> B -> A and Reset.
+    previewChanged: (active: boolean) => { blocked = active; version++; notify(); },
+    authorityChanged: () => { if (sync()) notify(); },
+  };
+}
+
 export interface ViewAsRoleValue {
+  sensitiveLifetime?: SensitivePreviewLifetime;
+  /** Explicitly clear this session's own preview, even after losing the right
+   * to start a preview. Never grants permission to create another preview. */
+  returnAsYourself?: () => void;
   /** The previewed role, or null when viewing as yourself. */
   previewRole: CrewRole | null;
   /** Set/clear the preview. No-op unless the real role is supervisor+. */

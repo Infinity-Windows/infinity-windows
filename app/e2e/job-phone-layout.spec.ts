@@ -26,8 +26,29 @@ for (const width of [320, 375, 390, 430, 1280]) {
       notes: width === 390 ? "Confirm access with the site office." : "LongJobReference".repeat(24),
     };
     await page.route("**/rest/v1/projects**", (route) => json(route, [project], 1));
+    // Give the two lazy overview cards complete read-only server fixtures.
+    // Their late insertion is the leading candidate in retained69e8's failed click.
+    await page.route("**/rest/v1/rpc/work_job_menu_choices", (route) => json(route, {
+      protocolVersion: 1, projectId: job.projectId, asOf: "2026-10-05T12:00:00Z",
+      currentRevision: 0, currentSelection: null, choices: [],
+    }, null));
+    await page.route("**/rest/v1/rpc/work_job_capability_grants", (route) => json(route, {
+      protocolVersion: 1, projectId: job.projectId, grants: [],
+    }, null));
+    await page.route("**/rest/v1/rpc/crew_goal_summary", (route) => json(route, {
+      goal_hours: null, goal_revision: null, goal_updated_at: null,
+      recorded_hours: 0, running_provisional_hours: 0, open_shifts: 0,
+      unresolved_shifts: 0, allowance_hours: null, as_of: "2026-10-05T12:00:00Z",
+    }, null));
     await page.goto(`/projects/${job.projectId}`);
     if (newDesign) await expect(page.getByRole("navigation", { name: "Main" }).getByText("Work", { exact: true })).toBeVisible();
+
+    // Measure the complete overview, then retain the original single native
+    // Edit click and mandatory editor/overflow assertions. Loading-time
+    // interaction is a separate unresolved acceptance case.
+    await expect(page.locator(".work-job-configuration").getByText("There are no eligible published menus.", { exact: true })).toBeVisible();
+    await expect(page.locator(".work-job-configuration").getByText("No active foreman permissions.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Crew goal", exact: true }).getByRole("heading", { name: "Crew goal", exact: true })).toBeVisible();
 
     const testing = page.locator("section", { has: page.getByRole("heading", { name: "Testing", exact: true }) });
     const details = page.locator("section", { has: page.getByRole("heading", { name: /^(Edit )?job details$/i }) });

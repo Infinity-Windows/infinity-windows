@@ -892,8 +892,65 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "work_unit_fact_revisions": ("id",),
     "work_unit_fact_current": ("unit_id",),
     "work_unit_fact_context_epochs": ("scope_kind", "scope_id"),
+    # Private stream/setup identity is retained; transaction frames and exact
+    # allowances are ephemeral and must never be copied to another backend.
+    # Both dispositions refuse the generic merge path even for count-only data.
+    "work_activity_authority_generation": ("singleton",),
+    "work_activity_safety_events": ("id",),
+    "work_activity_clock_receipts": ("client_id",),
+    'work_activity_source_history': ('id',),
+    'work_unit_review_commands': ('command_id',),
+    'work_unit_dimension_verifications': ('id',),
+    'work_unit_review_events': ('id',),
+    'work_unit_review_current': ('unit_id', 'incarnation'),
+    'work_unit_review_defects': ('id',),
+    'work_unit_review_defect_events': ('id',),
+
+    "work_activity_observations": ("id",),
+    "work_activity_streams": ("id",),
+    "work_activity_transaction_context": ("id",),
+    "work_activity_expected_mutations": ("id",),
+    "work_activity_operations": ("id",),
+    "work_activity_operation_people": ("id",),
+    "work_activity_operation_events": ("id",),
+    "work_activity_statement_frames": ("id",),
+
+    "work_setup_sessions": ("id",),
+    "personal_activity_transition_sources": ("id",),
 
 }
+
+
+# Exact retained identities, NOT permission to generically remap/import them.
+# The contract is deployment proof; write frames are transaction-local authority;
+# the remaining rows retain physical/source/allocation identities without profile
+# FKs deliberately. All eight require whole-plan refusal when nonempty.
+WORK_CROSS_JOB_IDENTITIES = {
+    "work_cross_job_shifts": ("shift_id",),
+    "work_cross_job_allocations": ("id",),
+    "work_cross_job_heads": ("shift_id",),
+    "work_cross_job_bindings": ("source_kind", "source_id", "birth_history_id"),
+    "work_cross_job_resume": ("profile_id",),
+    "work_cross_job_write_frames": ("operation_id", "source_kind", "source_id"),
+    "work_cross_job_contract": ("proof_key",),
+    "work_cross_job_clock_requests": ("client_id",),
+}
+DEDUP_KEYS.update(WORK_CROSS_JOB_IDENTITIES)
+
+# Retained metadata identities for inventory comparison only. These do not
+# authorize generic id remapping, ON CONFLICT, or a merge of private history.
+WORK_UNIT_METADATA_IDENTITIES = {
+    "_work_unit_metadata_commands": ("command_id",),
+    "_work_unit_metadata_contract": ("proof_key",),
+    "_work_unit_metadata_current": ("unit_id",),
+    "_work_unit_metadata_floor_current": ("unit_id",),
+    "_work_unit_metadata_definitions": ("id",),
+    "_work_unit_metadata_versions": ("id",),
+    "_work_unit_metadata_proposals": ("id",),
+    "_work_unit_metadata_revisions": ("id",),
+    "_work_unit_metadata_floors": ("id",),
+}
+DEDUP_KEYS.update(WORK_UNIT_METADATA_IDENTITIES)
 
 #: The monthly-values graph contains private policy snapshots, immutable
 #: reviews/scores, frozen accounting, and provenance. A dedup key describes
@@ -937,7 +994,33 @@ WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES = frozenset({
     "work_unit_fact_revisions",
     "work_unit_fact_current",
     "work_unit_fact_context_epochs",
+    "work_activity_authority_generation",
+    "work_activity_safety_events",
+    "work_activity_clock_receipts",
+    'work_activity_source_history',
+    'work_unit_review_commands',
+    'work_unit_dimension_verifications',
+    'work_unit_review_events',
+    'work_unit_review_current',
+    'work_unit_review_defects',
+    'work_unit_review_defect_events',
+
+    "work_activity_observations",
+    "work_activity_streams",
+    "work_setup_sessions",
+    "personal_activity_transition_sources",
+    # A committed/stale transaction frame is a drain/cleanup blocker, not
+    # portable work evidence. Never emit inserts or discard it silently.
+    "work_activity_transaction_context",
+    "work_activity_expected_mutations",
+    "work_activity_operations",
+    "work_activity_operation_people",
+    "work_activity_operation_events",
+    "work_activity_statement_frames",
 })
+
+WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES |= frozenset(WORK_CROSS_JOB_IDENTITIES)
+WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES |= frozenset(WORK_UNIT_METADATA_IDENTITIES)
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.
 #: The merge must choose one project's rows wholesale, or recompute from the
@@ -1256,15 +1339,20 @@ def inventory_from_backup(path: Path | str) -> dict[str, Any]:
     """
     raw = json.loads(Path(path).read_text())
     tables = {
-        name: {"rows": len(rows), "columns": _columns_of(rows)}
+        name: {"rows": len(rows), "columns": _columns_of(rows)
+               if all(isinstance(row, Mapping) for row in rows) else {}}
         for name, rows in raw.items()
         if isinstance(rows, list)
+        and (name not in WORK_UNIT_METADATA_IDENTITIES
+             or all(isinstance(row, Mapping) for row in rows))
     }
     return {
         "project_ref": raw.get("project_id", "unknown"),
         "name": f"backup {raw.get('exported_at', '')}".strip(),
         "captured_at": raw.get("exported_at"),
         "source": "backup",
+        "cross_job_census": raw.get("cross_job_census"),
+        "metadata_census": raw.get("metadata_census"),
         "tables": tables,
         "migrations": {"count": None, "latest": None},
         "auth": {"users": None},

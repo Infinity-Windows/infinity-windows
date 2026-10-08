@@ -4,7 +4,10 @@ import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { roleRank } from "../../lib/nav";
 import { useT } from "../../lib/i18n";
 import "../../lib/i18n/workCatalog";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useViewAsRole } from "../../lib/viewAsRoleContext";
+import { signInMark, stillSignedInAs, type SignInMark } from "../../lib/signedIn";
+import { uuid } from "../../lib/workConfiguration/model";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getOpening } from "../../lib/install/api";
@@ -34,6 +37,12 @@ import { UnitEditor } from "./UnitEditor";
 import { QueueNotice } from "./QueueNotice";
 import "./customWork.css";
 
+const connected = () => typeof navigator === "undefined" || navigator.onLine !== false;
+function subscribeConnection(cb: () => void) {
+  window.addEventListener("online", cb); window.addEventListener("offline", cb);
+  return () => { window.removeEventListener("online", cb); window.removeEventListener("offline", cb); };
+}
+
 export function CurrentWork() {
   const t = useT();
   const work = useWork();
@@ -41,6 +50,12 @@ export function CurrentWork() {
   const lead = roleRank(effectiveRole) >= 1;
   const [params, setParams] = useSearchParams();
   const [editing, setEditing] = useState<WorkUnit | "new" | null>(null);
+  const view = useViewAsRole();
+  const online = useSyncExternalStore(subscribeConnection, connected, () => false);
+  const previewing = !!view.previewRole || !!view.previewPerson;
+  const consumedEntry = useRef<string | null>(null);
+  const [storedUnitRequest, setStoredUnitRequest] = useState(false);
+  const [unitEntry, setUnitEntry] = useState<{ jobId: string; login: SignInMark } | null>(null);
   const [idle, setIdle] = useState(false),
     [idleNote, setIdleNote] = useState("");
   const [stage, setStage] = useState("Installing");
@@ -78,6 +93,32 @@ export function CurrentWork() {
     work.units.find((u) => u.id === params.get("unit")) ??
     work.units.find((u) => openingId && u.opening_id === openingId);
   const job = projects.data?.find((p) => p.id === jobId);
+  // Explicit Add-unit navigation only opens a draft. Ambiguous parameters never
+  // turn a unit/map link into a create request. The normal legacy doors remain.
+  let newUnitJob: string | null = null;
+  if (params.getAll("new_unit").length === 1 && params.get("new_unit") === "1" &&
+      params.getAll("job").length === 1 && !params.has("unit") && !params.has("opening")) {
+    try { newUnitJob = uuid(params.get("job")); } catch { /* malformed entry */ }
+  }
+  const entrySourceReady = projects.isFetchedAfterMount && projects.isSuccess && !projects.isFetching && !!job;
+  useEffect(() => {
+    if (!params.has("new_unit")) { consumedEntry.current = null; return; }
+    if (!newUnitJob || !entrySourceReady || !online || previewing || !work.user || editing !== null) return;
+    const login = signInMark();
+    if (!stillSignedInAs(login, work.user)) return;
+    const key = `${login.userId}:${login.generation}:${newUnitJob}`;
+    if (consumedEntry.current === key) return;
+    consumedEntry.current = key;
+    setUnitEntry({ jobId: newUnitJob, login });
+    setEditing("new");
+  }, [params, newUnitJob, entrySourceReady, online, previewing, work.user, editing]);
+  useEffect(() => {
+    if (editing === "new" && unitEntry) document.getElementById("cw-new-unit-entry")?.scrollIntoView({ block: "start" });
+  }, [editing, unitEntry]);
+  const closeUnitEntry = () => {
+    setEditing(null); setUnitEntry(null);
+    if (params.has("new_unit")) { const next = new URLSearchParams(params); next.delete("new_unit"); setParams(next, { replace: true }); }
+  };
   const mapType = opening.data?.window_types;
   const mapDefaults = opening.data
     ? {
@@ -197,9 +238,15 @@ export function CurrentWork() {
   const canComplete = !!activeUnit && canEditUnit(activeUnit, work.user, lead);
   const saveUnit = async (data: Record<string, unknown>, begin: boolean) =>
     run(async () => {
+      if (editing === "new" && unitEntry && (!online || !connected() || previewing ||
+          !work.user || !stillSignedInAs(unitEntry.login, work.user) || !entrySourceReady ||
+          newUnitJob !== unitEntry.jobId || data.project_id !== unitEntry.jobId)) {
+        throw new Error("Return to your selected job while online and viewing your own account before saving this unit.");
+      }
       await work.command("unit", data);
-      if (begin) await start(data as unknown as WorkUnit);
-      else setEditing(null);
+      if (unitEntry) { setStoredUnitRequest(true); closeUnitEntry(); }
+      else if (begin) await start(data as unknown as WorkUnit);
+      else closeUnitEntry();
     });
   const blocked =
     busy || work.actionsLoading || !!work.queueError || !!work.queue[0]?.error;
@@ -218,6 +265,7 @@ export function CurrentWork() {
         </button>
       </div>
       <QueueNotice work={work} />
+      {storedUnitRequest && <p role="status" className="cw-notice">Unit request saved on this device. Check sync status before selecting it for work. <Link to="/work">Return to Work</Link></p>}
       <CrewWork work={work} jobId={jobId} canRecord={lead} />
       {error && (
         <p role="alert" className="cw-error">
@@ -424,7 +472,14 @@ export function CurrentWork() {
               )}
             </section>
           )}
+          {params.has("new_unit") && !editing && <p role="status" className="cw-notice">{previewing || !online
+            ? "New unit entry is unavailable while offline or previewing another account."
+            : !newUnitJob ? "This new unit link is invalid. Choose a job and use Add unit."
+            : projects.isFetchedAfterMount && projects.isSuccess && !job ? "The selected job is unavailable. Choose a job and use Add unit."
+            : !entrySourceReady ? "Checking the selected job before opening the unit builder…" : null}</p>}
           {editing && (
+            <div id="cw-new-unit-entry">
+            {editing === "new" && unitEntry && (!online || previewing) && <p role="status" className="cw-notice">You can cancel this draft. Go online and return to your own account before saving.</p>}
             <UnitEditor
               // F1 (crew redesign K1.8, 2026-09-23): keyed on the OPENING only.
               // `jobId` used to be in this key, and it comes from
@@ -434,6 +489,7 @@ export function CurrentWork() {
               // (UnitEditor fills a blank Job field itself). The form resets
               // only on Cancel or Save, never on a clock refresh.
               key={editing === "new" ? `new-${openingId ?? "blank"}` : editing.id}
+              requiredDimensions={editing === "new" && !!unitEntry}
               unit={editing === "new" ? undefined : editing}
               jobId={opening.data?.project_id ?? jobId}
               openingId={editing === "new" ? opening.data?.id : undefined}
@@ -443,8 +499,9 @@ export function CurrentWork() {
               defaults={editing === "new" ? mapDefaults : undefined}
               busy={blocked}
               onSave={saveUnit}
-              onCancel={() => setEditing(null)}
+              onCancel={closeUnitEntry}
             />
+            </div>
           )}
           {idle && (
             <section

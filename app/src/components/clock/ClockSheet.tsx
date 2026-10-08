@@ -1,5 +1,5 @@
 import { VoiceTextarea } from "../voice/VoiceTextarea";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -54,6 +54,7 @@ import {
   ClockRefusal,
   currentBreakSeconds,
   type ClockInPick,
+  type ClockPunch,
   elapsedWorkSeconds,
   endBreak,
   finishShiftAt,
@@ -77,8 +78,13 @@ import {
 } from "../../lib/shiftGuard";
 import { useT } from "../../lib/i18n";
 import { useFocusTrap } from "../../lib/useFocusTrap";
+import { signInMark, stillSignedInAs } from "../../lib/signedIn";
 import { effectiveClockInMode } from "../../lib/jobModes";
 import { askClockEntryMode } from "../../lib/askClockHandoff";
+import type { NativeClockFlow } from "../../lib/paidClock/flow";
+import type { PaidClockSubmission } from "../../lib/paidClock/coordinator";
+import {trackPaidClockOperation} from "../../lib/paidClock/reloadGuard";
+const PaidClockQueueStatus=lazy(()=>import("./PaidClockQueueStatus").then(module=>({default:module.PaidClockQueueStatus})));
 
 const BREAK_ICONS: Record<BreakType, LucideIcon> = {
   lunch: UtensilsCrossed,
@@ -107,11 +113,15 @@ export function ClockSheet({
   pending = null,
   refused = [],
   initialPick = null,
+  nativeFlow = null,
+  admissionReady = true,
   onClose,
   onChanged,
 }: {
   profileId: string | null;
   shift: TimeShift | null;
+  nativeFlow?:NativeClockFlow|null;
+  admissionReady?:boolean;
   /**
    * The punch still on this phone and the ones the phone gave up on (K0.1),
    * from the clock provider. Drawn as one status line under the hero, so a
@@ -146,7 +156,14 @@ export function ClockSheet({
   // in a ref for exactly the same reason, so a fresh callback each render is
   // fine.
   const sheetRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(sheetRef, true, onClose);
+  const focusLogin = signInMark();
+  useFocusTrap(sheetRef, true, onClose, {
+    canRestore: () => !!profileId && stillSignedInAs(focusLogin, profileId),
+    fallback: () => {
+      const landmarks = document.querySelectorAll<HTMLElement>("main.app-main");
+      return landmarks.length === 1 ? landmarks[0] : null;
+    },
+  });
   const entryMode = askClockEntryMode(shift, initialPick);
   const [mode, setMode] = useState<Mode>(entryMode);
   const appliedEntryRef = useRef<string | null>(null);
@@ -170,6 +187,12 @@ export function ClockSheet({
   const [timeWrong, setTimeWrong] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [finishAt, setFinishAt] = useState("");
+  const [nativeCloseRequested,setNativeCloseRequested]=useState<{ownerId:string|null;generation:number}|null>(null);
+  useEffect(()=>{
+    if(!nativeCloseRequested || !nativeFlow || nativeFlow.ownerId!==nativeCloseRequested.ownerId ||
+      nativeFlow.loginGeneration!==nativeCloseRequested.generation || nativeFlow.currentRead!=="ready" || nativeFlow.current?.kind!=="off")return;
+    setNativeCloseRequested(null);toastSuccess(t("clock.toast.clockedOut"));onClose();
+  },[nativeCloseRequested,nativeFlow,onClose,t]);
   // A carried pick counts as already primed: the schedule / recents priming
   // below runs when those queries land, which is AFTER this mount, and it
   // would otherwise overwrite the job the person just chose on the landing
@@ -282,18 +305,25 @@ export function ClockSheet({
   // the offline outbox and synced later. Callers show the right copy off this.
   type PunchResult = {
     queued: boolean;
+    native?:PaidClockSubmission;
     /** Queued behind today's toolbox talk signature, still on this phone. */
     behindSignature?: boolean;
     /** Opening whose install clock started in the same tap, when one did. */
     startedOpening?: string | null;
     startFailed?: boolean;
   };
+  const nativeRoute=!!nativeFlow && nativeFlow.route!=="legacy";
+  const reportNative=(result:PaidClockSubmission)=>{
+    const status=result.kind==="saved" && result.dispatch.kind==="settled"?result.dispatch.record.delivery.status:null;
+    pushToast(t(result.kind==="held"?"paidClock.actionHeld":status==="acknowledged"?"paidClock.acknowledged":status==="attention"?"paidClock.review":"paidClock.unknown"),"info");
+    refresh();
+  };
 
   // `isNetworkError` opens with the same `navigator.onLine === false` check
   // this used to wrap it in, so the wrapper was a second copy of one rule
   // saying the same thing. There is one copy now, and the far-from-job prompt
   // (Wave K) queues its switch off exactly this test rather than a third.
-  const shouldQueue = isNetworkError;
+  const shouldQueue = (error: unknown) => !(error instanceof ClockRefusal) && isNetworkError(error);
 
   // A refusal the server wrote for the person to read (K0.4: "we couldn't
   // find the start of that break") is shown in their language; anything else
@@ -301,6 +331,10 @@ export function ClockSheet({
   const toastPunchError = (e: unknown) => {
     if (e instanceof ClockRefusal) {
       pushToast(t(CLOCK_REFUSAL_KEY[e.code]), "error");
+      if(e.code==='requires_review'){
+        refresh();
+        void queryClient.invalidateQueries({queryKey:["myActivePhases"]});
+      }
       return;
     }
     toastError(e);
@@ -382,8 +416,9 @@ export function ClockSheet({
   // time when it trusts the phone. The live try and the queued fallback carry
   // that one punch. (A mutation's first try runs the moment it is tapped:
   // mutations are offlineFirst, lib/queryClient.ts.)
-  const doStart = useMutation<PunchResult>({
-    mutationFn: async () => {
+  const doStart = useMutation<PunchResult,Error,ClockPunch|undefined>({
+    networkMode:nativeRoute?"always":"offlineFirst",
+    mutationFn: async (tap) => {
       const projectId = pickProjectId || null;
       const costCodeId = pickCostCodeId || null;
       const noteText = note.trim() || null;
@@ -421,6 +456,7 @@ export function ClockSheet({
       // different punch, stamped now, before the location wait (see above).
       const carried =
         initialPick?.punch && initialPick.projectId === projectId ? initialPick.punch : null;
+      if(nativeRoute)return {queued:false,native:await nativeFlow!.authorStart(tap ?? mintPunch())};
       const punch = carried ? carriedPunch(carried, toolboxDone.data?.signed_at) : mintPunch();
       const geo = await captureGeoSoft();
       const behindSignature = signatureOnPhone();
@@ -462,6 +498,7 @@ export function ClockSheet({
       return { queued: true, behindSignature };
     },
     onSuccess: (r) => {
+      if(r.native){reportNative(r.native);return;}
       if (r.startedOpening && pickedOpening) {
         toastSuccess(
           t("clock.toast.clockedInOnUnit", { code: pickedOpening.opening_code }),
@@ -500,6 +537,7 @@ export function ClockSheet({
   // behind that clock-in, the way a queued clock-out does.
   const doSwitch = useMutation<PunchResult>({
     mutationFn: async () => {
+      if(nativeRoute)throw new Error(t("paidClock.chooseWorkJob"));
       const punch = mintPunch();
       const geo = await captureGeoSoft();
       const projectId = pickProjectId || null;
@@ -538,6 +576,7 @@ export function ClockSheet({
 
   const doPhaseSwitch = useMutation<PunchResult, Error, string>({
     mutationFn: async (costCodeId: string) => {
+      if(nativeRoute)throw new Error(t("paidClock.chooseWorkJob"));
       const punch = mintPunch();
       const geo = await captureGeoSoft();
       const projectId = shift?.project_id ?? null;
@@ -568,9 +607,13 @@ export function ClockSheet({
     onError: (e) => toastPunchError(e),
   });
 
-  const doBreakStart = useMutation<PunchResult, Error, BreakType>({
-    mutationFn: async (type: BreakType) => {
-      const punch = mintPunch();
+  const doBreakStart = useMutation<PunchResult, Error, BreakType|{type:BreakType;punch:ClockPunch}>({
+    networkMode:nativeRoute?"always":"offlineFirst",
+    mutationFn: async (input) => {
+      const type=typeof input==="string"?input:input.type;
+      const punch = typeof input==="string"?mintPunch():input.punch;
+      if(nativeRoute)return {queued:false,native:await nativeFlow!.authorSafety({action:"break_start",...punch,
+        shiftRef:{kind:"shift",id:shift!.id},breakType:type})};
       if (!shiftIsPending()) {
         try {
           await startBreak(shift!.id, type, punch);
@@ -589,7 +632,9 @@ export function ClockSheet({
       }
       return { queued: true };
     },
-    onSuccess: (r, type) => {
+    onSuccess: (r, input) => {
+      const type=typeof input==="string"?input:input.type;
+      if(r.native){reportNative(r.native);setMode("main");return;}
       pushToast(
         r.queued
           ? `On ${breakTypeLabel(type).toLowerCase()} break — will sync when online`
@@ -605,9 +650,11 @@ export function ClockSheet({
     onError: (e) => toastPunchError(e),
   });
 
-  const doBreakEnd = useMutation<PunchResult>({
-    mutationFn: async () => {
-      const punch = mintPunch();
+  const doBreakEnd = useMutation<PunchResult,Error,ClockPunch|undefined>({
+    networkMode:nativeRoute?"always":"offlineFirst",
+    mutationFn: async (tap) => {
+      const punch = tap ?? mintPunch();
+      if(nativeRoute)return {queued:false,native:await nativeFlow!.authorSafety({action:"break_end",...punch,shiftRef:{kind:"shift",id:shift!.id}})};
       if (!shiftIsPending()) {
         try {
           await endBreak(shift!.id, punch);
@@ -628,6 +675,7 @@ export function ClockSheet({
       return { queued: true };
     },
     onSuccess: (r) => {
+      if(r.native){reportNative(r.native);return;}
       toastSuccess(r.queued ? t("clock.toast.backOnClockQueued") : t("clock.toast.backOnClock"));
       if (!r.queued) refresh();
       // The held unit auto-resumed server-side (sessions trigger, owner
@@ -655,13 +703,18 @@ export function ClockSheet({
     onError: (e) => toastPunchError(e),
   });
 
-  const doClockOut = useMutation<PunchResult>({
-    mutationFn: async () => {
+  const doClockOut = useMutation<PunchResult,Error,ClockPunch|undefined>({
+    networkMode:nativeRoute?"always":"offlineFirst",
+    mutationFn: async (tap) => {
       // A break still running ends at the tap too, with the punch — not after
       // the location wait, which would count those seconds as break.
-      const tapMs = Date.now();
-      const punch = mintPunch(null, tapMs);
+      const tapMs = tap?Date.parse(tap.tappedAt):Date.now();
+      const punch = tap ?? mintPunch(null, tapMs);
       const breakSeconds = currentBreakSeconds(shift!, tapMs);
+      if(nativeRoute)return {queued:false,native:await nativeFlow!.authorSafety({action:"clock_out",...punch,
+        shiftRef:{kind:"shift",id:shift!.id},photo:null,injured,timeConfirmed:!timeWrong,
+        breakSeconds:nativeFlow?.currentRead==="stale"?null:breakSeconds,
+        lat:null,lng:null,injuryNote:injured?injuryNote.trim() || null:null})};
       const geo = await captureGeoSoft();
       if (!shiftIsPending()) {
         try {
@@ -690,6 +743,10 @@ export function ClockSheet({
       return { queued: true };
     },
     onSuccess: (r) => {
+      if(r.native){
+        if(r.native.kind==="saved")setNativeCloseRequested({ownerId:nativeFlow!.ownerId,generation:nativeFlow!.loginGeneration});
+        reportNative(r.native);return;
+      }
       toastSuccess(r.queued ? t("clock.toast.clockedOutQueued") : t("clock.toast.clockedOut"));
       setInjured(false);
       setInjuryNote("");
@@ -716,12 +773,14 @@ export function ClockSheet({
     mutationFn: async () => {
       const check = checkFinishTime(shift!, localInputToIso(finishAt), Date.now());
       if (!check.ok) throw new Error(check.error ?? t("clock.error.badFinishTime"));
-      return finishShiftAt(shift!.id, localInputToIso(finishAt)!, {
+      const write=()=>finishShiftAt(shift!.id, localInputToIso(finishAt)!, {
         injured,
         breakSeconds: shift!.break_seconds ?? 0,
       });
+      return nativeRoute?trackPaidClockOperation(write):write();
     },
     onSuccess: () => {
+      if(nativeRoute){setNativeCloseRequested({ownerId:nativeFlow!.ownerId,generation:nativeFlow!.loginGeneration});refresh();return;}
       toastSuccess(t("clock.toast.finishSaved"));
       setInjured(false);
       setFinishAt("");
@@ -732,12 +791,13 @@ export function ClockSheet({
   });
 
   const onBreak = Boolean(shift?.break_started_at);
-  const breakSec = shift ? currentBreakSeconds(shift, now) : 0;
+  const displayNow=nativeFlow?.currentRead==="stale"?Date.parse(nativeFlow.current?.observedAt ?? shift?.clock_in_at ?? ""):now;
+  const breakSec = shift ? currentBreakSeconds(shift, displayNow) : 0;
   const runningBreakSec =
     shift?.break_started_at
-      ? Math.max(0, Math.floor((now - new Date(shift.break_started_at).getTime()) / 1000))
+      ? Math.max(0, Math.floor((displayNow - new Date(shift.break_started_at).getTime()) / 1000))
       : 0;
-  const workSec = shift ? elapsedWorkSeconds(shift, now) : 0;
+  const workSec = shift ? elapsedWorkSeconds(shift, displayNow) : 0;
 
   // The server REFUSES the first clock-in of the day without today's signed
   // toolbox talk (migration 20260813000000). The old copy here claimed clock-in
@@ -748,18 +808,19 @@ export function ClockSheet({
   // signed, and the server stays the backstop either way. Once-per-day, all
   // jobs: a switch (already on the clock, so already signed today) is never
   // re-gated, which is why this only bites in "pick" mode.
-  const toolboxKnownUnsigned =
+  const toolboxKnownUnsigned =!nativeRoute &&
     todayTalk.isSuccess &&
     todayTalk.data !== null &&
     toolboxDone.isSuccess &&
     !toolboxDone.data;
   const clockInBlockedByToolbox = mode === "pick" && toolboxKnownUnsigned;
-  const canStart =
+  const canStart =nativeRoute?mode==="pick" && !!(nativeFlow?.canReserveStart ?? nativeFlow?.canStartDay):
     Boolean(pickProjectId && pickCostCodeId) &&
     !(pickedOpening && !toolboxOk) &&
     !clockInBlockedByToolbox;
 
   const busy =
+    !admissionReady ||
     doStart.isPending ||
     doSwitch.isPending ||
     doPhaseSwitch.isPending ||
@@ -767,6 +828,7 @@ export function ClockSheet({
     doBreakEnd.isPending ||
     doClockOut.isPending ||
     doFinish.isPending;
+  const safetyBusy=busy || nativeRoute && !nativeFlow?.canRequestSafety;
 
   const guard = shift ? shiftGuard(shift, now) : null;
   /** Past the believable maximum: stop counting and ask for the real finish. */
@@ -795,7 +857,9 @@ export function ClockSheet({
     Boolean(pickCostCodeId);
 
   const title =
-    mode === "switch"
+    !admissionReady?t("clockblock.checking"):
+    nativeRoute && nativeFlow?.currentRead==="stale"?t("paidClock.lastConfirmed"):
+    nativeRoute && nativeFlow?.currentRead!=="ready"?t("paidClock.currentUnknown"):mode === "switch"
       ? t("clock.title.switch")
       : mode === "break-type"
         ? t("clock.title.break")
@@ -827,14 +891,18 @@ export function ClockSheet({
         {initialPick?.returnToAsk && <Link className="clock-return-ask" to="/ask" onClick={onClose}>{t("clock.returnToAsk")}</Link>}
 
         {/* ---- ON THE CLOCK ---- */}
-        {mode === "main" && shift && (
+        {!admissionReady && <div className="clock-sheet-body"><p role="status">{t("clockblock.checking")}</p></div>}
+        {admissionReady && mode === "main" && shift && (
           <div className="clock-sheet-body">
+            {nativeFlow?.currentRead==="stale" && <p role="status">{t("paidClock.staleHelp")}</p>}
             <WrongClockBanner />
             <ToolboxTalkNagBanner
               profileId={profileId}
               clockedIn={isOnTheClock(shift)}
               onNavigate={onClose}
             />
+            {nativeRoute && !needsRealFinish && profileId && todayTalk.data && toolboxDone.isSuccess && !toolboxDone.data &&
+              <ToolboxSignCard profileId={profileId} talk={todayTalk.data} onSigned={()=>nativeFlow?.refresh()}/>}
             {needsRealFinish ? (
               /* We stopped counting on purpose. Ask, never guess. */
               <div className="clock-hero-card needs-finish">
@@ -880,7 +948,7 @@ export function ClockSheet({
                   </p>
                 )}
                 {/* K0.1: the punch that made this state is still on the phone. */}
-                <ClockQueueStatus pending={pending} refused={refused} />
+                {nativeFlow?<Suspense fallback={null}><PaidClockQueueStatus profileId={profileId} legacyPending={pending} legacyRefused={refused}/></Suspense>:<ClockQueueStatus pending={pending} refused={refused}/>}
               </div>
             )}
 
@@ -999,12 +1067,16 @@ export function ClockSheet({
               </div>
             )}
 
-            {needsRealFinish ? null : onBreak ? (
+            {needsRealFinish ? null : nativeRoute && nativeFlow?.pendingSafetyAction==="break_start" ? (
+              <button type="button" className="clock-btn resume" disabled={safetyBusy} onClick={()=>doBreakEnd.mutate(mintPunch())}>
+                <Play size={18} aria-hidden /> {t("paidClock.requestResume")}
+              </button>
+            ) : onBreak ? (
               <button
                 type="button"
                 className="clock-btn resume"
-                disabled={busy}
-                onClick={() => doBreakEnd.mutate()}
+                disabled={safetyBusy || nativeRoute && ["break_end","clock_out"].includes(nativeFlow?.pendingSafetyAction ?? "")}
+                onClick={() => doBreakEnd.mutate(nativeRoute?mintPunch():undefined)}
               >
                 <Play size={18} aria-hidden /> {t("clock.action.resumeWork")}
               </button>
@@ -1012,7 +1084,7 @@ export function ClockSheet({
               <button
                 type="button"
                 className="clock-btn break"
-                disabled={busy}
+                disabled={safetyBusy || nativeRoute && ["break_end","clock_out"].includes(nativeFlow?.pendingSafetyAction ?? "")}
                 onClick={() => setMode("break-type")}
               >
                 <Coffee size={18} aria-hidden /> {t("clock.action.goOnBreak")}
@@ -1102,8 +1174,8 @@ export function ClockSheet({
               <button
                 type="button"
                 className="clock-btn out"
-                disabled={busy}
-                onClick={() => doClockOut.mutate()}
+                disabled={safetyBusy || nativeRoute && nativeFlow?.pendingSafetyAction==="clock_out"}
+                onClick={() => doClockOut.mutate(nativeRoute?mintPunch():undefined)}
               >
                 {doClockOut.isPending ? (
                   t("clock.action.clockingOut")
@@ -1124,7 +1196,7 @@ export function ClockSheet({
         )}
 
         {/* ---- PICK BREAK TYPE ---- */}
-        {mode === "break-type" && shift && (
+        {admissionReady && mode === "break-type" && shift && (
           <div className="clock-sheet-body">
             <p className="clock-row-label">
               {t("clock.break.pauseNote")}
@@ -1137,8 +1209,8 @@ export function ClockSheet({
                     key={b.type}
                     type="button"
                     className="clock-break-option"
-                    disabled={busy}
-                    onClick={() => doBreakStart.mutate(b.type)}
+                    disabled={safetyBusy}
+                    onClick={() => doBreakStart.mutate(nativeRoute?{type:b.type,punch:mintPunch()}:b.type)}
                   >
                     <span className="clock-break-icon" aria-hidden>
                       <BreakIcon size={22} />
@@ -1155,14 +1227,27 @@ export function ClockSheet({
         )}
 
         {/* ---- PICK / SWITCH JOB ---- */}
-        {(mode === "pick" || mode === "switch") && (
+        {admissionReady && (mode === "pick" || mode === "switch") && (
           <div className="clock-sheet-body">
-            {
+            {nativeRoute?<>
+              <Suspense fallback={null}><PaidClockQueueStatus profileId={profileId} legacyPending={pending} legacyRefused={refused}/></Suspense>
+              {mode==="switch"?<>
+                <p>{t("paidClock.chooseWorkJob")}</p>
+                <Link to="/" className="button-like" onClick={onClose}>{t("nav.work")}</Link>
+                <button type="button" onClick={()=>setMode("main")}>{t("clock.action.cancel")}</button>
+              </>:<>
+                <p>{t(nativeFlow.canStartDay?"paidClock.startHelp":"paidClock.startRequestHelp")}</p>
+                <button type="button" className="clock-btn primary big" disabled={busy || !canStart} onClick={()=>doStart.mutate(mintPunch())}>
+                  <Play size={18} aria-hidden/>{doStart.isPending?t("clock.action.clockingIn"):t(nativeFlow.canStartDay?"clock.action.startClock":"paidClock.saveStartRequest")}
+                </button>
+                {nativeFlow.currentRead!=="ready" && <p role="status">{t("paidClock.currentUnknownHelp")}</p>}
+              </>}
+            </>:
               <>
                 {mode === "pick" && <WrongClockBanner />}
                 {/* K0.1: off the clock because a clock-out is still on the
                     phone, or a punch was refused — say so before the pickers. */}
-                {mode === "pick" && <ClockQueueStatus pending={pending} refused={refused} />}
+                {mode === "pick" && (nativeFlow?<Suspense fallback={null}><PaidClockQueueStatus profileId={profileId} legacyPending={pending} legacyRefused={refused}/></Suspense>:<ClockQueueStatus pending={pending} refused={refused}/>)}
                 {mode === "switch" && shift && (
                   <p className="muted clock-switch-note">
                     Currently on <strong>{shift.projects?.job_code ?? "a job"}</strong> — no gap, the
@@ -1376,7 +1461,7 @@ export function ClockSheet({
                   type="button"
                   className="clock-btn primary big"
                   disabled={busy || !canStart}
-                  onClick={() => (mode === "switch" ? doSwitch.mutate() : doStart.mutate())}
+                  onClick={() => (mode === "switch" ? doSwitch.mutate() : doStart.mutate(undefined))}
                 >
                   {mode === "switch" ? (
                     doSwitch.isPending ? (
@@ -1406,8 +1491,7 @@ export function ClockSheet({
                     {t("clock.action.cancel")}
                   </button>
                 )}
-              </>
-            }
+              </>}
           </div>
         )}
       </div>

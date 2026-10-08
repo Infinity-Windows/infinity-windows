@@ -25,6 +25,7 @@ vi.mock("../../lib/queryClient", async () => {
 });
 const lang = vi.hoisted(() => ({ current: "en" as "en" | "es" }));
 vi.mock("../../lib/i18n/context", () => ({
+  useT:()=> (k:string)=>k,
   useLanguage: () => ({ lang: lang.current, t: (k: string) => k, setLang: () => {}, needsChoice: false }),
 }));
 

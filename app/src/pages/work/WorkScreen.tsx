@@ -19,7 +19,7 @@
 // chunk has a budget and this file's strings register themselves from its
 // own chunk (lib/i18n/workCatalog.ts).
 
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useIsRestoring, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClockStrip } from "../../components/work/ClockStrip";
@@ -56,6 +56,9 @@ import { chooseNextUp } from "../../lib/work/nextUp";
 import { unitWorkLocked, type StartDayInput } from "../../lib/work/startDay";
 import { pickTodayEntries } from "../../lib/work/today";
 import "./work.css";
+import { useDesign } from "../../lib/design/context";
+import { clockIntentFor, intentJobContext, useScheduleStartWorkIntent } from "./useScheduleStartWorkIntent";
+const SelectedJobWorkEntry = lazy(() => import("./SelectedJobWorkEntry"));
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -67,6 +70,15 @@ function todayLocalISO(): string {
 export const SCHEDULE_WINDOW_DAYS = 7;
 
 export function WorkScreen() {
+  const { design } = useDesign();
+  // The lazy entry reads the existing release flag; Classic and a disabled
+  // rollout render the unchanged body without mounting native activity reads.
+  return design === "new"
+    ? <Suspense fallback={<div className="page work-screen" role="status">…</div>}><SelectedJobWorkEntry fallback={<LegacyWorkScreen />} /></Suspense>
+    : <LegacyWorkScreen />;
+}
+
+export function LegacyWorkScreen() {
   const t = useT();
   // The Work landing holds nothing unsaved of its own — every sheet on it
   // claims itself — so the automatic update may apply here (safeSurface.ts).
@@ -108,7 +120,13 @@ export function WorkScreen() {
     [schedule.data, profileId, today, through],
   );
   const todayJobId = pick.day === today ? (pick.entries.find((e) => e.project_id)?.project_id ?? null) : null;
-  const jobId = shift?.project_id ?? todayJobId;
+  // A Schedule-tab Start work tap names one of today's jobs; until it is
+  // confirmed (or replaced by a hand pick) Work suggests no job at all, so the
+  // first job of the day never stands in for the one that was tapped.
+  const scheduleIntent = useScheduleStartWorkIntent({ profileId, shift, clockKnown, today });
+  const intentJob = intentJobContext(scheduleIntent.phase);
+  const primeJobId = intentJob.override ? intentJob.jobId : todayJobId;
+  const jobId = shift?.project_id ?? primeJobId;
   const jobEntry = pick.entries.find((e) => e.project_id === jobId) ?? null;
   const jobLabel = shift?.projects
     ? `${shift.projects.job_code} · ${shift.projects.name}`
@@ -249,10 +267,13 @@ export function WorkScreen() {
       <h1 className="ws-sr-only">{t("work.title")}</h1>
       <LiveSummonsStrip />
       <ClockStrip
+        nativeFlow={clock.nativeFlow}
         profileId={profileId}
         shift={shift}
         clockKnown={clockKnown}
-        todayJobId={todayJobId}
+        todayJobId={primeJobId}
+        scheduleIntent={clockIntentFor(scheduleIntent.phase)}
+        onExplicitProjectChoice={scheduleIntent.onExplicitProjectChoice}
         scheduleSettled={schedule.isSuccess || schedule.isError}
         talk={todayTalk.data ?? null}
         gate={gate}

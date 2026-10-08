@@ -1,0 +1,27 @@
+{
+  "status": "design_only_not_executed",
+  "baseline": {"source": "saved genuine contributor receipt", "medianMs": 3367.6595, "p95Ms": 3392.475, "activePaidRequestWallMs": 3385.630009, "crossJobMeasurement": false},
+  "environmentRequired": "Genuine two-backend PostgreSQL17/18 with actual role identities, source/ACL catalog and mixed retained/live domains",
+  "tiers": [100, 1000, 10000],
+  "indexAudit": [
+    {"lookup": "callback custom same physical shift", "index": "work_cross_job_custom_shift", "keys": ["shift_id", "started_at", "ended_at"]},
+    {"lookup": "callback service same shift and affected visits", "index": "work_cross_job_service_shift", "keys": ["shift_id", "started_at", "ended_at", "visit_id"]},
+    {"lookup": "exact source allocation membership", "index": "work_cross_job_bindings_pkey", "keys": ["source_kind", "source_id", "birth_history_id"]},
+    {"lookup": "current operation birth or closure", "index": "work_cross_job_source_history_operation", "keys": ["source_kind", "source_id", "operation_id"]},
+    {"lookup": "saved immutable closure", "index": "work_activity_source_history_pkey", "keys": ["id"]},
+    {"lookup": "any later source edit", "index": "work_activity_source_history_predecessor", "keys": ["predecessor_id"]},
+    {"lookup": "allocation head and zero-length successor", "index": "work_cross_job_allocations_successor", "keys": ["predecessor_id"]},
+    {"lookup": "shift or source reincarnation/tombstone", "index": "work_cross_job_source_incarnations", "keys": ["source_kind", "source_id"], "predicate": "before_value = {} or after_value = {}"}
+  ],
+  "runs": [
+    "Legacy v1 actual start/break/return/out without v2 rows; compare exact payroll output and full physical fields to701 baseline",
+    "General and Specific A-to-B command with original tap; normal break and return across physical A and null anchors",
+    "Active handoff/read holding G versus genuine delayed start_break, then end_break and clock_out; observe backend wait events and selected boundary",
+    "False resume after earlier break, stale head/closure, domain lock unavailable, current gate refusal, counter exhaustion and contained writer failure",
+    "Mixed service visits and closed sources on one shift versus unrelated global sources; unrelated closed visit stamps unchanged",
+    "Source histories with many old phase unpauses: paid saving/binding uses the exact current operation index, resume checks the saved closure primary key and successor index",
+    "Independent repeated normal and false-resume trials; no callback full-history proof walker and no new G/7710 reverse lock ordering"
+  ],
+  "requiredArtifacts": ["exact source and harness hashes", "server version and genuine role identities", "actual EXPLAIN ANALYZE BUFFERS plans and rows for callback/helper queries", "wall time per actual paid request", "median and p95 by operation/path/tier", "blocking PID and wait event proof", "full original versus candidate payroll-result equivalence", "failures and timeouts including partial writes"],
+  "holds": ["No PGlite timing establishes provider latency or real session contention", "Owner latency budget remains pending", "No source/privacy/G lock weakening to improve figures", "Full public catalog guards are deliberately conservative and need measured/source-reviewed scope optimization before activation"]
+}

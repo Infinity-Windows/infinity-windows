@@ -60,6 +60,8 @@ import { ToolboxSignCard } from "../clock/ToolboxSignCard";
 import { ToolboxSignStatus } from "../clock/ToolboxSignStatus";
 import type { ToolboxTodayView } from "../../lib/useToolboxGate";
 import { JobPickSheet, type JobPick } from "./JobPickSheet";
+import type { NativeClockFlow } from "../../lib/paidClock/flow";
+import "../../lib/i18n/paidClockCatalog";
 
 function clockInLabel(iso: string): string {
   const d = new Date(iso);
@@ -68,6 +70,7 @@ function clockInLabel(iso: string): string {
 }
 
 export interface ClockStripProps {
+  nativeFlow?:NativeClockFlow|null;
   profileId: string;
   shift: TimeShift | null;
   /**
@@ -86,9 +89,19 @@ export interface ClockStripProps {
   toolboxDone: ToolboxTodayView;
   /** Refetch the shift and everything keyed off it after a punch. */
   onShiftChanged: () => void;
+  /**
+   * A Schedule-tab Start work tap being honoured (pages/work/
+   * useScheduleStartWorkIntent.ts). Absent or null: exactly the old strip.
+   * "checking" and "choose" prime nothing and start nothing; "selected"
+   * starts only once the pick IS that job (todayJobId carries it).
+   */
+  scheduleIntent?: { kind: "checking" } | { kind: "choose" } | { kind: "selected"; projectId: string } | null;
+  /** Told each time the person taps a JOB by hand
+   * (even the one already picked) — never for a cost code, mode, note or Done. */
+  onExplicitProjectChoice?: (projectId: string) => void;
 }
 
-export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleSettled, talk, gate, toolboxDone, onShiftChanged }: ClockStripProps) {
+export function ClockStrip({ profileId, shift, clockKnown, nativeFlow=null, todayJobId, scheduleSettled, talk, gate, toolboxDone, onShiftChanged, scheduleIntent = null, onExplicitProjectChoice }: ClockStripProps) {
   const t = useT();
   const queryClient = useQueryClient();
   const onClock = isOnTheClock(shift);
@@ -123,7 +136,11 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
   // settle — the recents answer first on most mornings, and priming off them
   // alone put yesterday's job on the button (e2e, 2026-09-23). Never while a
   // shift is open, never over a pick made by hand.
+  // A Schedule tap still being checked, or that failed its check, primes
+  // nothing: the first job of the day must never stand in for the tapped one.
+  const intentKind = scheduleIntent?.kind ?? null;
   useEffect(() => {
+    if (intentKind === "checking" || intentKind === "choose") return;
     if (pickedByHandRef.current || shift || !(recents.isSuccess || recents.isError) || !scheduleSettled) return;
     const recent = recents.data ?? [];
     const projectId = todayJobId ?? recent[0]?.projectId ?? "";
@@ -134,7 +151,7 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
         ? p
         : { ...p, projectId, costCodeId: match?.costCodeId ?? recent[0]?.costCodeId ?? "" },
     );
-  }, [recents.isSuccess, recents.isError, recents.data, todayJobId, scheduleSettled, shift]);
+  }, [recents.isSuccess, recents.isError, recents.data, todayJobId, scheduleSettled, shift, intentKind]);
 
   // A cost code the job's list does not offer is dropped; an empty pick takes
   // the general code, so the common morning is one tap.
@@ -148,9 +165,15 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
 
   const project = useMemo(() => (projects.data ?? []).find((p) => p.id === pick.projectId), [projects.data, pick.projectId]);
   const costCode = (costCodes.data ?? []).find((c) => c.id === pick.costCodeId);
-  const canStart = Boolean(pick.projectId && pick.costCodeId);
+  const nativeRoute=!!nativeFlow && nativeFlow.route!=="legacy";
+  // Held in canStart itself (so canStartRef and the signature path see it),
+  // not just in the button's look.
+  const intentBlocks =
+    scheduleIntent !== null &&
+    (scheduleIntent.kind !== "selected" || pick.projectId !== scheduleIntent.projectId);
+  const canStart=!intentBlocks && (nativeRoute?(nativeFlow!.canReserveStart ?? nativeFlow!.canStartDay):Boolean(pick.projectId && pick.costCodeId));
   canStartRef.current = canStart;
-  const plan = startDayPlan(gate);
+  const plan =nativeRoute?"clock-in-then-sign":startDayPlan(gate);
 
   /**
    * What one Start day tap carries: its punch and the picks as they stood at
@@ -173,7 +196,9 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
   });
 
   const doStart = useMutation({
+    networkMode:nativeRoute?"always":"offlineFirst",
     mutationFn: async (tap: StartTap) => {
+      if(nativeRoute)return {queued:false,native:await nativeFlow!.authorStart(tap.punch)};
       const geo = await captureGeoSoft();
       return startShiftOrQueue({
         profileId,
@@ -188,6 +213,11 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
       });
     },
     onSuccess: (r) => {
+      if("native" in r){
+        const status=r.native.kind==="saved" && r.native.dispatch.kind==="settled"?r.native.dispatch.record.delivery.status:null;
+        pushToast(t(r.native.kind==="held"?"paidClock.actionHeld":status==="acknowledged"?"paidClock.acknowledged":status==="attention"?"paidClock.review":"paidClock.unknown"),"info");
+        nativeFlow?.refresh();onShiftChanged();return;
+      }
       setShowSign(false);
       if (r.queued) {
         // The phone shows the punch as real until Forge answers (K0.1 makes
@@ -201,6 +231,7 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
       onShiftChanged();
     },
     onError: (e, tap) => {
+      if(nativeRoute){pushToast(t("paidClock.actionHeld"),"error");nativeFlow?.refresh();openClockGlobally();return;}
       // A server "no" (not a network gap): say why and hand off to the full
       // sheet with the picks carried, as the classic block does — and with
       // this tap's WHOLE punch, so the sheet's retry is the same punch: if
@@ -221,7 +252,13 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
 
   const onStartDay = () => {
     if (!clockKnown || doStart.isPending) return;
+    if (intentBlocks) {
+      // Nothing starts; when the check failed, the tap opens the job picker.
+      if (intentKind === "choose" && !nativeRoute) setPicking(true);
+      return;
+    }
     if (!canStart) {
+      if(nativeRoute){openClockGlobally();return;}
       setPicking(true);
       return;
     }
@@ -270,10 +307,12 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
               {shift.projects?.job_code ? ` · ${shift.projects.job_code}` : ""}
             </span>
             <span className="ws-clock-timer" aria-label={t("clock.a11y.timeWorked")}>
-              {guard.workedSeconds == null ? t("clockBadge.finish") : formatClock(elapsedWorkSeconds(shift, now))}
+              {guard.workedSeconds == null ? t("clockBadge.finish") : formatClock(elapsedWorkSeconds(shift,
+                nativeFlow?.currentRead==="stale"?Date.parse(nativeFlow.current?.observedAt ?? shift.clock_in_at):now))}
             </span>
           </div>
           {pending && <p className="ws-meta">{t("work.clock.queued")}</p>}
+          {nativeFlow?.currentRead==="stale" && <p role="status" className="ws-meta">{t("paidClock.staleHelp")}</p>}
           <ToolboxSignStatus done={toolboxDone} showSent={false} />
           <div className="ws-clock-actions">
             <button type="button" className="ws-btn ws-btn--primary" onClick={() => openClockGlobally()}>
@@ -289,7 +328,7 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
           <section className="ws-card ws-talk" aria-label={t("work.toolbox.finish")} data-testid="ws-finish-talk">
             <h2 className="ws-h2">{t("work.toolbox.finish")}</h2>
             <p className="ws-meta">{t("work.toolbox.finishHelp")}</p>
-            <ToolboxSignCard profileId={profileId} talk={talk} />
+            <ToolboxSignCard profileId={profileId} talk={talk} onSigned={nativeRoute?()=>nativeFlow?.refresh():undefined}/>
           </section>
         )}
       </>
@@ -317,7 +356,7 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
         <div className="ws-clock-pick-text">
           <span className="ws-label">{t("work.clock.job")}</span>
           <span className="ws-clock-pick-job">
-            {project ? `${project.job_code} · ${project.name}` : t("work.clock.pickJob")}
+            {!intentBlocks && project ? `${project.job_code} · ${project.name}` : t("work.clock.pickJob")}
           </span>
           {costCode && (
             <span className="ws-meta">
@@ -329,8 +368,14 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
           {t("work.clock.change")}
         </button>
       </div>
+      {intentKind === "checking" && (
+        <p className="ws-meta" role="status" data-testid="ws-schedule-intent">{t("work.clock.checkingScheduled")}</p>
+      )}
+      {intentKind === "choose" && (
+        <p className="ws-meta" role="status" data-testid="ws-schedule-intent">{t("work.clock.chooseScheduled")}</p>
+      )}
 
-      {showSign && talk && canStart ? (
+      {!nativeRoute && showSign && talk && canStart ? (
         <div className="ws-talk" data-testid="ws-start-talk">
           <ToolboxSignCard
             profileId={profileId}
@@ -353,11 +398,11 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
           <button
             type="button"
             className="ws-btn ws-btn--primary ws-btn--start"
-            disabled={busy}
+            disabled={busy || nativeRoute && !canStart || intentBlocks && intentKind !== "choose"}
             onClick={onStartDay}
             data-testid="ws-start-day"
           >
-            <Play size={22} aria-hidden /> {busy ? t("work.clock.starting") : t("work.clock.startDay")}
+            <Play size={22} aria-hidden /> {busy ? t("work.clock.starting") : t(nativeRoute && !nativeFlow?.canStartDay?"paidClock.saveStartRequest":"work.clock.startDay")}
           </button>
           {canStart && plan === "sign-then-clock-in" && <p className="ws-meta ws-center">{t("work.clock.willOpenTalk")}</p>}
           {canStart && plan === "clock-in-then-sign" && <p className="ws-meta ws-center">{t("work.clock.paidFromTap")}</p>}
@@ -378,8 +423,18 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
         recents={recents.data ?? []}
         costCodes={costCodes.data ?? []}
         value={pick}
-        onChange={(next) => {
+        onPickJob={(projectId) => {
           pickedByHandRef.current = true;
+          // Only a tap on a JOB ends a Schedule tap — the same job tapped again
+          // too, which is how "choose" is answered when the strip already
+          // shows it. Inferring this from a changed id could not see that.
+          onExplicitProjectChoice?.(projectId);
+        }}
+        onChange={(next) => {
+          // With no Schedule tap live, any change is a hand pick, as before.
+          // With one live, a cost code, a note or the mode is not a choice of
+          // job: it must not stop the confirmed job from priming.
+          if (scheduleIntent === null) pickedByHandRef.current = true;
           setPick(next);
         }}
       />

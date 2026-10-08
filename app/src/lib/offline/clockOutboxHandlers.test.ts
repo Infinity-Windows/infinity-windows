@@ -55,6 +55,23 @@ beforeEach(() => {
   rpc.mockResolvedValue({ data: { id: "shift-1" }, error: null });
 });
 
+describe('queued payroll review outcomes',()=>{
+  it('keeps original review punches for attention instead of confirming or retrying',async()=>{
+    const review={id:'shift-1',status:'needs_finish',clock_in_at:'2099-01-01T00:00:00Z',break_started_at:'2099-01-01T01:00:00Z',break_seconds:321};
+    const original=structuredClone(review);
+    for(const op of ['clock_out','break_start','break_stop'] as const){
+      const payload={shiftRef:'shift-1',breakType:'rest',injured:false,timeConfirmed:true,breakSeconds:321,...PUNCH};
+      const saved=structuredClone(payload);
+      rpc.mockResolvedValueOnce({data:op==='break_stop'?{outcome:'requires_review',shift:review}:review,error:null});
+      const error=await send(op,payload).catch(e=>e);
+      expect(isRetryableError(error)).toBe(false);expect(error.message).toContain('This punch did not complete');
+      expect(payload).toEqual(saved);expect(review).toEqual(original);
+    }
+    expect(rpc).toHaveBeenCalledTimes(3);
+    expect(rpc.mock.calls.every(call=>call[1].p_client_id===PUNCH.clientId)).toBe(true);
+  });
+});
+
 describe("the queued clock-in", () => {
   const base = { projectId: "job-1", costCodeId: "cc-1", lat: 1, lng: 2, note: "gate 4411", mode: "tracking" };
 

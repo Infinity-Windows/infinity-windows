@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { listProjectsAnyStatus } from "../lib/api";
@@ -10,7 +10,10 @@ import { signInMark, signInGeneration, subscribeSignedIn, stillSignedInAs } from
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { fetchWorkDataSnapshot } from "../lib/workData/api";
 import { reconcileWorkday } from "../lib/workData/reconcile";
-import { summarizeCohort, unitLabor } from "../lib/workData/cohorts";
+import { unitLabor } from "../lib/workData/cohorts";
+import { WorkDataExplorer } from "../components/workData/WorkDataExplorer";
+import { RecordedActivityTotals } from "../components/workData/RecordedActivityTotals";
+import { useSelectedJobWorkGate } from "../lib/workActivity/selectedJobWorkGate";
 import "./WorkData.css";
 
 function subscribeNetwork(cb: () => void) {
@@ -49,7 +52,9 @@ function WorkDataReport({ boundary }: { boundary: string }) {
   const [projectId, setProjectId] = useState("");
   const [fromDay, setFromDay] = useState(() => day(-6));
   const [untilDay, setUntilDay] = useState(() => day(0));
-  const [filter, setFilter] = useState("");
+  const totalsEnabled = useSelectedJobWorkGate();
+  const closeTotals = useRef(() => {});
+  const registerTotals = useCallback((close: () => void) => { closeTotals.current = close; }, []);
   const mark = signInMark();
   useEffect(() => () => {
     // Only this boundary's private in-memory data; no durable field queues.
@@ -90,9 +95,6 @@ function WorkDataReport({ boundary }: { boundary: string }) {
     }
     return { data, coverage, units, activities: [...activities].sort((a, b) => b[1].seconds - a[1].seconds) };
   }, [snapshot.data]);
-  const filteredUnits = report?.units.filter(r => [r.unit.label, r.unit.category, r.unit.subtype, r.unit.material, r.unit.floor]
-    .some(v => v?.toLocaleLowerCase().includes(filter.toLocaleLowerCase()))) ?? [];
-  const cohort = summarizeCohort(filteredUnits);
   const sum = (key: "payrollSeconds" | "classifiedSeconds" | "unknownSeconds" | "conflictSeconds" | "unpaidBreakSeconds") =>
     report?.coverage.reduce((n, row) => n + row[key], 0) ?? 0;
   const issue = (value: string) => {
@@ -103,12 +105,13 @@ function WorkDataReport({ boundary }: { boundary: string }) {
     <header className="page-header"><h1>{t("wdata.title")}</h1><Link to="/summary" className="button-like">{t("wdata.summary")}</Link></header>
     <p>{t("wdata.intro")}</p>
     <div className="work-data-filters">
-      <label>{t("wdata.job")}<select value={projectId} onChange={e => setProjectId(e.target.value)}>
+      <label>{t("wdata.job")}<select value={projectId} onChange={e => { closeTotals.current(); setProjectId(e.target.value); }}>
         <option value="">{t("wdata.choose")}</option>{projects.data?.map(p => <option key={p.id} value={p.id}>{p.job_code} · {p.name}</option>)}
       </select></label>
       <label>{t("wdata.from")}<input type="date" value={fromDay} onChange={e => setFromDay(e.target.value)} /></label>
       <label>{t("wdata.until")}<input type="date" value={untilDay} onChange={e => setUntilDay(e.target.value)} /></label>
     </div>
+    {totalsEnabled && projectId && <RecordedActivityTotals key={projectId} projectId={projectId} enabled={totalsEnabled} registerInvalidation={registerTotals} />}
     <p className="muted">{t("wdata.basis")}</p>
     {!datesValid && <p role="alert">{t("wdata.invalidDates")}</p>}
     {(projects.isLoading || (projectId && snapshot.isLoading && datesValid)) && <p role="status">{t("wdata.loading")}</p>}
@@ -133,18 +136,7 @@ function WorkDataReport({ boundary }: { boundary: string }) {
         {row.issues.length > 0 && <ul>{[...new Set(row.issues.map(issue))].map(i => <li key={i}>{i}</li>)}</ul>}
         <code>{row.shift.id}</code>
       </details>)}
-      <h2>{t("wdata.units")}</h2><p>{t("wdata.unitHelp")}</p>
-      <p className="muted">{t("wdata.mappingBasis")}</p>
-      <label>{t("wdata.filter")}<input type="search" value={filter} onChange={e => setFilter(e.target.value)} /></label>
-      <div className="work-data-stats"><div><span>{t("wdata.trusted")}</span><strong>{cohort.hoursPerSqFt === null ? t("wdata.noCohort") : cohort.hoursPerSqFt.toFixed(3)}</strong></div>
-        <div><span>{t("wdata.excluded")}</span><strong>{duration(cohort.excludedSeconds)}</strong></div></div>
-      {filteredUnits.map(row => <details key={row.unit.id} className="work-data-card"><summary>{row.unit.label} · {duration(row.paidSeconds)} · {row.areaSqFt === null ? "—" : `${row.areaSqFt.toFixed(2)} ft²`}</summary>
-        <p>{[row.unit.category, row.unit.subtype, row.unit.material, row.unit.floor].filter(Boolean).join(" · ") || t("wdata.unknown")}</p>
-        <p>{t("wdata.area")}: {row.areaSqFt?.toFixed(2) ?? "—"} ft²</p>
-        <ul>{row.exclusions.map(x => <li key={x}>{issue(x)}</li>)}</ul>
-        {row.eligible && <p>{t("wdata.eligible")}</p>}<code>{row.unit.id}</code>
-      </details>)}
-      <details className="work-data-card"><summary>{t("wdata.floors")}</summary>{[...cohort.floorArea].map(([floor, area]) => <p key={floor}>{floor === "unknown" ? t("wdata.unknown") : floor}: {area.toFixed(2)} ft²</p>)}</details>
+      <WorkDataExplorer key={`${report.data.project.id}:${fromIso}:${untilIso}`} rows={report.units} claims={report.data.claims} coverage={report.coverage} issue={issue} />
       <details className="work-data-card"><summary>{t("wdata.raw")} ({report.data.claims.length})</summary><p>{t("wdata.rawHelp")}</p>
         {report.data.claims.map(c => <div key={c.sourceId} className="work-data-source"><strong>{c.label}</strong><p>{stamp(c.startedAt)} → {c.endedAt ? stamp(c.endedAt) : t("wdata.open")}</p><p>{c.profileId} · {c.unitId ?? t("wdata.none")}</p><code>{c.sourceId}</code></div>)}
       </details>

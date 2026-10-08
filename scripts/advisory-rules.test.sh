@@ -143,6 +143,12 @@ create policy "${2}_select" on $2
 SQL
 }
 
+# A full migration can be much larger than a pipe buffer. Put the valid
+# security statements first so a grep -q producer pipeline would SIGPIPE.
+large_migration_tail() { # path
+  awk 'BEGIN { for (i=1; i<=7000; i++) printf "select %d;\n", i }' >>"$root/$1"
+}
+
 # ---------------------------------------------------------------------------
 # Nothing to say
 # ---------------------------------------------------------------------------
@@ -196,6 +202,58 @@ head_commit "Prove the formatter beats the bare string"
 run
 assert_rc 0
 assert_lacks "error-string"
+
+# Copy the allowed line from the real native formatter, rather than inventing
+# a passing fixture alongside the checker. Near misses must still fail.
+IDB_PRIMITIVE_LINE="$(sed -n '/if (typeof reason !== "object" && typeof reason !== "function") return String(reason);/p' app/src/lib/offline/outboxStore.ts)"
+if [ -z "$IDB_PRIMITIVE_LINE" ]; then
+  echo "FAIL: the real primitive diagnostic line is missing"
+  exit 1
+fi
+
+new_case "the exact primitive-only native formatter line is allowed"
+mkdir -p "$root/app/src/lib/offline"
+echo "export const x = 1;" >"$root/app/src/lib/offline/outboxStore.ts"
+base_commit
+printf '%s\n' "$IDB_PRIMITIVE_LINE" >>"$root/app/src/lib/offline/outboxStore.ts"
+head_commit "Describe a primitive native storage failure"
+run
+assert_rc 0
+assert_lacks "error-string"
+
+new_case "a guarded formatter line does not exempt an unguarded line beside it"
+mkdir -p "$root/app/src/lib/offline"
+echo "export const x = 1;" >"$root/app/src/lib/offline/outboxStore.ts"
+base_commit
+printf '%s\n' "$IDB_PRIMITIVE_LINE" >>"$root/app/src/lib/offline/outboxStore.ts"
+echo 'toast(String(reason));' >>"$root/app/src/lib/offline/outboxStore.ts"
+head_commit "Report a storage problem to the crew"
+run
+assert_rc 1
+assert_has "error-string"
+assert_has "app/src/lib/offline/outboxStore.ts:3"
+assert_lacks "app/src/lib/offline/outboxStore.ts:2"
+
+new_case "the guarded line is still reported in an ordinary UI module"
+echo "export const x = 1;" >"$root/app/src/pages/Sheet.tsx"
+base_commit
+printf '%s\n' "$IDB_PRIMITIVE_LINE" >>"$root/app/src/pages/Sheet.tsx"
+head_commit "Explain a save problem in the sheet"
+run
+assert_rc 1
+assert_has "error-string"
+assert_has "app/src/pages/Sheet.tsx:2"
+
+new_case "a weaker native formatter guard is still reported"
+mkdir -p "$root/app/src/lib/offline"
+echo "export const x = 1;" >"$root/app/src/lib/offline/outboxStore.ts"
+base_commit
+printf '%s\n' "$IDB_PRIMITIVE_LINE" | sed 's/&&/||/' >>"$root/app/src/lib/offline/outboxStore.ts"
+head_commit "Describe another native storage failure"
+run
+assert_rc 1
+assert_has "error-string"
+assert_has "app/src/lib/offline/outboxStore.ts:2"
 
 # ---------------------------------------------------------------------------
 # profiles select("*")
@@ -363,6 +421,40 @@ assert_rc 0
 assert_lacks "table-without-rls"
 assert_lacks "table-keeps-default-grants"
 assert_lacks "policy-without-partner-guard"
+
+new_case "a large migration keeps early RLS and revoke matches"
+base_commit
+good_migration "supabase/migrations/20300101000000_tailgate.sql" tailgate_checks
+large_migration_tail "supabase/migrations/20300101000000_tailgate.sql"
+head_commit "Create a private table in a large migration"
+run
+assert_rc 0
+assert_lacks "table-without-rls"
+assert_lacks "table-keeps-default-grants"
+
+new_case "a large migration still reports a genuinely missing RLS statement"
+base_commit
+good_migration "supabase/migrations/20300101000000_tailgate.sql" tailgate_checks
+awk '$0 !~ /^alter table tailgate_checks enable row level security;/' "$root/supabase/migrations/20300101000000_tailgate.sql" >"$root/without-rls"
+mv "$root/without-rls" "$root/supabase/migrations/20300101000000_tailgate.sql"
+large_migration_tail "supabase/migrations/20300101000000_tailgate.sql"
+head_commit "Forget row security in a large migration"
+run
+assert_rc 1
+assert_has "table-without-rls"
+assert_lacks "table-keeps-default-grants"
+
+new_case "a large migration still reports genuinely missing default-grant revocation"
+base_commit
+good_migration "supabase/migrations/20300101000000_tailgate.sql" tailgate_checks
+awk '$0 !~ /^revoke all on tailgate_checks from anon, authenticated;/' "$root/supabase/migrations/20300101000000_tailgate.sql" >"$root/without-revoke"
+mv "$root/without-revoke" "$root/supabase/migrations/20300101000000_tailgate.sql"
+large_migration_tail "supabase/migrations/20300101000000_tailgate.sql"
+head_commit "Forget revocation in a large migration"
+run
+assert_rc 1
+assert_has "table-keeps-default-grants"
+assert_lacks "table-without-rls"
 
 new_case "the shape this repo really writes — a policy inside do \$\$ — is green"
 # Taken from supabase/migrations/20260982000000_who_did_what.sql. 49 migrations

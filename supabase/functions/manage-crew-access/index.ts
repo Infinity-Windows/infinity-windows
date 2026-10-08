@@ -69,7 +69,7 @@ import {
   purgeRowRefusal,
   shapeFor,
   tombstoneEmail,
-  UNKNOWN_RECORDS,
+  PURGE_CANNOT_RECORD,
 } from "../_shared/purgeLogin.ts";
 import { reportCaughtError, withSentry } from "../_shared/sentry.ts";
 
@@ -219,41 +219,46 @@ async function readMember(
   return narrow.data as unknown as MemberRow | null;
 }
 
-/**
- * How many rows of work, money and safety record this person has, in one call.
- *
- * The counting lives in SQL (`person_record_counts`, 20260987000000), not here,
- * for two reasons written out in full in that migration. The short version: one
- * round trip instead of nineteen, and wave Z's standing rule that no edge
- * function may ever name the wage table — these functions hold the service-role
- * key, which bypasses RLS, and app/src/lib/payRates.test.ts scans this source
- * to keep it that way.
- *
- * A FAILURE HERE IS "THERE IS HISTORY", NEVER "THERE IS NONE". A database that
- * has not had 20260987000000 yet has no such function; a timeout is a timeout.
- * Either way the honest answer is "we do not know", and the only safe way to
- * act on not knowing is to keep the record — so the fallback returns a count
- * that forces the retire path. It is spelled with its own key so the sentence
- * on screen still says something true about why.
- */
+/** Metadata-aware, service-only census. Missing or drifted candidate support
+ * blocks this action before side effects; the frozen legacy census alone does
+ * not see all retained actor histories. SQL serializes each count with writers,
+ * while restrictive FKs independently protect the later Auth deletion. */
 async function countHistory(
   supabase: ServiceClient,
   userId: string,
+  actorId: string | null,
 ): Promise<HistoryCounts> {
-  const { data, error } = await supabase.rpc("person_record_counts", {
+  const { data, error } = await supabase.rpc("_work_unit_metadata_person_counts", {
     p_id: userId,
+    p_actor_id: actorId,
   });
-  if (error || !data || typeof data !== "object") {
-    return { [UNKNOWN_RECORDS]: 1 };
+  if (error || !data || typeof data !== "object" || Array.isArray(data) || Object.keys(data).length === 0) {
+    throw new Error(PURGE_CANNOT_RECORD);
   }
   // Whatever the database answered with, verbatim: hasWorkHistory reads the
   // whole object, so a table added to person_record_counts after this build
   // shipped still counts without anything here having to hear about it.
   const counts: HistoryCounts = {};
   for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
-    counts[key] = Number(value ?? 0);
+    if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error(PURGE_CANNOT_RECORD);
+    counts[key] = value;
   }
   return counts;
+}
+
+/** The count and Auth delete are separate transactions. A metadata writer can
+ * win that gap; its RESTRICT FK must win over deletion. Only fresh positive
+ * history changes the action to retirement. Never retry a forced delete. */
+async function deleteEmptyLogin(
+  supabase: ServiceClient,
+  userId: string,
+  actorId: string | null,
+): Promise<boolean> {
+  const { error } = await supabase.auth.admin.deleteUser(userId);
+  if (!error) return true;
+  const fresh = await countHistory(supabase, userId, actorId);
+  if (shapeFor(fresh) !== "retired") throw new Error(error.message);
+  return false;
 }
 
 /**
@@ -772,7 +777,7 @@ Deno.serve(withSentry("manage-crew-access", async (req) => {
         if (refusal) {
           return jsonResponse({ error: refusal.error }, refusal.status, cors);
         }
-        const counts = await countHistory(supabase, userId);
+        const counts = await countHistory(supabase, userId, invitedBy);
         return jsonResponse(
           {
             ok: true,
@@ -831,6 +836,9 @@ Deno.serve(withSentry("manage-crew-access", async (req) => {
           return jsonResponse({ error: refusal.error }, refusal.status, cors);
         }
 
+        const counts = await countHistory(supabase, userId, invitedBy);
+        let shape = shapeFor(counts);
+
         // Any code still outstanding for them dies first, whichever shape
         // follows — a live invite naming a deleted user is a code that fails at
         // the door, and one naming a retired user is a way back in.
@@ -841,24 +849,16 @@ Deno.serve(withSentry("manage-crew-access", async (req) => {
           .is("redeemed_at", null)
           .is("revoked_at", null);
 
-        const counts = await countHistory(supabase, userId);
-        const shape = shapeFor(counts);
-
         if (shape === "deleted") {
-          const { error: delErr } = await supabase.auth.admin.deleteUser(userId);
-          if (delErr) throw new Error(delErr.message);
-          // The profile went with the auth user (ON DELETE CASCADE). Deleting
-          // it here as well would be a second statement that can only fail.
-          return jsonResponse(
-            {
-              ok: true,
-              shape,
-              email_released: true,
-              display_name: row.display_name,
-            },
-            200,
-            cors,
-          );
+          if (await deleteEmptyLogin(supabase, userId, invitedBy)) {
+            // Auth deleted the empty profile by its existing cascade.
+            return jsonResponse(
+              { ok: true, shape, email_released: true, display_name: row.display_name },
+              200,
+              cors,
+            );
+          }
+          shape = "retired";
         }
 
         const { error: banErr } = await supabase.auth.admin.updateUserById(

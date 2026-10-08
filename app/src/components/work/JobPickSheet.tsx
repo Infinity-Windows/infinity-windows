@@ -31,6 +31,7 @@ export function JobPickSheet({
   costCodes,
   value,
   onChange,
+  onPickJob,
 }: {
   open: boolean;
   onClose: () => void;
@@ -40,6 +41,10 @@ export function JobPickSheet({
   costCodes: readonly CostCode[];
   value: JobPick;
   onChange: (next: JobPick) => void;
+  /** Told on every tap of a JOB — including the one already picked — and on
+   * nothing else (not a cost code, the mode, the note or Done). Optional: a
+   * caller that only needs the pick uses onChange alone. */
+  onPickJob?: (projectId: string) => void;
 }) {
   const t = useT();
   const [search, setSearch] = useState("");
@@ -56,6 +61,7 @@ export function JobPickSheet({
     // A recent's last cost code follows the job; otherwise keep the current
     // pick and let the cost-code list below correct it.
     const recent = recents.find((r) => r.projectId === projectId);
+    onPickJob?.(projectId);
     onChange({ ...value, projectId, costCodeId: recent?.costCodeId ?? value.costCodeId });
   };
 

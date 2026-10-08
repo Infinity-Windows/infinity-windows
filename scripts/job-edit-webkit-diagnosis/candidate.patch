@@ -1,0 +1,23 @@
+--- a/app/src/pages/ProjectDetail.tsx
++++ b/app/src/pages/ProjectDetail.tsx
+@@ -673,8 +673,6 @@
+           question "is this job going to happen on time" is the one somebody
+           opens a job to answer, and the customer's phone number is not. */}
+       {project && isLead && <JobExecutionPanel key={projectId} projectId={projectId} completed={project.status === "completed"} />}
+-      {project && isLead && <Suspense fallback={null}><WorkJobConfiguration projectId={projectId} /></Suspense>}
+-      {project && <Suspense fallback={null}><CrewGoalCard projectId={projectId} /></Suspense>}
+       {project && <PipelinePanel project={project} isLead={isLead} />}
+ 
+       {/* Wave H (H1/H2): the GC card, directly under Pipeline. The two answer
+@@ -715,6 +713,11 @@
+       {project && canFlagTesting && (
+         <JobLifecyclePanel project={project} heldCount={heldCount} />
+       )}
++
++      {/* Late optional cards sit after the job detail and lifecycle controls so
++          their loading/content changes cannot move those controls mid-tap. */}
++      {project && isLead && <Suspense fallback={null}><WorkJobConfiguration projectId={projectId} /></Suspense>}
++      {project && <Suspense fallback={null}><CrewGoalCard projectId={projectId} /></Suspense>}
+ 
+       <ScheduledCrewPanel projectId={projectId} isLead={isLead} />
+ 

@@ -29,6 +29,8 @@ from supabase_merge_lib import (  # noqa: E402
     SURROGATE_ONLY,
     VALUES_MANUAL_RECONCILIATION_TABLES,
     WORK_CAPTURE_MANUAL_RECONCILIATION_TABLES,
+    WORK_CROSS_JOB_IDENTITIES,
+    WORK_UNIT_METADATA_IDENTITIES,
     IdRemapper,
     Schema,
     dedup_key,
@@ -40,17 +42,187 @@ from supabase_merge_lib import (  # noqa: E402
 )
 
 
+# Offline evidence only: collect this on BOTH databases as an authorized role
+# with BYPASSRLS/superuser and SELECT. A filtered/FK-following export is not a
+# census. Attach the one returned object as cross_job_census to its matching
+# inventory/backup. No query here is executed by the planner. A stale or forged
+# JSON object is not a live transaction fence; operational execution is absent.
+CROSS_JOB_CENSUS_SQL = """with names(name) as (values %s), privilege as (
+ select coalesce((select rolsuper or rolbypassrls from pg_catalog.pg_roles
+                  where rolname=current_user), false) as ok
+), census as (
+ select name, pg_catalog.to_regclass('public.' || name) as rel from names
+)
+select pg_catalog.jsonb_build_object('version', 1, 'complete', p.ok,
+ 'tables', pg_catalog.jsonb_object_agg(c.name, case
+   when not p.ok then null
+   when c.rel is null then null
+   else coalesce(((pg_catalog.xpath('/row/n/text()', pg_catalog.query_to_xml(
+     pg_catalog.format('select pg_catalog.count(*) as n from public.%%I', c.name),
+     false, true, '')))[1]::text)::bigint, -1) end)) as cross_job_census
+from census c cross join privilege p group by p.ok;""" % ", ".join(
+    "('%s')" % name for name in sorted(WORK_CROSS_JOB_IDENTITIES)
+)
+
+
+def cross_job_refusals(inventory: Mapping[str, Any], rows: Mapping[str, Any]) -> list[str]:
+    """Require complete privileged census; never infer absence from omitted FKs."""
+    reasons = []
+    census = inventory.get("cross_job_census")
+    names = set(WORK_CROSS_JOB_IDENTITIES)
+    if (not isinstance(census, dict) or set(census) != {"version", "complete", "tables"}
+            or type(census.get("version")) is not int
+            or census.get("version") != 1 or census.get("complete") is not True
+            or not isinstance(census.get("tables"), dict)
+            or set(census["tables"]) != names):
+        reasons.append("complete privileged eight-table cross-job census required")
+        counts = {}
+    else:
+        counts = census["tables"]
+        for name, count in counts.items():
+            if count is not None and (type(count) is not int or count < 0):
+                reasons.append(name + ": invalid census count")
+            elif count is not None and count > 0:
+                reasons.append(name + ": retained evidence or authority exists")
+        # Installation is indivisible. Mixed absent/present tables indicate an
+        # incomplete/unsupported deployment, not a safe legacy database.
+        absent = sum(count is None for count in counts.values())
+        if absent == 0:
+            reasons.append("installed cross-job authority requires reviewed reconciliation")
+        if absent not in (0, len(names)):
+            reasons.append("partial cross-job schema cannot prove absence")
+    tables = inventory.get("tables", {})
+    if not isinstance(tables, dict):
+        reasons.append("inventory table map invalid")
+        tables = {}
+    elif any(not isinstance(name, str) or not isinstance(entry, dict)
+             or type(entry.get("rows")) is not int or entry["rows"] < 0
+             or bool(entry.get("error")) for name, entry in tables.items()):
+        reasons.append("inventory table entry or row count invalid")
+    for name in sorted(names):
+        entry = tables.get(name)
+        if name in tables:
+            value = entry.get("rows") if isinstance(entry, dict) else None
+            if (type(value) is not int or value < 0 or value != counts.get(name)
+                    or (isinstance(entry, dict) and entry.get("error"))):
+                reasons.append(name + ": inventory contradicts or cannot confirm census")
+            elif value > 0:
+                reasons.append(name + ": nonempty inventory")
+        if name in rows:
+            exported = rows[name]
+            if not isinstance(exported, list) or any(not isinstance(row, Mapping) for row in exported):
+                reasons.append(name + ": malformed cross-job export")
+            elif exported or counts.get(name) is None:
+                reasons.append(name + ": exported evidence or authority exists")
+    # Refuse recognizable v2 artifacts even when someone removed all eight
+    # non-FK evidence tables from the export and supplied an absence claim.
+    for name in ("personal_activity_commands", "personal_activity_transitions"):
+        exported = rows.get(name, [])
+        if not isinstance(exported, list) or any(not isinstance(row, Mapping) for row in exported):
+            reasons.append(name + ": malformed command/transition export")
+            continue
+        if any(str(row.get("protocol_version")) == "2" for row in exported):
+            reasons.append(name + ": version 2 evidence exists")
+    return sorted(set(reasons))
+
+
+# Run this read-only query separately on both projects as a superuser or
+# BYPASSRLS role with SELECT on every installed relation. A failed query is no
+# evidence. The offline JSON result is not a live freshness or write fence.
+METADATA_CENSUS_SQL = """with names(name) as (values %s), privilege as (
+ select coalesce((select rolsuper or rolbypassrls from pg_catalog.pg_roles
+                  where rolname=current_user), false) as bypass
+), census as (
+ select name, pg_catalog.to_regclass('public.' || name) as rel from names
+), visible as (
+ select c.name, c.rel, p.bypass,
+        c.rel is null or pg_catalog.has_table_privilege(c.rel, 'SELECT') as can_select
+ from census c cross join privilege p
+)
+select pg_catalog.jsonb_build_object('version', 1,
+ 'complete', coalesce(bool_and(bypass and can_select), false),
+ 'tables', pg_catalog.jsonb_object_agg(name, case
+   when not bypass or not can_select or rel is null then null
+   else coalesce(((pg_catalog.xpath('/row/n/text()', pg_catalog.query_to_xml(
+     pg_catalog.format('select pg_catalog.count(*) as n from public.%%I', name),
+     false, true, '')))[1]::text)::bigint, -1) end)) as metadata_census
+from visible;""" % ", ".join("('%s')" % name for name in sorted(WORK_UNIT_METADATA_IDENTITIES))
+
+
+def metadata_refusals(inventory: Mapping[str, Any], rows: Mapping[str, Any]) -> list[str]:
+    """Require exact privileged absence proof; omitted export rows prove nothing."""
+    names = set(WORK_UNIT_METADATA_IDENTITIES)
+    census = inventory.get("metadata_census")
+    reasons: list[str] = []
+    valid = (isinstance(census, dict)
+             and set(census) == {"version", "complete", "tables"}
+             and type(census.get("version")) is int and census["version"] == 1
+             and census.get("complete") is True
+             and isinstance(census.get("tables"), dict)
+             and set(census["tables"]) == names)
+    if not valid:
+        reasons.append("complete privileged nine-table metadata census required")
+        counts: Mapping[str, Any] = {}
+    else:
+        counts = census["tables"]
+        absent = 0
+        for name, count in counts.items():
+            if count is None:
+                absent += 1
+            elif type(count) is not int or count < 0:
+                reasons.append(name + ": invalid census count")
+            elif count > 0:
+                reasons.append(name + ": retained metadata evidence exists")
+        if absent == 0:
+            reasons.append("installed metadata authority requires reviewed reconciliation")
+        elif absent != len(names):
+            reasons.append("partial metadata schema cannot prove absence")
+    tables = inventory.get("tables")
+    if not isinstance(tables, dict):
+        reasons.append("inventory table map invalid")
+        tables = {}
+    elif any(not isinstance(name, str) or not isinstance(entry, dict)
+             or type(entry.get("rows")) is not int or entry["rows"] < 0
+             or bool(entry.get("error")) for name, entry in tables.items()):
+        # Validate every table, not only the nine private relations. The name
+        # or value of an unrelated malformed entry may itself be private.
+        reasons.append("inventory table entry or row count invalid")
+    for name in sorted(names):
+        if name in tables:
+            entry = tables[name]
+            value = entry.get("rows") if isinstance(entry, dict) else None
+            if (type(value) is not int or value < 0 or value != counts.get(name)
+                    or (isinstance(entry, dict) and entry.get("error"))):
+                reasons.append(name + ": inventory contradicts or cannot confirm census")
+        if name in rows:
+            exported = rows[name]
+            if (not isinstance(exported, list)
+                    or any(not isinstance(row, Mapping) for row in exported)):
+                reasons.append(name + ": malformed metadata export")
+            elif counts.get(name) is None or len(exported) > 0:
+                reasons.append(name + ": exported metadata relation or evidence exists")
+    return sorted(set(reasons))
+
+
 # --------------------------------------------------------------------------
 # Loading
 # --------------------------------------------------------------------------
 
 
-def load_side(path: str) -> tuple[dict[str, Any], dict[str, list[dict[str, Any]]]]:
-    """Return (inventory, rows-by-table). `rows` is empty for count-only inventories."""
+def load_side(path: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return inventory and rows, retaining malformed protected export values."""
     raw = json.loads(Path(path).read_text())
+    protected = (
+        set(WORK_CROSS_JOB_IDENTITIES)
+        | set(WORK_UNIT_METADATA_IDENTITIES)
+        | {"personal_activity_commands", "personal_activity_transitions"}
+    )
     if "project_ref" in raw:
-        return raw, {}
-    rows = {k: v for k, v in raw.items() if isinstance(v, list)}
+        # Mixed inventories must not hide either family's private payloads or
+        # recognizable v2 evidence behind a claimed catalog absence.
+        return raw, {k: v for k, v in raw.items() if k in protected}
+    rows = {k: v for k, v in raw.items()
+            if isinstance(v, list) or k in protected}
     return inventory_from_backup(path), rows
 
 
@@ -113,6 +285,21 @@ class Plan:
         self.remapper = IdRemapper(schema)
         self.notes: list[str] = []
         self.blockers: list[str] = []
+        self.cross_job_blockers = [
+            f"{side}: {reason}; no mutation SQL generated. Preserve original paid, "
+            "profile, allocation and source authority; reviewed reconciliation required."
+            for side, inventory, rows in (("source", source, source_rows), ("target", target, target_rows))
+            for reason in cross_job_refusals(inventory, rows)
+        ]
+        self.blockers.extend(self.cross_job_blockers)
+        self.metadata_blockers = [
+            f"{side}: {reason}; no mutation SQL generated. Reviewed metadata "
+            "history and current-pointer reconciliation required."
+            for side, inventory, rows in (("source", source, source_rows),
+                                          ("target", target, target_rows))
+            for reason in metadata_refusals(inventory, rows)
+        ]
+        self.blockers.extend(self.metadata_blockers)
         self.manual_values_tables = sorted(
             table for table in VALUES_MANUAL_RECONCILIATION_TABLES
             if (self.source_count(table) or 0) > 0
@@ -146,15 +333,21 @@ class Plan:
     # -- helpers ---------------------------------------------------------
 
     def source_count(self, table: str) -> int | None:
-        entry = self.source.get("tables", {}).get(table)
-        return None if entry is None else entry.get("rows")
+        tables = self.source.get("tables")
+        entry = tables.get(table) if isinstance(tables, dict) else None
+        count = entry.get("rows") if isinstance(entry, dict) else None
+        return count if type(count) is int and count >= 0 else None
 
     def target_count(self, table: str) -> int | None:
-        entry = self.target.get("tables", {}).get(table)
-        return None if entry is None else entry.get("rows")
+        tables = self.target.get("tables")
+        entry = tables.get(table) if isinstance(tables, dict) else None
+        count = entry.get("rows") if isinstance(entry, dict) else None
+        return count if type(count) is int and count >= 0 else None
 
     def tables_to_move(self) -> list[str]:
         """Tables with rows on the source side, in dependency order."""
+        if self.cross_job_blockers or self.metadata_blockers:
+            return []
         candidates = [
             t
             for t in self.schema.names()
@@ -170,6 +363,10 @@ class Plan:
     def preflight(self) -> list[str]:
         """SELECTs a human runs on both projects before anything is written."""
         checks = [
+            "-- Complete cross-job census, run with privileged visibility on BOTH sides:\n"
+            + CROSS_JOB_CENSUS_SQL,
+            "-- Privileged metadata census on BOTH projects; attach each result "
+            "to that side's inventory or raw backup:\n" + METADATA_CENSUS_SQL,
             "-- 1. Both projects must be at the same migration version, or the\n"
             "--    target is missing columns the source rows carry.\n"
             "select count(*) as applied, max(version) as latest\n"
@@ -271,6 +468,8 @@ class Plan:
 
     def deferred_updates(self) -> list[str]:
         """Phase 3: fill in the FK edges that had to be inserted as NULL."""
+        if self.cross_job_blockers or self.metadata_blockers:
+            return []
         stmts: list[str] = []
         for table, column in DEFERRED_FK_EDGES:
             rows = self.source_rows.get(table, [])
@@ -313,16 +512,36 @@ class Plan:
         return lines
 
     def verification(self) -> list[str]:
-        src_total = sum(
-            (t.get("rows") or 0) for t in self.source.get("tables", {}).values()
-        )
-        tgt_total = sum(
-            (t.get("rows") or 0) for t in self.target.get("tables", {}).values()
-        )
+        # Only a fully admitted legacy census proves these relations absent on
+        # both sides. Never hide verification merely because rows were omitted.
+        absent = set()
+        if not self.cross_job_blockers:
+            absent.update(WORK_CROSS_JOB_IDENTITIES)
+        if not self.metadata_blockers:
+            absent.update(WORK_UNIT_METADATA_IDENTITIES)
+        def total(inventory: Mapping[str, Any]) -> int | None:
+            tables = inventory.get("tables")
+            if not isinstance(tables, dict):
+                return None
+            if any(not isinstance(entry, dict) or bool(entry.get("error"))
+                   for entry in tables.values()):
+                return None
+            counts = [entry.get("rows") for entry in tables.values()]
+            if any(type(count) is not int or count < 0 for count in counts):
+                return None
+            return sum(counts)
+
+        src_total, tgt_total = total(self.source), total(self.target)
+        if src_total is None or tgt_total is None:
+            upper_bound = "-- Expected upper bound unavailable: inventory row counts invalid."
+        else:
+            upper_bound = (
+                f"-- Expected upper bound after the merge: {src_total} + {tgt_total} = "
+                f"{src_total + tgt_total} rows, minus one row for every source row that "
+                f"deduped onto an existing target row."
+            )
         lines = [
-            f"-- Expected upper bound after the merge: {src_total} + {tgt_total} = "
-            f"{src_total + tgt_total} rows, minus one row for every source row that "
-            f"deduped onto an existing target row.",
+            upper_bound,
             "",
             "-- Nothing lost: every table's count must be >= the pre-merge target count.",
             "select relname, n_live_tup from pg_stat_user_tables where schemaname='public' order by relname;",
@@ -339,7 +558,7 @@ class Plan:
             "-- No duplicates created on any natural key. Every one of these must\n"
             "-- return zero rows.",
         ]
-        for table in sorted(self.schema.names()):
+        for table in sorted(set(self.schema.names()) - absent):
             key = dedup_key(table)
             if not key:
                 continue
@@ -352,9 +571,9 @@ class Plan:
             "",
             "-- No orphaned foreign keys. Every one of these must return zero rows.",
         ]
-        for table in sorted(self.schema.names()):
+        for table in sorted(set(self.schema.names()) - absent):
             for fk in self.schema[table].foreign_keys:
-                if fk.is_auth or len(fk.columns) != 1:
+                if fk.is_auth or len(fk.columns) != 1 or fk.ref_table in absent:
                     continue
                 col, ref_col = fk.columns[0], fk.ref_columns[0]
                 lines.append(
@@ -514,7 +733,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(text + "\n")
         print(f"\n-> {args.out}")
-    return 2 if plan.manual_values_tables or plan.manual_capture_tables else 0
+    return 2 if (plan.cross_job_blockers or plan.metadata_blockers
+                 or plan.manual_values_tables or plan.manual_capture_tables) else 0
 
 
 if __name__ == "__main__":

@@ -1,0 +1,140 @@
+name: Job Edit WebKit diagnosis (not release acceptance)
+on:
+  push:
+    branches: [codex/work-cross-job-client-foundation-20261005]
+    paths:
+      - .github/workflows/job-edit-webkit-diagnosis.yml
+      - app/e2e/job-edit-webkit-diagnostic.spec.ts
+      - app/playwright.job-edit-diagnostic.config.ts
+      - scripts/job-edit-webkit-diagnosis/**
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        variant: [baseline, candidate]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Require the exact enrollment branch, parent and five-file delta
+        env:
+          ENROLLMENT_REF: ${{ github.ref }}
+        run: |
+          mkdir -p diagnosis
+          test "$ENROLLMENT_REF" = refs/heads/codex/work-cross-job-client-foundation-20261005
+          test "$(git rev-parse HEAD^)" = 47a7dfb01fad9246443cad05114ed3613cb5af69
+          git rev-parse HEAD HEAD^ > diagnosis/enrollment-and-parent.txt
+          git diff HEAD^ HEAD --name-status > diagnosis/enrollment-delta.txt
+          python3 - <<'PYTHON'
+          import hashlib,json,subprocess
+          expected={'.github/workflows/job-edit-webkit-diagnosis.yml','app/e2e/job-edit-webkit-diagnostic.spec.ts','app/playwright.job-edit-diagnostic.config.ts','scripts/job-edit-webkit-diagnosis/baseline-pins.json','scripts/job-edit-webkit-diagnosis/candidate.patch'}
+          actual=set(subprocess.check_output(['git','diff','HEAD^','HEAD','--name-only'],text=True).splitlines())
+          assert actual == expected, (actual,expected)
+          for path,wanted in json.load(open('scripts/job-edit-webkit-diagnosis/baseline-pins.json')).items():
+              actual=hashlib.sha256(open(path,'rb').read()).hexdigest()
+              assert actual == wanted, (path,actual,wanted)
+          PYTHON
+          cp scripts/job-edit-webkit-diagnosis/baseline-pins.json diagnosis/
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+        working-directory: app
+      - name: Require and record lock-resolved browser identity
+        run: |
+          node - <<'JS'
+          if (require('./app/node_modules/@playwright/test/package.json').version !== '1.62.0') throw Error('Unexpected Playwright');
+          const browsers=require('./app/node_modules/playwright-core/browsers.json').browsers;
+          for(const [name,revision] of [['webkit','2336'],['chromium','1234']]) if(browsers.find(b=>b.name===name).revision!==revision) throw Error('Unexpected '+name);
+          JS
+          node --version > diagnosis/node-version.txt
+          cat app/node_modules/playwright-core/browsers.json > diagnosis/browsers.json
+          node -p "require('./app/node_modules/@playwright/test/package.json').version" > diagnosis/playwright-version.txt
+      - run: npx --no-install playwright install --with-deps chromium webkit
+        working-directory: app
+        timeout-minutes: 7
+      - name: Apply candidate only in disposable candidate checkout
+        if: matrix.variant == 'candidate'
+        run: git apply --check scripts/job-edit-webkit-diagnosis/candidate.patch && git apply scripts/job-edit-webkit-diagnosis/candidate.patch
+      - name: Run both untouched controls, then the separately reported instrumented probe
+        working-directory: app
+        run: |
+          git diff -- src/pages/ProjectDetail.tsx > ../diagnosis/applied-source.diff
+          sha256sum src/pages/ProjectDetail.tsx src/components/projects/JobExecutionPanel.tsx e2e/job-phone-layout.spec.ts > ../diagnosis/tested-source-sha256.txt
+          # Every phase runs once. A failed phase remains failed; later phases
+          # collect independent evidence rather than retrying a failed case.
+          set +e
+          IW_DIAG_OUT=../diagnosis/original-webkit npx --no-install playwright test --config playwright.job-edit-diagnostic.config.ts job-phone-layout.spec.ts --project=webkit > ../diagnosis/original-webkit.log 2>&1
+          original_webkit=$?
+          IW_DIAG_OUT=../diagnosis/original-chromium npx --no-install playwright test --config playwright.job-edit-diagnostic.config.ts job-phone-layout.spec.ts --project=chromium > ../diagnosis/original-chromium.log 2>&1
+          original_chromium=$?
+          DEBUG=pw:api IW_DIAG_OUT=../diagnosis/instrumented-webkit npx --no-install playwright test --config playwright.job-edit-diagnostic.config.ts job-edit-webkit-diagnostic.spec.ts --project=webkit > ../diagnosis/instrumented-webkit.log 2>&1
+          instrumented_webkit=$?
+          printf 'original_webkit=%s\noriginal_chromium=%s\ninstrumented_webkit=%s\n' "$original_webkit" "$original_chromium" "$instrumented_webkit" > ../diagnosis/phase-exit-codes.txt
+          cat ../diagnosis/phase-exit-codes.txt
+          test "$original_webkit" -eq 0 && test "$original_chromium" -eq 0 && test "$instrumented_webkit" -eq 0
+      - name: Preserve per-action logs including passing self-healed clicks
+        if: always()
+        run: |
+          python3 - <<'PYTHON'
+          import json, pathlib, zipfile
+          
+          def click_actions(rows):
+              # callId is scoped to this trace member, never joined across contexts.
+              actions = []
+              for before in rows:
+                  if before.get('type') != 'before' or before.get('method') != 'click':
+                      continue
+                  call_id = before['callId']
+                  messages = [r['message'] for r in rows if r.get('type') == 'log' and r.get('callId') == call_id]
+                  after = [r for r in rows if r.get('type') == 'after' and r.get('callId') == call_id]
+                  retry = [m for m in messages if 'retrying click action' in m or 'intercepts pointer events' in m]
+                  complete = bool(after) and any('click action done' in m for m in messages)
+                  actions.append({'callId':call_id,'selector':before.get('params',{}).get('selector'),
+                                  'retryOrInterceptionMessages':retry,'messages':messages,
+                                  'after':after,'coverage':'RETRY_OR_INTERCEPTION_REVIEW_REQUIRED' if retry else
+                                  'COMPLETE_LOG_NO_RETRY_MARKER_OBSERVED' if complete else 'ACTION_LOG_INCOMPLETE_INCONCLUSIVE',
+                                  'naturalSuccessEligible':False})
+              return actions
+          
+          reports = []
+          for archive in pathlib.Path('diagnosis').rglob('trace.zip'):
+              members = []
+              with zipfile.ZipFile(archive) as trace:
+                  for name in trace.namelist():
+                      if not name.endswith('.trace'):
+                          continue
+                      rows = [json.loads(line) for line in trace.read(name).splitlines() if line.strip()]
+                      actions = click_actions(rows)
+                      if actions:
+                          members.append({'member':name,'clickActions':actions})
+              reports.append({'archive':str(archive),'members':members,'missingClickActions':not members})
+              event_summary = archive.parent / 'event-summary.json'
+              if event_summary.exists():
+                  summary = json.loads(event_summary.read_text())
+                  summary['playwrightActionLogReview'] = {
+                      'status':'REVIEW_REQUIRED', 'traceMembers':members,
+                      'missingClickActions':not members,
+                      'note':'Correlate the Edit selector and event window; internal retry is not natural success. No-marker evidence is not proof of click delivery.'}
+                  summary['naturalSuccessEligible'] = False
+                  event_summary.write_text(json.dumps(summary,indent=2)+'\n')
+          pathlib.Path('diagnosis/playwright-action-evidence.json').write_text(json.dumps({
+              'interpretation':'REVIEW_REQUIRED: correlate Edit call selector with browser document/sequence, original control result and draft assertions; a pass or no retry marker alone is not causal proof',
+              'traces':reports,'missingTraces':not reports},indent=2)+'\n')
+          PYTHON
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: job-edit-webkit-${{ matrix.variant }}-${{ github.sha }}
+          path: diagnosis/
+          retention-days: 14

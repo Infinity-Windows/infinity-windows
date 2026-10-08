@@ -5,6 +5,8 @@ import { openClockGlobally, useClock } from "../../lib/clockContext";
 import { queryClient } from "../../lib/queryClient";
 import { oneTapFits, runOneTap, type OneTapDeps, type OneTapOutcome } from "../../lib/clockOneTap";
 import type { ClockBreakType, ClockButton } from "../../../../supabase/functions/_shared/clockButtons";
+import { useT as useClockT } from "../../lib/i18n";
+import "../../lib/i18n/paidClockCatalog";
 
 /**
  * The one-tap buttons a reply offered (K2.4). Shown only when they fit the
@@ -25,6 +27,7 @@ import type { ClockBreakType, ClockButton } from "../../../../supabase/functions
  */
 export function ClockButtons({ buttons, deps }: { buttons: ClockButton[]; deps?: OneTapDeps }) {
   const t = useT();
+  const clockT=useClockT();
   const clock = useClock();
   const restoring = useIsRestoring();
   const clockKnown = Boolean(clock.profileId) && !clock.loading && !restoring;
@@ -36,10 +39,10 @@ export function ClockButtons({ buttons, deps }: { buttons: ClockButton[]; deps?:
     if (!clockKnown) return;
     setBusy(true);
     try {
-      const result = await runOneTap(button, clock.shift, breakType, deps);
+      const result = await runOneTap(button, clock.shift, breakType, deps,clock.nativeFlow);
       setOutcome(result);
       if (result.kind === "open_clock") openClockGlobally();
-      if (result.kind === "done") {
+      if (result.kind === "done" || result.kind==="native_result") {
         clock.refresh();
         // The server paused or resumed this person's unit timers with the
         // break (the sessions trigger): re-read them, as the clock sheet does.
@@ -51,6 +54,7 @@ export function ClockButtons({ buttons, deps }: { buttons: ClockButton[]; deps?:
   };
 
   const outcomeText = (o: OneTapOutcome): string => {
+    if(o.kind==="native_result")return clockT(o.status==="held"?"paidClock.actionHeld":`paidClock.${o.status}`);
     if (o.kind === "done") return t(`field.button.done.${o.action}.${o.queued ? "queued" : "saved"}` as TKey);
     if (o.kind === "open_clock") return t("field.button.openedClock");
     return t(`field.button.refused.${o.reason}` as TKey);

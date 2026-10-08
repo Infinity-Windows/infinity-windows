@@ -18,8 +18,10 @@ import {
   Navigate,
   Route,
   Routes,
+  useNavigate,
   useParams,
 } from "react-router-dom";
+import { classicDesignSettled, hasScheduleStartWorkIntent, withoutScheduleStartWorkIntent } from "./lib/work/scheduleStartWorkIntent";
 import { CrashMonitorRole } from "./components/CrashMonitorRole";
 import { Layout } from "./components/Layout";
 import { canAccess, roleRank, ROLE_NAV_V2, type RoutePath } from "./lib/nav";
@@ -248,7 +250,23 @@ function RouteFallback() {
 function RoleLanding() {
   const { effectiveRole: role, isLoading } = useEffectiveRole();
   const clock = useClock();
-  const { design } = useDesign();
+  const { design, choice, masterOn } = useDesign();
+  // A Schedule-tab Start work tap (lib/work/scheduleStartWorkIntent.ts) is
+  // only ever honoured by the new Work screen. Once the design is KNOWN to be
+  // classic — the owner's switch off, or the person's own choice classic,
+  // either one alone — drop it from this history entry so it can never be
+  // replayed later; never on the provisional classic shown while the design
+  // loads. (A running service visit's redirect below replaces the entry itself.)
+  const location = useLocation();
+  const navigate = useNavigate();
+  const classicSettled = design !== "new" && classicDesignSettled({ choice, masterOn });
+  useEffect(() => {
+    if (!classicSettled || !hasScheduleStartWorkIntent(location.state)) return;
+    navigate(
+      { pathname: location.pathname, search: location.search, hash: location.hash },
+      { replace: true, state: withoutScheduleStartWorkIntent(location.state) },
+    );
+  }, [classicSettled, location, navigate]);
   const service = useQuery({
     queryKey: ["serviceActive", clock.profileId],
     queryFn: async () => (await import("./lib/servicing/api")).listActiveService(clock.profileId!),

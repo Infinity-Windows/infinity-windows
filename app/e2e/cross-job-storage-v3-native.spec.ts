@@ -1,0 +1,409 @@
+import { expect, test as base, webkit, type BrowserContext, type Page } from '@playwright/test';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+// The controlled Linux probe retains the ephemeral Blob failures separately.
+// These native journal cases exercise a fresh ordinary durable profile per test.
+const test=base.extend({
+  context:async({browserName,context:inherited,baseURL,viewport,deviceScaleFactor},provideContext)=>{
+    if(browserName!=='webkit'){await provideContext(inherited);return;}
+    const directory=mkdtempSync(join(tmpdir(),'cross-job-v3-webkit-'));
+    let persistent:BrowserContext|undefined;
+    try{
+      persistent=await webkit.launchPersistentContext(directory,{headless:true,baseURL,viewport,deviceScaleFactor});
+      await provideContext(persistent);
+    }finally{
+      try{await persistent?.close();}finally{rmSync(directory,{recursive:true,force:true});}
+    }
+  },
+});
+async function retain(name:string,value:unknown){const path=test.info().outputPath(name);writeFileSync(path,JSON.stringify(value,null,2));await test.info().attach(name,{path,contentType:'application/json'});}
+const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+import type * as Harness from './support/crossJobStorageV3Harness';
+declare global { interface Window { crossJobV3Fixture:typeof Harness } }
+async function fixture(page:Page){
+  await page.route('**/*',route=>new URL(route.request().url()).hostname==='localhost'?route.continue():route.abort());
+  await page.route('**/cross-job-v3-isolated-fixture',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><title>Isolated native journal fixture</title>'}));
+  await page.goto('/cross-job-v3-isolated-fixture');
+  await page.evaluate(async()=>{
+    // @ts-expect-error Served solely by the isolated local Vite fixture.
+    window.crossJobV3Fixture=await import('/e2e/support/crossJobStorageV3Harness.ts');
+  });
+}
+test.afterEach(async({page},testInfo)=>{
+  if(testInfo.status===testInfo.expectedStatus)return;
+  let evidence:unknown;try{evidence=await page.evaluate(()=>window.crossJobV3Fixture?.diagnostics()??{stage:'fixture_not_loaded'});}catch(error){evidence={stage:'diagnostics_read_failed',error:error instanceof Error?error.message:String(error)};}
+  await retain('native-fixture-failure-details.json',evidence);
+});
+for(const version of [1,2] as const)test(`native ${version}→3 preserves original keys indexes rows and blob bytes`,async({page})=>{
+  await fixture(page);const result=await page.evaluate(async version=>{const f=window.crossJobV3Fixture,old=await f.seedLegacy(version,true),before=await f.census(old);old.close();const db=await f.open(),after=await f.census(db);db.close();return {before,after};},version);
+  await retain('native-legacy-census.json',{...result,beforeSha256:digest(result.before.stores),preservedAfterSha256:digest(result.after.stores.filter(s=>result.before.stores.some(old=>old.name===s.name)))});
+  expect(digest(result.after.stores.filter(s=>result.before.stores.some(old=>old.name===s.name)))).toBe(digest(result.before.stores));
+  expect(result.after.version).toBe(3);for(const store of result.before.stores)expect(result.after.stores.find(s=>s.name===store.name)).toEqual(store);
+  expect(result.after.stores.map(s=>s.name)).toEqual(['commands','cross_job_commands_v2','cross_job_heads_v2','heads','protocol_commands','protocol_heads']);
+});
+test('native blocked rejection aborts late upgrade after old tab closes',async({page,context})=>{
+  await fixture(page);const other=await context.newPage();await fixture(other);
+  await page.evaluate(async()=>{Object.assign(window,{heldOldDb:await window.crossJobV3Fixture.seedLegacy(2,true)});});
+  expect(await other.evaluate(async()=>{try{await window.crossJobV3Fixture.open();return 'incorrect';}catch(error){return (error as Error).message;}})).toBe('upgrade_blocked');
+  await page.evaluate(()=>{(window as unknown as {heldOldDb:IDBDatabase}).heldOldDb.close();});
+  const after=await other.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open(f.storage.CROSS_JOB_DB_NAME);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});const state=await f.census(db);db.close();return state;});
+  expect(after.version).toBe(2);expect(after.stores).toHaveLength(4);expect(await other.evaluate(async()=>{const db=await window.crossJobV3Fixture.open(),v=db.version;db.close();return v;})).toBe(3);
+});
+test('native injected quota and late abort leave both command and head unchanged',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{
+    const f=window.crossJobV3Fixture,db=await f.open(),before=await f.census(db),failures=[];
+    const put=IDBObjectStore.prototype.put,add=IDBObjectStore.prototype.add;
+    IDBObjectStore.prototype.put=function(...args:Parameters<typeof put>){if(this.name===f.storage.CROSS_JOB_HEADS)throw new DOMException('Injected quota; not physical disk exhaustion','QuotaExceededError');return put.apply(this,args);};
+    try{await f.storage.appendCrossJobOriginal(db,f.values.genesis(),f.context());}catch(error){failures.push({committed:(error as {committed:boolean}).committed,original:(error as {original:unknown}).original});}finally{IDBObjectStore.prototype.put=put;}
+    const afterQuota=await f.census(db);
+    IDBObjectStore.prototype.add=function(...args:Parameters<typeof add>){const r=add.apply(this,args);if(this.name===f.storage.CROSS_JOB_COMMANDS)r.addEventListener('success',()=>this.transaction.abort(),{once:true});return r;};
+    try{await f.storage.appendCrossJobOriginal(db,f.values.genesis(),f.context());}catch(error){failures.push({committed:(error as {committed:boolean}).committed,original:(error as {original:unknown}).original});}finally{IDBObjectStore.prototype.add=add;}
+    const afterAbort=await f.census(db);db.close();return {before,afterQuota,afterAbort,failures};
+  });expect(result.afterQuota).toEqual(result.before);expect(result.afterAbort).toEqual(result.before);expect(result.failures).toHaveLength(2);for(const failure of result.failures){expect(failure.committed).toBe(false);expect(failure.original).toHaveProperty('commandBytes');}
+});
+test('native two tabs race one permanent claim; reload cannot claim again',async({page,context})=>{
+  await fixture(page);const other=await context.newPage();await fixture(other);
+  await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open();await f.storage.appendCrossJobOriginal(db,f.values.genesis(),f.context());db.close();});
+  const claim=(tab:Page,n:number)=>tab.evaluate(async n=>{const f=window.crossJobV3Fixture,db=await f.open();const result=await f.storage.claimCrossJobOriginal(db,f.values.id(50),f.values.id(n),f.context(),f.admission());db.close();return result;},n);
+  const raced=await Promise.all([claim(page,70),claim(other,71)]);expect(raced.filter(Boolean)).toHaveLength(1);await fixture(page);expect(await claim(page,72)).toBeNull();
+  const row=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),r=await f.storage.readCrossJobOriginal(db,f.values.id(50),f.context());db.close();return r;});expect(row).toMatchObject({everAttempted:true,historical:null,attemptToken:raced.find(Boolean)!.token});
+});
+test('native old opener2 refuses after3 while independent paid photo review bytes remain',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{
+    const f=window.crossJobV3Fixture,names=['wops-write-outbox','iw-paid-clock-chain-v1','iw-unit-review-decisions-v1'];
+    const before=[];
+    for(const name of names){const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open(name,name==='wops-write-outbox'?2:1);r.onupgradeneeded=()=>{
+      if(name==='wops-write-outbox'){r.result.createObjectStore('entries',{keyPath:'id'});r.result.createObjectStore('metadata',{keyPath:'id'});}
+      else {const store=r.result.createObjectStore('requests',{keyPath:name==='iw-paid-clock-chain-v1'?'clientId':'commandId'});store.createIndex(name==='iw-paid-clock-chain-v1'?'by_owner':'owner_unit',name==='iw-paid-clock-chain-v1'?'ownerId':['ownerId','unitId']);r.result.createObjectStore('heads',{keyPath:'key'});}
+    };r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});const tx=db.transaction([...db.objectStoreNames],'readwrite');
+      if(name==='wops-write-outbox'){tx.objectStore('entries').add({id:'original-photo',photoBlob:new Blob([new Uint8Array([11,29,53])]),note:'original photo bytes'});tx.objectStore('metadata').add({id:'original',owner:'original owner'});}
+      else {tx.objectStore('requests').add({clientId:f.values.id(90),commandId:f.values.id(91),ownerId:f.values.id(1),unitId:f.values.id(7),opaque:{note:'original paid/review payload Ω',tap:'2026-10-05T00:00:00.123456-06:00'}});tx.objectStore('heads').add({key:'original',opaque:'retained head'});}
+      await f.complete(tx);before.push({name,...await f.census(db)});db.close();}
+    const upgraded=await f.open();upgraded.close();let error='';
+    // @ts-expect-error Existing opener is exercised only on this isolated origin.
+    const legacy=await import('/src/lib/workCapture/storage.ts');try{await legacy.openWorkJournal(indexedDB);}catch(e){error=(e as Error).name;}
+    const retained=[];for(const name of names){const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open(name,name==='wops-write-outbox'?2:1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});retained.push({name,...await f.census(db)});db.close();}return {error,before,retained};
+  });await retain('native-independent-database-census.json',{...result,beforeSha256:digest(result.before),afterSha256:digest(result.retained)});expect(result.error).toBe('VersionError');expect(result.retained).toEqual(result.before);expect(result.retained[0].stores.find(s=>s.name==='entries')!.rows[0].photoBlob).toEqual([11,29,53]);
+});
+test('native v1 handoff and append CAS admit one successor and reject same ID changed original',async({page,context})=>{
+  await fixture(page);const other=await context.newPage();await fixture(other);await page.evaluate(async()=>{await window.crossJobV3Fixture.seedLegacy(2);});
+  const append=(tab:Page,n:number)=>tab.evaluate(async n=>{const f=window.crossJobV3Fixture,db=await f.open(),old=f.values.handoff(),{commandBytes:_,...input}=old;input.command={...input.command,commandId:f.values.id(n)};const o=f.storage.freezeCrossJobOriginal({...input,prediction:{...input.prediction,allocationId:f.values.id(n)}});try{const result=await f.storage.appendCrossJobOriginal(db,o,f.context());return {ok:true,record:result.record};}catch{return {ok:false,record:null};}finally{db.close();}},n);
+  const raced=await Promise.all([append(page,6),append(other,16)]);expect(raced.filter(x=>x.ok)).toHaveLength(1);const winner=raced.find(x=>x.ok)!.record!;
+  const result=await page.evaluate(async winner=>{const f=window.crossJobV3Fixture,db=await f.open(),before=await f.census(db),same=await f.storage.appendCrossJobOriginal(db,winner.original,f.context());const {commandBytes:_,...input}=winner.original;input.command.payload.tappedAt='2026-10-05T06:00:00.123457Z';let rejected=false;try{await f.storage.appendCrossJobOriginal(db,f.storage.freezeCrossJobOriginal(input),f.context());}catch{rejected=true;}const after=await f.census(db);db.close();return {created:same.created,rejected,before,after};},winner);
+  expect(result.created).toBe(false);expect(result.rejected).toBe(true);expect(result.after).toEqual(result.before);
+});
+test('native successful provenance survives later hold; copied capability cannot settle again',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.admission());if(!ticket)throw Error();const settled=await f.settle(db,ticket),before=JSON.stringify(settled.historical);const held=await f.storage.holdCrossJobOriginal(db,o.command.commandId,f.context(),'unknown'),claim=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.admission());let fabricated=false;try{await f.settle(db,structuredClone(ticket));}catch{fabricated=true;}db.close();return {before,after:JSON.stringify(held.historical),hold:held.hold,claim,fabricated};});
+  expect(result.before).toBe(result.after);expect(JSON.parse(result.after).confirmed.confirmation.kind).toBe('confirmed');expect(result).toMatchObject({hold:'unknown',claim:null,fabricated:true});
+});
+test('native logout ABA before commit aborts; foreign and relogin readers cannot see original',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),add=IDBObjectStore.prototype.add;let failed=false;
+    IDBObjectStore.prototype.add=function(...args:Parameters<typeof add>){const r=add.apply(this,args);if(this.name===f.storage.CROSS_JOB_COMMANDS)f.setContext({loginGeneration:3});return r;};
+    try{await f.storage.appendCrossJobOriginal(db,f.values.genesis(),f.context());}catch{failed=true;}finally{IDBObjectStore.prototype.add=add;}f.setContext({loginGeneration:2});const empty=await f.census(db);await f.storage.appendCrossJobOriginal(db,f.values.genesis(),f.context());
+    const foreign={...f.values.fences(),userId:f.values.id(99)};f.setContext(foreign);const hidden=await f.storage.readCrossJobOriginal(db,f.values.id(50),{expected:foreign,current:()=>foreign});const relog={...f.values.fences(),loginGeneration:3};f.setContext(relog);const hiddenAgain=await f.storage.readCrossJobOriginal(db,f.values.id(50),{expected:relog,current:()=>relog});db.close();return {failed,empty,hidden,hiddenAgain};});
+  expect(result.failed).toBe(true);expect(result.empty.stores.find(s=>s.name==='cross_job_commands_v2')!.rows).toEqual([]);expect(result.empty.stores.find(s=>s.name==='cross_job_heads_v2')!.rows).toEqual([]);expect(result.hidden).toBeNull();expect(result.hiddenAgain).toBeNull();
+});
+test('native unknown parent holds original descendants permanently across reload',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis(),saved=await f.storage.appendCrossJobOriginal(db,o,f.context()),child=f.values.child(saved.record);await f.storage.appendCrossJobOriginal(db,child,f.context());const before=await f.storage.claimCrossJobOriginal(db,child.command.commandId,f.values.id(72),f.context(),f.admission(o));const ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.admission());if(!ticket)throw Error();await f.storage.settleCrossJobClaim(db,ticket,f.context(),null,null);const after=await f.storage.claimCrossJobOriginal(db,child.command.commandId,f.values.id(73),f.context(),f.admission(child)),row=await f.storage.readCrossJobOriginal(db,child.command.commandId,f.context());db.close();return {before,after,row,bytes:child.commandBytes};});
+  expect(result.before).toBeNull();expect(result.after).toBeNull();expect(result.row).toMatchObject({hold:'ancestor_held',everAttempted:false});expect(result.row!.original.commandBytes).toBe(result.bytes);await fixture(page);
+  expect(await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),r=await f.storage.claimCrossJobOriginal(db,f.values.id(51),f.values.id(74),f.context(),f.admission());db.close();return r;})).toBeNull();
+});
+test('native pending child becomes claimable only after exact original submission and lookup confirmation',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis(),saved=await f.storage.appendCrossJobOriginal(db,o,f.context()),child=f.values.child(saved.record);await f.storage.appendCrossJobOriginal(db,child,f.context());const waiting=await f.storage.claimCrossJobOriginal(db,child.command.commandId,f.values.id(72),f.context(),f.admission(o));const parent=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.admission());if(!parent)throw Error();await f.settle(db,parent);const ready=await f.storage.claimCrossJobOriginal(db,child.command.commandId,f.values.id(73),f.context(),f.admission(child));if(!ready)throw Error('child did not become claimable');const confirmed=await f.settle(db,ready);db.close();return {waiting,bytes:child.commandBytes,readyBytes:JSON.stringify(ready.command),delivery:f.storage.crossJobDelivery(confirmed)};});
+  expect(result.waiting).toBeNull();expect(result.readyBytes).toBe(result.bytes);expect(result.delivery).toBe('confirmed');
+});
+test('native schema drift refuses upgrade without repairing old schema or records',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture;const old=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open(f.storage.CROSS_JOB_DB_NAME,2);r.onupgradeneeded=()=>r.result.createObjectStore('commands',{keyPath:'unexpected'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});const before=await f.census(old);old.close();let error='';try{await f.open();}catch(e){error=(e as Error).message;}const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open(f.storage.CROSS_JOB_DB_NAME);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});const after=await f.census(db);db.close();return {before,after,error};});expect(result.error).toBe('schema_drift');expect(result.after).toEqual(result.before);
+});
+test('native expired observation is persistently held with exact original and no claim',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.values.admissionAt(o,undefined,10001));const row=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context());const again=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.admission());db.close();return {ticket,row,again,bytes:o.commandBytes};});expect(result.ticket).toBeNull();expect(result.again).toBeNull();expect(result.row).toMatchObject({hold:'expired_observation',everAttempted:false});expect(result.row!.original.commandBytes).toBe(result.bytes);
+});
+test('native retired generation is held despite stale otherwise valid server admission',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis(),first=await f.storage.appendCrossJobOriginal(db,o,f.context()),{commandBytes:_,...next}=o;const observed=structuredClone(o.anchor);observed.stream={clientGeneration:o.command.payload.clientGeneration,headCommandId:o.command.commandId,headSequence:0,headAfterRevision:1,status:'active'};observed.observation!.currentGeneration=o.command.payload.clientGeneration;observed.observation!.currentHeadCommandId=o.command.commandId;next.anchor=observed;next.expectedHead=f.storage.crossJobHead(first.record);next.command={...next.command,commandId:f.values.id(60),payload:{...next.command.payload,clientGeneration:f.values.id(81),intent:{kind:'establish_stream',previousGeneration:o.command.payload.clientGeneration,previousHeadCommandId:o.command.commandId}}};await f.storage.appendCrossJobOriginal(db,f.storage.freezeCrossJobOriginal(next),f.context());const claimed=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.admission()),row=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context());db.close();return {claimed,row};});expect(result.claimed).toBeNull();expect(result.row).toMatchObject({everAttempted:false,hold:'retired_generation'});
+});
+test('native local acknowledgement failure retains attempted unknown and never permits another send claim',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.admission());if(!ticket)throw Error();const put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(...args:Parameters<typeof put>){if(this.name===f.storage.CROSS_JOB_COMMANDS)throw new DOMException('Injected acknowledgement quota','QuotaExceededError');return put.apply(this,args);};let failed=false;try{await f.settle(db,ticket);}catch{failed=true;}finally{IDBObjectStore.prototype.put=put;}const row=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context()),again=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.admission());db.close();return {failed,row,again,delivery:f.storage.crossJobDelivery(row!)};});expect(result).toMatchObject({failed:true,row:{everAttempted:true,historical:null},again:null,delivery:'attempted_unknown'});
+});
+test('native strict durability refusal leaves an empty journal',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),transaction=IDBDatabase.prototype.transaction;let error='';IDBDatabase.prototype.transaction=function(...args:Parameters<typeof transaction>){const tx=transaction.apply(this,args);if(this.name===f.storage.CROSS_JOB_DB_NAME&&args[1]==='readwrite')Object.defineProperty(tx,'durability',{value:'relaxed'});return tx;};try{await f.storage.appendCrossJobOriginal(db,f.values.genesis(),f.context());}catch(e){error=(e as Error).message;}finally{IDBDatabase.prototype.transaction=transaction;}const census=await f.census(db);db.close();return {error,census};});expect(result.error).toBe('strict_durability_unavailable');expect(result.census.stores.every(s=>s.rows.length===0)).toBe(true);
+});
+for(const status of ['refused','conflict'] as const)test(`native ${status} original and descendants remain held with actual-response-shaped evidence`,async({page})=>{
+  await fixture(page);const result=await page.evaluate(async status=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis(),saved=await f.storage.appendCrossJobOriginal(db,o,f.context()),child=f.values.child(saved.record);await f.storage.appendCrossJobOriginal(db,child,f.context());const ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.admission());if(!ticket)throw Error();const receipt={protocolVersion:2 as const,commandId:o.command.commandId,status,reasonCode:'state_changed',beforeRevision:1,afterRevision:1,transitionId:null,effectiveAt:null},reply={protocolVersion:2 as const,availability:'available' as const,receipt};const settled=await f.storage.settleCrossJobClaim(db,ticket,f.context(),{command:o.command,reply},{...reply,allocation:null});const blocked=await f.storage.claimCrossJobOriginal(db,child.command.commandId,f.values.id(72),f.context(),f.admission(child)),row=await f.storage.readCrossJobOriginal(db,child.command.commandId,f.context());db.close();return {settled,blocked,row};},status);
+  expect(result.settled.hold).toBe(status);expect(result.settled.historical!.submission.reply).toMatchObject({receipt:{status}});expect(result.blocked).toBeNull();expect(result.row!.hold).toBe('ancestor_held');
+});
+test('native wrong full request provenance and storage corruption refuse without replacing original',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture;await f.seedLegacy(2);const db=await f.open(),o=f.values.handoff();await f.storage.appendCrossJobOriginal(db,o,f.context());const ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.admission(o));if(!ticket)throw Error();const raw=structuredClone(o.command);if(raw.payload.intent.kind==='switch')raw.payload.intent.projectId=f.values.id(99);const p={protocol:2 as const,command:o.command,prediction:o.prediction,confirmation:{kind:'pending' as const}};let badProof=false;try{await f.storage.settleCrossJobClaim(db,ticket,f.context(),{command:raw,reply:f.values.submission(p).reply},f.values.lookup(p));}catch{badProof=true;}const retained=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context());const tx=db.transaction(f.storage.CROSS_JOB_COMMANDS,'readwrite'),store=tx.objectStore(f.storage.CROSS_JOB_COMMANDS),row=structuredClone(retained!);row.original.commandBytes+=' ';store.put(row);await f.complete(tx);let corrupt=false;try{await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context());}catch{corrupt=true;}const original=await f.get(db.transaction(f.storage.CROSS_JOB_COMMANDS).objectStore(f.storage.CROSS_JOB_COMMANDS).get(o.command.commandId));db.close();return {badProof,retained,corrupt,unrepaired:original.original.commandBytes===row.original.commandBytes};});
+  expect(result).toMatchObject({badProof:true,retained:{everAttempted:true,historical:null},corrupt:true,unrepaired:true});
+});
+test('native mutable caller expected-context object cannot change the owner used inside a read',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const foreign={...f.values.fences(),userId:f.values.id(99)},ctx={expected:foreign,current:()=>({...f.values.fences(),userId:f.values.id(99)})},get=IDBObjectStore.prototype.get;
+    IDBObjectStore.prototype.get=function(...args:Parameters<typeof get>){const request=get.apply(this,args);if(this.name===f.storage.CROSS_JOB_COMMANDS)ctx.expected.userId=f.values.id(1);return request;};let row;try{row=await f.storage.readCrossJobOriginal(db,o.command.commandId,ctx);}finally{IDBObjectStore.prototype.get=get;}db.close();return row;
+  });expect(result).toBeNull();
+});
+test('native logout queued at claim commit cannot release a live send capability',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const transaction=IDBDatabase.prototype.transaction;IDBDatabase.prototype.transaction=function(...args:Parameters<typeof transaction>){const tx=transaction.apply(this,args);if(this.name===f.storage.CROSS_JOB_DB_NAME&&args[1]==='readwrite')tx.addEventListener('complete',()=>queueMicrotask(()=>f.setContext({loginGeneration:3})),{once:true});return tx;};let held=false,committed=false;try{await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.admission());}catch(error){held=true;committed=(error as {committed:boolean}).committed;}finally{IDBDatabase.prototype.transaction=transaction;}f.setContext({loginGeneration:2});const row=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context());db.close();return {held,committed,delivery:f.storage.crossJobDelivery(row!),everAttempted:row!.everAttempted};});expect(result).toEqual({held:true,committed:true,delivery:'attempted_unknown',everAttempted:true});
+});
+test('native B→C→D selection changes defer original B without writes and later claim each exact original in its own valid context',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{
+    const f=window.crossJobV3Fixture;await f.seedLegacy(2);const db=await f.open();
+    const ctx=(job:number)=>{const expected=f.values.fences(job);f.setContext(expected);return {expected,current:f.context().current};};
+    const b=f.values.handoff(),br=await f.storage.appendCrossJobOriginal(db,b,ctx(10)),c=f.values.queuedChild(br.record,16,20),cr=await f.storage.appendCrossJobOriginal(db,c,ctx(20)),d=f.values.queuedChild(cr.record,26,30);await f.storage.appendCrossJobOriginal(db,d,ctx(30));
+    const before=await f.census(db),deferred=await f.storage.claimCrossJobOriginal(db,b.command.commandId,f.values.id(70),ctx(30),f.admission(b)),after=await f.census(db);
+    let actualSnapshot=b.anchor;const sent=[];for(const [original,job,n] of [[b,10,71],[c,20,72],[d,30,73]] as const){const context=ctx(job),ticket=await f.storage.claimCrossJobOriginal(db,original.command.commandId,f.values.id(n),context,f.values.admissionAt(original,actualSnapshot,n-70));if(!ticket)throw Error('Original never became claimable');const settled=await f.settle(db,ticket,context);actualSnapshot=f.values.snapshotAfter(settled.historical!.confirmed!);sent.push({before:original.commandBytes,after:JSON.stringify(ticket.command),delivery:f.storage.crossJobDelivery(settled)});}
+    db.close();return {before,after,deferred,sent};
+  });expect(result.deferred).toBeNull();expect(result.after).toEqual(result.before);expect(result.sent).toHaveLength(3);for(const row of result.sent){expect(row.after).toBe(row.before);expect(row.delivery).toBe('confirmed');}
+});
+for(const change of ['authority','background','preview'] as const)test(`native ${change} context refuses without changing the never-attempted original`,async({page})=>{
+  await fixture(page);const result=await page.evaluate(async change=>{
+    const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const before=await f.census(db),expected=f.values.fences();if(change==='authority')expected.authorityToken='later-observed-authority';if(change==='background')expected.foreground=false;if(change==='preview')expected.preview=true;f.setContext(expected);let claim=null,refused=false;try{claim=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),{expected,current:f.context().current},f.admission(o));refused=claim===null;}catch{refused=true;}const after=await f.census(db);f.setContext(f.values.fences());const later=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.admission(o));db.close();return {before,after,claim,refused,later:later!==null};
+  },change);expect(result.refused).toBe(true);expect(result.claim).toBeNull();expect(result.after).toEqual(result.before);expect(result.later).toBe(true);
+});
+test('native malformed admission and injected parents/currentFences cannot write or bypass selected-job fencing',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{
+    const f=window.crossJobV3Fixture;await f.seedLegacy(2);const db=await f.open(),o=f.values.handoff();await f.storage.appendCrossJobOriginal(db,o,f.context());const before=await f.census(db),failures=[];
+    const base=f.admission(o),cases=[{...base,currentFences:o.fences},{...base,parents:[o.predecessor]},{...base,snapshot:null},{...base,elapsedMs:-1},{...base,elapsedMs:NaN},{...base,serverNow:'invalid'},{snapshot:base.snapshot,serverNow:base.serverNow},{...base,serverNow:'2026-10-05T06:00:01.123456Z'}];
+    for(const job of [10,20]){const current=f.values.fences(job);f.setContext(current);const context={expected:current,current:f.context().current};
+      for(const a of cases){const result=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),context,a as typeof base);failures.push({refused:result===null,unchanged:JSON.stringify(await f.census(db))===JSON.stringify(before)});}}
+    f.setContext(f.values.fences());const later=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),base);db.close();return {failures,later:later!==null};
+  });expect(result.failures).toHaveLength(16);expect(result.failures.every(x=>x.refused&&x.unchanged)).toBe(true);expect(result.later).toBe(true);
+});
+test('native lower and higher page-local login generations and foreign owner/device cannot mutate saved originals',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{
+    const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const before=await f.census(db),results=[];
+    for(const patch of [{userId:f.values.id(99)},{deviceId:f.values.id(99)},{loginGeneration:1},{loginGeneration:3}]){const expected={...f.values.fences(),...patch};f.setContext(expected);let refused=false;try{const claim=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),{expected,current:f.context().current},f.admission(o));refused=claim===null;}catch{refused=true;}results.push({refused,unchanged:JSON.stringify(await f.census(db))===JSON.stringify(before)});}
+    f.setContext(f.values.fences());const row=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context()),again=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(72),f.context(),f.admission(o));db.close();return {results,row,laterBytes:again?JSON.stringify(again.command):null,bytes:o.commandBytes};
+  });expect(result.results).toHaveLength(4);expect(result.results.every(r=>r.refused&&r.unchanged)).toBe(true);expect(result.row).toMatchObject({hold:null,everAttempted:false,revision:0});expect(result.laterBytes).toBe(result.bytes);
+});
+// Correction 3 intentionally replaces checkpoint-2 permanent outage assertions:
+// capability absence is no longer treated as authoritative original invalidity.
+for(const kind of ['minimal_unavailable','full_unavailable','closing_only','unclean','action_unavailable'] as const)test(`native ${kind} availability refuses without writes then allows exact original`,async({page})=>{
+  await fixture(page);const result=await page.evaluate(async kind=>{
+    const f=window.crossJobV3Fixture;await f.seedLegacy(2);const db=await f.open(),o=f.values.handoff();await f.storage.appendCrossJobOriginal(db,o,f.context());const before=await f.census(db);let snapshot:unknown;
+    if(kind==='minimal_unavailable')snapshot={protocolVersion:2,availability:'unavailable',state:null};else if(kind==='full_unavailable')snapshot={protocolVersion:2,asOf:o.anchor.asOf,deviceId:o.command.payload.deviceId,capability:{mode:'unavailable',reasonCode:'not_ready'},observation:null,stream:null,state:null};else{const s=f.values.snapshot();if(kind==='closing_only')s.capability={mode:'closing_only',reasonCode:'starts_disabled'};if(kind==='unclean')s.state!.integrity='review';if(kind==='action_unavailable')s.state!.actions.canSwitch=false;snapshot=s;}
+    const claim=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),{...f.admission(o),snapshot}),after=await f.census(db),row=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context()),again=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.admission(o));db.close();return {claim,before,after,row,laterBytes:again?JSON.stringify(again.command):null,bytes:o.commandBytes};
+  },kind);expect(result.claim).toBeNull();expect(result.after).toEqual(result.before);expect(result.row).toMatchObject({hold:null,everAttempted:false,revision:0});expect(result.laterBytes).toBe(result.bytes);
+});
+for(const kind of ['allocation','revision','shift','stream','disabled_conflict'] as const)test(`native concrete ${kind} source conflict remains sticky including disabled capability`,async({page})=>{
+  await fixture(page);const result=await page.evaluate(async kind=>{
+    const f=window.crossJobV3Fixture;await f.seedLegacy(2);const db=await f.open(),o=f.values.handoff();await f.storage.appendCrossJobOriginal(db,o,f.context());const snapshot=f.values.snapshot();
+    if(kind==='allocation'||kind==='disabled_conflict')snapshot.state!.shift!.allocationId=f.values.id(99);
+    if(kind==='revision'){snapshot.state!.revision=2;snapshot.observation!.revision=2;snapshot.stream!.headAfterRevision=2;}
+    if(kind==='shift'){snapshot.state!.shift!.id=f.values.id(99);snapshot.observation!.shiftRef={kind:'shift',id:f.values.id(99)};}
+    if(kind==='stream'){snapshot.stream!.headCommandId=f.values.id(99);snapshot.observation!.currentHeadCommandId=f.values.id(99);}
+    if(kind==='disabled_conflict'){snapshot.capability={mode:'closing_only',reasonCode:'starts_disabled'};snapshot.state!.actions.canSwitch=false;}
+    const claim=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),{...f.admission(o),snapshot}),row=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context()),again=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.admission(o));db.close();return {claim,row,again,bytes:o.commandBytes};
+  },kind);expect(result.claim).toBeNull();expect(result.again).toBeNull();expect(result.row).toMatchObject({hold:'needs_reaffirmation',everAttempted:false});expect(result.row!.original.commandBytes).toBe(result.bytes);
+});
+for(const kind of ['stale_server_large_elapsed','future_server_small_elapsed','server_before_anchor'] as const)test(`native ${kind} cannot permanently expire an original`,async({page})=>{
+  await fixture(page);const result=await page.evaluate(async kind=>{
+    const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const before=await f.census(db),admission=f.admission(o);
+    if(kind==='stale_server_large_elapsed')admission.elapsedMs=10001;
+    if(kind==='future_server_small_elapsed')admission.serverNow='2026-10-05T06:00:11.123456Z';
+    if(kind==='server_before_anchor')admission.serverNow='2026-10-05T06:00:00.123455Z';
+    const refused=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),admission),after=await f.census(db),again=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.admission(o));db.close();return {refused,before,after,later:again?JSON.stringify(again.command):null,bytes:o.commandBytes};
+  },kind);expect(result.refused).toBeNull();expect(result.after).toEqual(result.before);expect(result.later).toBe(result.bytes);
+});
+test('native establish capability false is temporary with unchanged stream and original',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const before=await f.census(db),snapshot=f.values.snapshot();snapshot.state!.actions.canEstablishStream=false;const refused=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),{...f.admission(o),snapshot}),after=await f.census(db),again=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.admission(o));db.close();return {refused,before,after,later:again!==null};});expect(result.refused).toBeNull();expect(result.after).toEqual(result.before);expect(result.later).toBe(true);
+});
+test('native new-stream path validates old-head exact shape and counter without repair',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{
+    const f=window.crossJobV3Fixture;await f.seedLegacy(2);const db=await f.open(),headKey=`${f.values.id(1)}:${f.values.id(2)}`,old=await f.get(db.transaction('protocol_heads').objectStore('protocol_heads').get(headKey)),results=[];
+    for(const patch of [{unexpected:true},{sequence:-1}]){const tx=db.transaction('protocol_heads','readwrite');tx.objectStore('protocol_heads').put({...old,...patch});await f.complete(tx);const before=await f.census(db);let refused=false;try{await f.storage.appendCrossJobOriginal(db,f.values.genesis(),f.context());}catch{refused=true;}results.push({refused,unchanged:JSON.stringify(before)===JSON.stringify(await f.census(db))});}
+    db.close();return results;
+  });expect(result).toEqual([{refused:true,unchanged:true},{refused:true,unchanged:true}]);
+});
+
+test('native real pre-B snapshot cannot strand queued C; exact post-B confirmation permits the same C',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{
+    const f=window.crossJobV3Fixture;await f.seedLegacy(2);const db=await f.open(),b=f.values.handoff();
+    const br=await f.storage.appendCrossJobOriginal(db,b,f.context()),c=f.values.queuedChild(br.record);
+    await f.storage.appendCrossJobOriginal(db,c,f.context());const before=await f.census(db);
+    const waiting=await f.storage.claimCrossJobOriginal(db,c.command.commandId,f.values.id(72),f.context(),f.values.admissionAt(c,b.anchor));
+    const after=await f.census(db),bt=await f.storage.claimCrossJobOriginal(db,b.command.commandId,f.values.id(70),f.context(),f.values.admissionAt(b));if(!bt)throw Error('B missing');
+    const confirmedB=await f.settle(db,bt),actualPostB=f.values.snapshotAfter(confirmedB.historical!.confirmed!);
+    const ct=await f.storage.claimCrossJobOriginal(db,c.command.commandId,f.values.id(73),f.context(),f.values.admissionAt(c,actualPostB,2));if(!ct)throw Error('C stranded');
+    const confirmedC=await f.settle(db,ct);db.close();return {waiting,before,after,original:c.commandBytes,claimed:JSON.stringify(ct.command),delivery:f.storage.crossJobDelivery(confirmedC)};
+  });expect(result.waiting).toBeNull();expect(result.after).toEqual(result.before);expect(result.claimed).toBe(result.original);expect(result.delivery).toBe('confirmed');
+});
+for(const kind of ['lower_revision','older_than_anchor','cached_vs_server','snapshot_in_future','null_shift_lower','null_shift_equal','null_shift_higher'] as const)test(`native ${kind} evidence is no-write and the same original can later claim`,async({page})=>{
+  await fixture(page);const result=await page.evaluate(async kind=>{
+    const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const before=await f.census(db),a=f.values.admissionAt(o),s=a.snapshot;
+    if(kind==='lower_revision'){s.state!.revision=0;s.observation!.revision=0;s.stream!.headAfterRevision=0;}
+    if(kind==='older_than_anchor')s.asOf='2026-10-05T06:00:00.123455Z';
+    if(kind==='cached_vs_server')s.asOf=o.anchor.asOf;
+    if(kind==='snapshot_in_future')s.asOf='2026-10-05T06:00:00.125456Z';
+    if(kind.startsWith('null_shift')){s.state!.revision=kind==='null_shift_lower'?0:kind==='null_shift_higher'?2:1;s.state!.shift=null;}
+    const refused=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),a),after=await f.census(db),later=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.values.admissionAt(o));db.close();return {refused,before,after,later:later?JSON.stringify(later.command):null,original:o.commandBytes};
+  },kind);expect(result.refused).toBeNull();expect(result.after).toEqual(result.before);expect(result.later).toBe(result.original);
+});
+test('native a genuinely later coherent higher revision is sticky after parent resolution',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture;await f.seedLegacy(2);const db=await f.open(),o=f.values.handoff();await f.storage.appendCrossJobOriginal(db,o,f.context());const a=f.values.admissionAt(o);a.snapshot.state!.revision=2;a.snapshot.observation!.revision=2;a.snapshot.stream!.headAfterRevision=2;const refused=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),a),saved=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context()),again=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.values.admissionAt(o));db.close();return {refused,saved,again,original:o.commandBytes};});expect(result.refused).toBeNull();expect(result.again).toBeNull();expect(result.saved).toMatchObject({hold:'needs_reaffirmation',everAttempted:false});expect(result.saved!.original.commandBytes).toBe(result.original);
+});
+
+test('native disabled establish action cannot hide a fresh concrete allocation conflict',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const a=f.values.admissionAt(o);a.snapshot.state!.actions.canEstablishStream=false;a.snapshot.state!.shift!.allocationId=f.values.id(99);const claim=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),a),row=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context());db.close();return {claim,row};});expect(result.claim).toBeNull();expect(result.row).toMatchObject({hold:'needs_reaffirmation',everAttempted:false});
+});
+
+test('native ancestor-hold storage failure aborts rather than becoming a temporary admission refusal',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),b=f.values.genesis(),saved=await f.storage.appendCrossJobOriginal(db,b,f.context()),c=f.values.queuedChild(saved.record);await f.storage.appendCrossJobOriginal(db,c,f.context());const ticket=await f.storage.claimCrossJobOriginal(db,b.command.commandId,f.values.id(70),f.context(),f.admission(b));if(!ticket)throw Error();await f.storage.settleCrossJobClaim(db,ticket,f.context(),null,null);const before=await f.census(db),put=IDBObjectStore.prototype.put;let rejected=false;IDBObjectStore.prototype.put=function(...args:Parameters<typeof put>){if(this.name===f.storage.CROSS_JOB_COMMANDS)throw new DOMException('Injected ancestor hold quota','QuotaExceededError');return put.apply(this,args);};try{await f.storage.claimCrossJobOriginal(db,c.command.commandId,f.values.id(71),f.context(),f.admission(c));}catch{rejected=true;}finally{IDBObjectStore.prototype.put=put;}const after=await f.census(db);await f.storage.claimCrossJobOriginal(db,c.command.commandId,f.values.id(72),f.context(),f.admission(c));const held=await f.storage.readCrossJobOriginal(db,c.command.commandId,f.context());db.close();return {rejected,before,after,hold:held!.hold};});expect(result.rejected).toBe(true);expect(result.after).toEqual(result.before);expect(result.hold).toBe('ancestor_held');
+});
+
+for(const kind of ['snapshot_between_anchor_and_tap','clock_check_too_far_ahead'] as const)test(`native ${kind} defers without writes and later claims the same original`,async({page})=>{
+  await fixture(page);const result=await page.evaluate(async kind=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.timedGenesis(kind==='clock_check_too_far_ahead');await f.storage.appendCrossJobOriginal(db,o,f.context());const before=await f.census(db),early=f.values.admissionAt(o,undefined,kind==='snapshot_between_anchor_and_tap'?300000:1),refused=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),early),after=await f.census(db),later=f.values.admissionAt(o,undefined,kind==='snapshot_between_anchor_and_tap'?360050:240050),ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),later);db.close();return {refused,before,after,early:early.serverNow,later:later.serverNow,bytes:o.commandBytes,claimed:ticket?JSON.stringify(ticket.command):null};},kind);expect(result.refused).toBeNull();expect(result.after).toEqual(result.before);expect(result.claimed).toBe(result.bytes);expect(result.later>result.early).toBe(true);
+});
+for(const action of ['stop','establish_stream'] as const)for(const mode of ['closing_only','unclean','both'] as const)test(`native planner-ready ${action} under ${mode} retains its exact authorized behavior`,async({page})=>{
+  await fixture(page);const result=await page.evaluate(async({action,mode})=>{const f=window.crossJobV3Fixture;if(action==='stop')await f.seedLegacy(2);const db=await f.open(),o=action==='stop'?f.values.actionHandoff('stop'):f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const a=f.values.admissionAt(o);if(mode!=='unclean'){a.snapshot.capability={mode:'closing_only',reasonCode:'starts_disabled'};a.snapshot.state!.actions.canSwitch=false;a.snapshot.state!.actions.canFinishSetup=false;}if(mode!=='closing_only')a.snapshot.state!.integrity='review';const ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),a),saved=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context());db.close();return {claimed:ticket?JSON.stringify(ticket.command):null,bytes:o.commandBytes,saved};},{action,mode});expect(result.claimed).toBe(result.bytes);expect(result.saved).toMatchObject({hold:null,everAttempted:true});
+});
+for(const mode of ['closing_only','unclean','disabled'] as const)test(`native finish setup ${mode} is no-write until required capability returns`,async({page})=>{
+  await fixture(page);const result=await page.evaluate(async mode=>{const f=window.crossJobV3Fixture;await f.seedLegacy(2);const db=await f.open(),o=f.values.actionHandoff('finish_setup');await f.storage.appendCrossJobOriginal(db,o,f.context());const before=await f.census(db),a=f.values.admissionAt(o);if(mode==='closing_only'){a.snapshot.capability={mode:'closing_only',reasonCode:'starts_disabled'};a.snapshot.state!.actions.canSwitch=false;a.snapshot.state!.actions.canFinishSetup=false;}if(mode==='unclean')a.snapshot.state!.integrity='review';if(mode==='disabled')a.snapshot.state!.actions.canFinishSetup=false;const refused=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),a),after=await f.census(db),ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.values.admissionAt(o));db.close();return {refused,before,after,bytes:o.commandBytes,claimed:ticket?JSON.stringify(ticket.command):null};},mode);expect(result.refused).toBeNull();expect(result.after).toEqual(result.before);expect(result.claimed).toBe(result.bytes);
+});
+for(const elapsed of [10001,16*3600000,16*3600000+1])test(`native allocation stop original lease and sixteen-hour boundary ${elapsed}`,async({page})=>{
+  await fixture(page);const result=await page.evaluate(async elapsed=>{const f=window.crossJobV3Fixture;await f.seedLegacy(2);const db=await f.open(),o=f.values.actionHandoff('stop');await f.storage.appendCrossJobOriginal(db,o,f.context());const ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.values.admissionAt(o,undefined,elapsed)),saved=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context()),again=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.values.admissionAt(o));db.close();return {claimed:ticket?JSON.stringify(ticket.command):null,bytes:o.commandBytes,saved,again};},elapsed);expect(result.again).toBeNull();if(elapsed<=16*3600000){expect(result.claimed).toBe(result.bytes);expect(result.saved).toMatchObject({hold:null,everAttempted:true});}else{expect(result.claimed).toBeNull();expect(result.saved).toMatchObject({hold:'expired_observation',everAttempted:false});}
+});
+for(const kind of ['missing_check','missing_skew','excessive_skew','old_tap','old_check'] as const)test(`native immutable or coherently aged ${kind} remains held without changing the original`,async({page})=>{
+  await fixture(page);const result=await page.evaluate(async kind=>{const f=window.crossJobV3Fixture,db=await f.open(),{commandBytes:_,...raw}=structuredClone(f.values.genesis()),p=raw.command.payload;if(kind==='missing_check')p.clockCheckedAt=null;if(kind==='missing_skew')p.clockSkewMs=null;if(kind==='excessive_skew')p.clockSkewMs=120001;if(kind==='old_tap')p.tappedAt='2026-10-04T13:59:59.123456Z';if(kind==='old_check')p.clockCheckedAt='2026-10-04T05:59:59.123456Z';const o=f.storage.freezeCrossJobOriginal(raw);await f.storage.appendCrossJobOriginal(db,o,f.context());const claim=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.values.admissionAt(o)),saved=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context()),again=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.values.admissionAt(o,undefined,2));db.close();return {claim,saved,again,bytes:o.commandBytes};},kind);expect(result.claim).toBeNull();expect(result.again).toBeNull();expect(result.saved).toMatchObject({hold:'untrusted_stamp',everAttempted:false});expect(result.saved!.original.commandBytes).toBe(result.bytes);
+});
+
+test('native closing-only unclean establish still requires its actual canEstablishStream capability',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const before=await f.census(db),a=f.values.admissionAt(o);a.snapshot.capability={mode:'closing_only',reasonCode:'starts_disabled'};a.snapshot.state!.integrity='review';a.snapshot.state!.actions={canEstablishStream:false,canSwitch:false,canFinishSetup:false,canStop:false};const refused=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),a),after=await f.census(db);a.snapshot.state!.actions.canEstablishStream=true;const ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),a);db.close();return {refused,before,after,bytes:o.commandBytes,claimed:ticket?JSON.stringify(ticket.command):null};});expect(result.refused).toBeNull();expect(result.after).toEqual(result.before);expect(result.claimed).toBe(result.bytes);
+});
+for(const elapsed of [9999,10000])test(`native non-stop original lease strict boundary ${elapsed} ignores renewed observation`,async({page})=>{
+  await fixture(page);const result=await page.evaluate(async elapsed=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const a=f.values.admissionAt(o,undefined,elapsed),ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),a),saved=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context()),again=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.values.admissionAt(o));db.close();return {claimed:ticket?JSON.stringify(ticket.command):null,bytes:o.commandBytes,saved,again,freshExpiry:a.snapshot.observation!.expiresAt,originalExpiry:o.anchor.observation!.expiresAt};},elapsed);expect(result.freshExpiry>result.originalExpiry).toBe(true);expect(result.again).toBeNull();if(elapsed<10000){expect(result.claimed).toBe(result.bytes);expect(result.saved).toMatchObject({hold:null,everAttempted:true});}else{expect(result.claimed).toBeNull();expect(result.saved).toMatchObject({hold:'expired_observation',everAttempted:false});}
+});
+
+test('native submillisecond snapshot before original tap remains no-write even when serverNow is just after tap',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.timedGenesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const before=await f.census(db),a=f.values.admissionAt(o,undefined,360000);a.elapsedMs=360000.5;a.serverNow='2026-10-05T09:06:00.123956Z';a.snapshot.asOf='2026-10-05T09:06:00.123455Z';a.snapshot.observation!.issuedAt=a.snapshot.asOf;const refused=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),a),after=await f.census(db),ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.values.admissionAt(o,undefined,360050));db.close();return {refused,before,after,bytes:o.commandBytes,claimed:ticket?JSON.stringify(ticket.command):null};});expect(result.refused).toBeNull();expect(result.after).toEqual(result.before);expect(result.claimed).toBe(result.bytes);
+});
+
+for(const action of ['establish_stream','switch','finish_setup','stop'] as const)for(const shape of ['present_stream','absent_stream','changed_state'] as const)test(`native ${action} null observation with ${shape} is no-write then fresh observation claims the same original`,async({page})=>{
+  await fixture(page);const result=await page.evaluate(async({action,shape})=>{const f=window.crossJobV3Fixture;if(action!=='establish_stream')await f.seedLegacy(2);const db=await f.open(),o=action==='establish_stream'?f.values.genesis():action==='switch'?f.values.handoff():f.values.actionHandoff(action);await f.storage.appendCrossJobOriginal(db,o,f.context());const before=await f.census(db),a=f.values.admissionAt(o);a.snapshot=f.values.withoutObservation(a.snapshot);if(shape==='absent_stream')a.snapshot.stream=null;if(shape==='changed_state'){a.snapshot.state!.revision=2;a.snapshot.state!.shift!.allocationId=f.values.id(99);}const refused=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),a),after=await f.census(db),later=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.values.admissionAt(o,undefined,2));db.close();return {refused,before,after,bytes:o.commandBytes,claimed:later?JSON.stringify(later.command):null};},{action,shape});expect(result.refused).toBeNull();expect(result.after).toEqual(result.before);expect(result.claimed).toBe(result.bytes);
+});
+for(const kind of ['changed_generation','changed_head','generation_collision','cleared_stream'] as const)for(const disabled of [false,true])test(`native present observation ${kind} remains sticky with disabled=${disabled}`,async({page})=>{
+  await fixture(page);const result=await page.evaluate(async({kind,disabled})=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const a=f.values.admissionAt(o),s=a.snapshot;if(disabled)s.state!.actions.canEstablishStream=false;if(kind==='changed_generation'||kind==='generation_collision'){s.stream!.clientGeneration=kind==='generation_collision'?o.command.payload.clientGeneration:f.values.id(99);s.observation!.currentGeneration=s.stream!.clientGeneration;}if(kind==='changed_head'){s.stream!.headCommandId=f.values.id(99);s.observation!.currentHeadCommandId=s.stream!.headCommandId;}if(kind==='cleared_stream'){s.stream=null;s.observation!.currentGeneration=null;s.observation!.currentHeadCommandId=null;}const refused=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),a),saved=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context()),again=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.values.admissionAt(o,undefined,2));db.close();return {refused,saved,again,bytes:o.commandBytes};},{kind,disabled});expect(result.refused).toBeNull();expect(result.again).toBeNull();expect(result.saved).toMatchObject({hold:'needs_reaffirmation',everAttempted:false});expect(result.saved!.original.commandBytes).toBe(result.bytes);
+});
+test('native first establishment with present observation and originally null optional stream pointers can claim',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.virginGenesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.values.admissionAt(o));db.close();return {bytes:o.commandBytes,claimed:ticket?JSON.stringify(ticket.command):null};});expect(result.claimed).toBe(result.bytes);
+});
+test('native malformed fractional stored V2 skew aborts without mutation or repairing the original',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const tx=db.transaction(f.storage.CROSS_JOB_COMMANDS,'readwrite'),store=tx.objectStore(f.storage.CROSS_JOB_COMMANDS),saved=await f.get(store.get(o.command.commandId));saved.original.command.payload.clockSkewMs=0.5;saved.original.commandBytes=JSON.stringify(saved.original.command);store.put(saved);await f.complete(tx);const before=await f.census(db);let rejected=false;try{await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.values.admissionAt(o));}catch{rejected=true;}const after=await f.census(db);db.close();return {rejected,before,after};});expect(result.rejected).toBe(true);expect(result.after).toEqual(result.before);
+});
+
+for(const shape of ['incoherent_head','half_null_pointers'] as const)test(`native malformed present observation ${shape} defers without writes then the exact original can claim`,async({page})=>{
+  await fixture(page);const result=await page.evaluate(async shape=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const before=await f.census(db),a=f.values.admissionAt(o);if(shape==='incoherent_head')a.snapshot.observation!.currentHeadCommandId=f.values.id(99);else a.snapshot.observation!.currentGeneration=null;const refused=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),a),after=await f.census(db),ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.values.admissionAt(o,undefined,2));db.close();return {refused,before,after,bytes:o.commandBytes,claimed:ticket?JSON.stringify(ticket.command):null};},shape);expect(result.refused).toBeNull();expect(result.after).toEqual(result.before);expect(result.claimed).toBe(result.bytes);
+});
+test('native missing observation defers expiry classification until a complete later read proves the original lease expired',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const before=await f.census(db),a=f.values.admissionAt(o,undefined,10000);a.snapshot=f.values.withoutObservation(a.snapshot);const first=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),a),after=await f.census(db),later=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),f.context(),f.values.admissionAt(o,undefined,10001)),saved=await f.storage.readCrossJobOriginal(db,o.command.commandId,f.context());db.close();return {first,before,after,later,saved,bytes:o.commandBytes};});expect(result.first).toBeNull();expect(result.after).toEqual(result.before);expect(result.later).toBeNull();expect(result.saved).toMatchObject({hold:'expired_observation',everAttempted:false});expect(result.saved!.original.commandBytes).toBe(result.bytes);
+});
+
+test('native fixture request error retains source and DOMException while preserving transaction rollback',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),before=await f.census(db),tx=db.transaction('heads','readwrite'),done=f.complete(tx,'controlled.duplicate');const store=tx.objectStore('heads');store.add({streamKey:'duplicate'});store.add({streamKey:'duplicate'});let error='';try{await done;}catch(e){error=(e as Error).message;}const after=await f.census(db),events=f.diagnostics();db.close();return {before,after,error,events};});await retain('native-request-error-control.json',result);expect(result.after).toEqual(result.before);expect(result.error).toContain('ConstraintError');expect(result.error).toContain('heads');expect(result.events).toContainEqual(expect.objectContaining({stage:'controlled.duplicate',event:'error',transactionError:null,request:expect.objectContaining({source:'heads',error:expect.objectContaining({name:'ConstraintError'})})}));expect(result.events).toContainEqual(expect.objectContaining({stage:'controlled.duplicate',event:'abort'}));
+});
+test('native fixture census waits for transaction complete before returning for close and upgrade',async({page})=>{
+  await fixture(page);const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),transaction=IDBDatabase.prototype.transaction;let completed=false;IDBDatabase.prototype.transaction=function(...args:Parameters<typeof transaction>){const tx=transaction.apply(this,args);tx.addEventListener('complete',()=>{completed=true;});return tx;};try{await f.census(db);return {completed};}finally{IDBDatabase.prototype.transaction=transaction;db.close();}});expect(result.completed).toBe(true);
+});
+
+
+// Explicitly synthetic transport ports over actual native IndexedDB claims.
+// These exercise local authority and persistence, never provider authentication.
+for(const mode of ['race','copies','auth-failure','storage-conflict','history-job-change','settlement-quota','lease-expired','shift-changed','revision-changed','allocation-changed','source-changed'] as const)test(`native V2 one-send boundary ${mode}`,async({page})=>{
+  await fixture(page);
+  const result=await page.evaluate(async mode=>{
+    const f=window.crossJobV3Fixture;
+    // @ts-expect-error Isolated browser module, no production SDK is loaded.
+    const api=await import('/src/lib/workActivity/apiV2.ts');
+    // @ts-expect-error Real page-local memory module, synthetic fixture login.
+    const auth=await import('/src/lib/signedIn.ts');
+    auth.rememberSignedIn({user:{id:f.values.id(99)}});auth.rememberSignedIn({user:{id:f.values.id(1)}});
+    const db=await f.open(),o=f.values.genesis(),ctx=f.context();await f.storage.appendCrossJobOriginal(db,o,ctx);
+    const claims=await Promise.all([f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),ctx,f.admission(o)),f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(71),ctx,f.admission(o))]);const ticket=claims.find(Boolean);if(!ticket||claims.filter(Boolean).length!==1)throw Error('native_claim_winner_missing');
+    const before=await f.storage.readCrossJobOriginal(db,o.command.commandId,ctx);let authCalls=0,mutationCalls=0,readCalls=0;
+    // @ts-expect-error Pure protected prediction fixture.
+    const {predictAllocation}=await import('/src/lib/workActivity/allocationPredecessor.ts');
+    const predicted=predictAllocation(o.command,o.prediction.status),submission=f.values.submission(predicted),lookup=f.values.lookup(predicted);
+    const admission=mode==='lease-expired'?f.values.admissionAt(o,undefined,10001):{snapshot:structuredClone(o.anchor),elapsedMs:0,serverNow:o.anchor.asOf};
+    if(mode==='shift-changed'){admission.snapshot.state!.shift!.id=f.values.id(99);admission.snapshot.observation!.shiftRef={kind:'shift',id:f.values.id(99)};}
+    if(mode==='revision-changed'){admission.snapshot.state!.revision=2;admission.snapshot.observation!.revision=2;admission.snapshot.stream!.headAfterRevision=2;}
+    if(mode==='allocation-changed')admission.snapshot.state!.shift!.allocationId=f.values.id(99);
+    if(mode==='source-changed'){admission.snapshot.stream!.headCommandId=f.values.id(99);admission.snapshot.observation!.currentHeadCommandId=f.values.id(99);}
+
+    const ports={getSession:async()=>{authCalls++;if(mode==='auth-failure')throw Error('synthetic auth rejection');return {data:{session:{access_token:'fixture-bound-token',user:{id:f.values.id(1)}}},error:null};},clientWithToken:(token:string)=>({rpc:async(name:string,args:Record<string,unknown>)=>{
+      if(token!=='fixture-bound-token')throw Error('wrong_bound_token');
+      if(name==='work_cross_job_snapshot'){readCalls++;if(mode==='storage-conflict')await f.storage.holdCrossJobOriginal(db,o.command.commandId,ctx,'unknown');return {data:admission.snapshot,error:null};}
+      if(name==='work_cross_job_receipt'){readCalls++;return {data:lookup,error:null};}
+      if(name!=='work_activity_command'||JSON.stringify(args)!==JSON.stringify({p_command_id:o.command.commandId,p_protocol_version:2,p_payload:o.command.payload}))throw Error('wrong_full_original_wire');
+      mutationCalls++;if(mode==='history-job-change')f.setContext({selectedJobId:f.values.id(99)});return {data:submission.reply,error:null};
+    }})};
+    const transport=api.createActivityTransportV2(async()=>ports),environment={context:ctx,clock:()=>({elapsedMs:admission.elapsedMs,serverNow:admission.serverNow})};
+    const forged=[];
+    if(mode==='copies'){
+      for(const value of [{...ticket},JSON.parse(JSON.stringify(ticket)),{command:o.command,token:f.values.id(71)}])forged.push(await transport.submitClaim(db,value,environment));
+      const wrongHandle=await f.open();try{forged.push(await transport.submitClaim(wrongHandle,ticket,environment));}finally{wrongHandle.close();}
+      if(authCalls||readCalls||mutationCalls)throw Error('forged_ticket_did_work');
+    }
+    const put=IDBObjectStore.prototype.put;
+    if(mode==='settlement-quota')IDBObjectStore.prototype.put=function(...args:Parameters<typeof put>){if(this.name===f.storage.CROSS_JOB_COMMANDS&&(args[0] as {historical?:unknown}).historical)throw new DOMException('synthetic settlement quota','QuotaExceededError');return put.apply(this,args);};
+    let results;
+    try{results=await Promise.all([transport.submitClaim(db,ticket,environment),transport.submitClaim(db,ticket,environment)]);}finally{IDBObjectStore.prototype.put=put;}
+    f.setContext(o.fences);
+    const after=await f.storage.readCrossJobOriginal(db,o.command.commandId,ctx),again=await transport.submitClaim(db,ticket,environment);db.close();
+    return {mode,authCalls,readCalls,mutationCalls,results:results.map(x=>({kind:x.kind,recordPresent:x.record!==null})),forged:forged.map(x=>x.kind),again:again.kind,attemptedBefore:before?.everAttempted,attemptedAfter:after?.everAttempted,bytesSame:after?.original.commandBytes===o.commandBytes,historical:after?.historical?.submission??null,expectedSubmission:submission};
+  },mode);
+  expect(result.attemptedBefore).toBe(true);expect(result.attemptedAfter).toBe(true);expect(result.bytesSame).toBe(true);expect(result.again).toBe('not_sent');expect(result.authCalls).toBe(1);
+  expect(result.mutationCalls).toBe(['auth-failure','storage-conflict','lease-expired','shift-changed','revision-changed','allocation-changed','source-changed'].includes(mode)?0:1);
+  if(mode==='copies')expect(result.forged).toEqual(['not_sent','not_sent','not_sent','not_sent']);
+  if(['race','copies','history-job-change'].includes(mode))expect(result.historical).toEqual(result.expectedSubmission);else expect(result.historical).toBeNull();
+  if(mode==='settlement-quota')expect(result.results).toContainEqual({kind:'receipt',recordPresent:false});
+});
+
+test('native consumed send and settlement are independent, and a reloaded structural claim has no send authority',async({page})=>{
+  await fixture(page);
+  const saved=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.admission(o));if(!ticket)throw Error();const original=f.storage.consumeCrossJobSend(db,ticket);let second=false;try{f.storage.consumeCrossJobSend(db,ticket);}catch{second=true;}const record=await f.settle(db,ticket);db.close();return {ticket,second,bytes:original.commandBytes,history:record.historical!==null};});
+  expect(saved.second).toBe(true);expect(saved.history).toBe(true);
+  await page.reload();await fixture(page);
+  const result=await page.evaluate(async ticket=>{const f=window.crossJobV3Fixture,db=await f.open();let rejected=false;try{f.storage.consumeCrossJobSend(db,ticket);}catch{rejected=true;}const row=await f.storage.readCrossJobOriginal(db,ticket.command.commandId,f.context());db.close();return {rejected,attempted:row?.everAttempted,bytes:row?.original.commandBytes};},saved.ticket);
+  expect(result).toEqual({rejected:true,attempted:true,bytes:saved.bytes});
+});
+
+
+test('native no-send settlement consumes settlement authority without creating or reopening a send right',async({page})=>{
+  await fixture(page);
+  const result=await page.evaluate(async()=>{const f=window.crossJobV3Fixture,db=await f.open(),o=f.values.genesis();await f.storage.appendCrossJobOriginal(db,o,f.context());const ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),f.context(),f.admission(o));if(!ticket)throw Error();const saved=await f.storage.settleCrossJobClaim(db,ticket,f.context(),null,null);let rejected=false;try{f.storage.consumeCrossJobSend(db,ticket);}catch{rejected=true;}db.close();return {rejected,hold:saved.hold,attempted:saved.everAttempted,history:saved.historical,bytes:saved.original.commandBytes===o.commandBytes};});
+  expect(result).toEqual({rejected:true,hold:'unknown',attempted:true,history:null,bytes:true});
+});
+
+
+test('native settlement during awaited snapshot invalidates the live final send check and prevents command RPC',async({page})=>{
+  await fixture(page);
+  const result=await page.evaluate(async()=>{
+    const f=window.crossJobV3Fixture;
+    // @ts-expect-error Isolated browser module; synthetic ports, no SDK import.
+    const api=await import('/src/lib/workActivity/apiV2.ts');
+    // @ts-expect-error Real page-local memory module, synthetic fixture login.
+    const auth=await import('/src/lib/signedIn.ts');
+    auth.rememberSignedIn({user:{id:f.values.id(99)}});auth.rememberSignedIn({user:{id:f.values.id(1)}});
+    const db=await f.open(),o=f.values.genesis(),ctx=f.context();await f.storage.appendCrossJobOriginal(db,o,ctx);
+    const ticket=await f.storage.claimCrossJobOriginal(db,o.command.commandId,f.values.id(70),ctx,f.admission(o));if(!ticket)throw Error('missing_claim');
+    let authCalls=0,snapshotCalls=0,commandCalls=0,readyBefore=false,readyAfter=true;
+    const admission={snapshot:o.anchor,elapsedMs:0,serverNow:o.anchor.asOf};
+    const transport=api.createActivityTransportV2(async()=>({getSession:async()=>{authCalls++;return {data:{session:{access_token:'fixture-bound-token',user:{id:f.values.id(1)}}},error:null};},clientWithToken:(token:string)=>({rpc:async(name:string)=>{
+      if(token!=='fixture-bound-token')throw Error('wrong_token');
+      if(name==='work_cross_job_snapshot'){
+        snapshotCalls++;
+        // The API is awaiting this callback with its send already consumed.
+        // Capture the real predicate, then settle using the same live ticket.
+        const ready=await f.storage.prepareCrossJobSendCheck(db,ticket,ctx);readyBefore=ready(admission);
+        await f.storage.settleCrossJobClaim(db,ticket,ctx,null,null);readyAfter=ready(admission);
+        return {data:o.anchor,error:null};
+      }
+      commandCalls++;throw Error('unexpected_rpc_after_settlement');
+    }})}));
+    const environment={context:ctx,clock:()=>({elapsedMs:0,serverNow:o.anchor.asOf})};
+    const first=await transport.submitClaim(db,ticket,environment),again=await transport.submitClaim(db,ticket,environment);
+    const saved=await f.storage.readCrossJobOriginal(db,o.command.commandId,ctx);db.close();
+    return {authCalls,snapshotCalls,commandCalls,readyBefore,readyAfter,first,again,hold:saved?.hold,attempted:saved?.everAttempted,history:saved?.historical,bytes:saved?.original.commandBytes===o.commandBytes};
+  });
+  expect(result).toEqual({authCalls:1,snapshotCalls:1,commandCalls:0,readyBefore:true,readyAfter:false,first:{kind:'not_sent',reason:'admission_or_auth_unavailable',record:null},again:{kind:'not_sent',reason:'send_capability_missing',record:null},hold:'unknown',attempted:true,history:null,bytes:true});
+});

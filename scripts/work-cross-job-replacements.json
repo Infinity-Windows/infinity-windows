@@ -1,0 +1,52 @@
+[
+  {
+    "name": "_work_activity_row_before",
+    "oldCreateSha256": "71569e6cd73b0a9378be900fc8fd65293d1d507111dbc1ca663acf7885ea15ab",
+    "newCreateSha256": "8a7c090346e3f4b3df6195e27922d46807ffe62562d8519d8de3e0d4815cd8fd"
+  },
+  {
+    "name": "_work_activity_operation_exit",
+    "oldCreateSha256": "5733941eac810dbf18d5129b8e154d486204c40977210e322c3dcafdcd7c4213",
+    "newCreateSha256": "df9c5dee5641495a41abb33ee8dada9ed99804599680404ff3ab5a2e32d27080"
+  },
+  {
+    "name": "_work_activity_start_setup",
+    "oldCreateSha256": "2d591596fff5728a91fef4dab8a1068e6cc728a8bb3f369e5553b5aefb295f22",
+    "newCreateSha256": "8ab863e312012acc2ee9d29bb42a5a7fd1f7222652a0747d2c021456f822cc5e"
+  },
+  {
+    "name": "_work_activity_shift_lifecycle",
+    "oldCreateSha256": "cd51e855be3040cd560e47bb172d6c256d845851392f9ea378e0dc36ff8645aa",
+    "newCreateSha256": "53e933a70ad2aea5f8f4b618afb0a57ef80b462a1b6d7e05b5ac8c2f567fc59e"
+  },
+  {
+    "name": "_work_activity_resume",
+    "oldCreateSha256": "161e8d42e5e81cf051fff3cc33d85773306fe56b9b0af23b84a31ae17408c3dc",
+    "newCreateSha256": "d4f5122b203b4952a1a88f65950cb1214779a4acbd78f94095bb8ea037eaeda9"
+  },
+  {
+    "name": "_work_activity_claim_clock_setup",
+    "oldCreateSha256": "ef2b22b289698ef744ebf7f9756b0e91516c15b3e5a08ecf05adadc20e9aa69e",
+    "newCreateSha256": "cd86d07aed3ed4ac0bf61eca8fc1ace040d1a4efe71d75e4f7e45853b954c8ff"
+  },
+  {
+    "name": "work_activity_command",
+    "oldCreateSha256": "f29564639c6be17779c3b6ca135b4b6cd3c90afea8cca1b6caa69956e75c32d1",
+    "newCreateSha256": "fa93800f4bb2772d13efe7c1e73d82a6203dfcdc3115d8931fb23b1bc77caa57"
+  },
+  {
+    "name": "work_activity_snapshot",
+    "oldCreateSha256": "3505cf379d94c6d6013f8fca9d2ab2c550c785a8544cb52d36cd07ee7555ffee",
+    "newCreateSha256": "8357a77dd7dff6f093b246b1670729a9cf47e694885d1bc33008716bfad6f738"
+  },
+  {
+    "name": "_work_activity_clock_replay_guard",
+    "oldCreateSha256": "7c14eaf6d1954dbc3d33d5617434a4413777a07610f5f34d14f95c74c0223b19",
+    "newCreateSha256": "083bf37c17ac1170036fbaa367cefda8ea854e9dd4b1cad6c634f9cd24ec461b"
+  },
+  {
+    "name": "work_activity_clock_receipt",
+    "oldCreateSha256": "75abebc05e94e15d5feb430604087764058f5cdcc4a333c645ad47afba490c77",
+    "newCreateSha256": "64b0d81f0e8b5bc7d070efe584abed0d6e2fa3cb07e5f4fcb199187955be03cb"
+  }
+]

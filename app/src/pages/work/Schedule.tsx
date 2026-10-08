@@ -17,7 +17,7 @@
 // The classic My Schedule page is untouched apart from F2 (K-X2: old screens
 // frozen, fixes only); this is the new design's own tab.
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { CalendarClock, Clock, MapPin, Truck, Users } from "lucide-react";
@@ -32,6 +32,8 @@ import { addDaysISO, agendaDayLabel, formatScheduleTime } from "../../lib/schedu
 import { buildAgenda } from "../../lib/schedule/grouping";
 import type { ScheduleAssignment } from "../../lib/schedule/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
+import { signInGeneration, signedInUserId, subscribeSignedIn } from "../../lib/signedIn";
+import { makeScheduleStartWorkState } from "../../lib/work/scheduleStartWorkIntent";
 import { listVehicleLinksForAssignments } from "../../lib/vehicles/api";
 import { vehicleTitle } from "../../lib/vehicles/display";
 import { assignmentChanged, crewmateNamesOn, formatUpdatedAt } from "../../lib/work/today";
@@ -60,6 +62,10 @@ export function Schedule() {
   const [view, setView] = useState<"mine" | "crew">("mine");
   const { online, weak } = useConnection();
   const now = Date.now();
+  // Start work carries WHICH of today's jobs was tapped, and who tapped it
+  // (the real login, never a preview) — lib/work/scheduleStartWorkIntent.ts.
+  const signedInId = useSyncExternalStore(subscribeSignedIn, signedInUserId, signedInUserId);
+  const generation = useSyncExternalStore(subscribeSignedIn, signInGeneration, signInGeneration);
 
   // The first window is the very key the Work screen's Today card holds, so
   // opening this tab off the Work screen costs no request and works offline.
@@ -209,7 +215,12 @@ export function Schedule() {
                     <span className="ws-meta ws-updated">{t("work.today.updated", { time: formatUpdatedAt(a.updated_at, now) })}</span>
                   </div>
                   {view === "mine" && day.day === today && entry.isFirstDay && (
-                    <Link to="/" className="ws-btn ws-btn--primary" data-testid="schedule-start-work">
+                    <Link
+                      to="/"
+                      state={makeScheduleStartWorkState(a.id, today, { userId: signedInId, generation })}
+                      className="ws-btn ws-btn--primary"
+                      data-testid="schedule-start-work"
+                    >
                       {t("mySchedule.startWork")}
                     </Link>
                   )}

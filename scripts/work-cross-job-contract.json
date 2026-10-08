@@ -1,0 +1,6 @@
+{
+  "status": "FROZEN_REVIEWED_REVISION_6_ASSEMBLY",
+  "key": "cross_job_kernel_2",
+  "expectedCatalogSha256": "00db48aa715a066d2c3cd0ec73423a8af14e7338fa2c13e36ab2ff68b49f307e",
+  "reason": "K5 actual peer timestamp serialization blocker: source-declared canonical receipt fingerprint; root-authorized checkpoint6 construction."
+}

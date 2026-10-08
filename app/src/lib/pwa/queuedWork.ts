@@ -22,11 +22,13 @@
 //     a transcription waiting for an explicit Retry: each has stopped trying,
 //     a reload cannot resend it, and a stuck row must not keep a phone from
 //     ever updating again.
-//   - A queue that cannot be READ counts as empty. That is the opposite of the
+//   - A legacy queue that cannot be READ counts as empty. That is the opposite of the
 //     AI timing guard's reading (pendingClockWrites: cannot read → pending),
 //     and it is right for this question: a store this session cannot open is
 //     one it cannot be draining from either, and the "is a drain running"
 //     flags are synchronous module state that never touch the store.
+//     Isolated paid-clock storage has a separate rule: an unread authorized
+//     queue holds automatic reload until a fresh read succeeds.
 
 import { isDraining, pendingWriteCount, subscribe as subscribeOutbox } from "../offline/outbox";
 import {
@@ -36,6 +38,8 @@ import {
 } from "../install/installOutbox";
 import { pendingLegacyUploadCount } from "../install/legacyUploadQueue";
 import { readWorkQueue, WORK_QUEUE_EVENT } from "../customWork/queue";
+import { PAID_CLOCK_BUSY_EVENT, paidClockOperationInFlight, readPaidClockReloadHold } from "../paidClock/reloadGuard";
+import { subscribePaidClockChanges } from "../paidClock/notifications";
 
 export interface QueuedWork {
   /** Items still waiting to go out, across every queue. */
@@ -59,7 +63,7 @@ export function blocksReload(q: QueuedWork): boolean {
  * own startup, which the outbox flag covers.
  */
 export function isSendingNow(): boolean {
-  return isDraining() || isFlushingInstalls();
+  return isDraining() || isFlushingInstalls() || paidClockOperationInFlight();
 }
 
 async function count(read: () => Promise<number> | number): Promise<number> {
@@ -78,6 +82,7 @@ async function count(read: () => Promise<number> | number): Promise<number> {
 export async function readQueuedWork(userId: string | null): Promise<QueuedWork> {
   const sending = isSendingNow();
   const reads: Array<Promise<number>> = [
+    readPaidClockReloadHold(userId),
     count(pendingWriteCount),
     count(pendingInstallCount),
     // Non-zero only until the first start after the update has moved them.
@@ -99,7 +104,8 @@ export async function readQueuedWork(userId: string | null): Promise<QueuedWork>
     );
   }
   const counts = await Promise.all(reads);
-  return { waiting: counts.reduce((a, b) => a + b, 0), sending };
+  // A sender can start while the asynchronous native/legacy counts run.
+  return { waiting: counts.reduce((a, b) => a + b, 0), sending: sending || isSendingNow() };
 }
 
 /**
@@ -109,10 +115,12 @@ export async function readQueuedWork(userId: string | null): Promise<QueuedWork>
  * unsubscribe function.
  */
 export function subscribeQueuedWork(listener: () => void): () => void {
-  const undo: Array<() => void> = [subscribeOutbox(listener), subscribeSyncListeners(listener)];
+  const undo: Array<() => void> = [subscribeOutbox(listener), subscribeSyncListeners(listener), subscribePaidClockChanges(listener)];
   if (typeof window !== "undefined") {
     window.addEventListener(WORK_QUEUE_EVENT, listener);
+    window.addEventListener(PAID_CLOCK_BUSY_EVENT, listener);
     undo.push(() => window.removeEventListener(WORK_QUEUE_EVENT, listener));
+    undo.push(() => window.removeEventListener(PAID_CLOCK_BUSY_EVENT, listener));
   }
   let disposed = false;
   if (typeof window !== "undefined") {

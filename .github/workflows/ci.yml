@@ -206,6 +206,226 @@ jobs:
           WORK_UNIT_OBSERVATION_TEST_DB_URL: postgresql://postgres:fixture-only@localhost:5432/forge_work_unit_observations_test
         run: PGLITE_MODULE="$RUNNER_TEMP/work-unit-db/node_modules/@electric-sql/pglite/dist/index.js" python3 scripts/verify-work-unit-observations-concurrency.py
 
+  work-activity-engine-sql:
+    name: Activity engine substrate and concurrent acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: forge_work_activity_engine_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm install --prefix "$RUNNER_TEMP/work-activity-db" --no-save @electric-sql/pglite@0.5.8
+      - name: Verify private streams, receipts and paid setup transaction guards
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-activity-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-engine-substrate-reveal.mjs
+      - name: Verify real independent stream, expiry and transaction races
+        env:
+          WORK_ACTIVITY_ENGINE_TEST_DB_URL: postgresql://postgres:fixture-only@localhost:5432/forge_work_activity_engine_test
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-activity-db/node_modules/@electric-sql/pglite/dist/index.js" python3 scripts/verify-work-activity-engine-concurrency-reveal.py
+
+  work-activity-cutover-development:
+    name: Activity cutover development fixture (release held)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: forge_work_activity_cutover_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm install --prefix "$RUNNER_TEMP/work-cutover-db" --no-save @electric-sql/pglite@0.5.8
+      # Explicit prefix mode exercises the actual source seam in a reduced
+      # historical fixture. The full installed-schema guard stays in the
+      # migration and refuses installation; these checks do not clear release.
+      - name: Verify guarded cutover source in its development fixture
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-engine-cutover-reveal.mjs --development-prefix
+      - name: Verify actual independent backends and post-wait permissions
+        env:
+          WORK_ACTIVITY_CUTOVER_TEST_DB_URL: postgresql://postgres:fixture-only@localhost:5432/forge_work_activity_cutover_test
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-db/node_modules/@electric-sql/pglite/dist/index.js" python3 scripts/verify-work-activity-engine-cutover-concurrency-reveal.py
+
+  work-activity-cutover-source-matched:
+    name: Activity source-matched application fixture (release held)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        # Installed relation ACLs include PG17 MAINTAIN; PG16 cannot reproduce them.
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: forge_work_activity_cutover_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm install --prefix "$RUNNER_TEMP/work-cutover-matched-db" --no-save @electric-sql/pglite@0.5.8
+      # Exact application constraints, grants, policies and callbacks; vector
+      # search and provider internals remain documented exclusions. No release
+      # or production migration guard is bypassed by this disposable fixture.
+      - name: Verify whole authored cutover and cancelled-helper regression
+        env:
+          WORK_ACTIVITY_MATCHED_SCHEMA: scripts/fixtures/work-activity-engine-online-schema.sql
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-engine-schema-runtime.mjs
+      - name: Verify captured role-setting replay
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-engine-role-settings.mjs
+      - name: Verify read-only paid-clock capability and full cutover admission
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-clock-capability.mjs
+      - name: Verify selected-job catalog against the full authored cutover
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-catalog-full-acceptance.mjs
+      - name: Verify independent dimensions and exact-source unit QC
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-review.mjs
+      - name: Preserve complete payroll behavior with review installed
+        env:
+          WORK_ACTIVITY_MATCHED_SCHEMA: scripts/fixtures/work-activity-engine-online-schema.sql
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-review-payroll.mjs
+      - name: Verify exact activity totals and permission-safe reconciliation
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-totals.mjs
+      - name: Preserve complete payroll behavior with totals installed
+        env:
+          WORK_ACTIVITY_MATCHED_SCHEMA: scripts/fixtures/work-activity-engine-online-schema.sql
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-activity-totals-payroll.mjs
+      - name: Verify exact contributor labor and private participant attribution
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-contributors.mjs
+      - name: Preserve complete payroll behavior with contributors installed
+        env:
+          WORK_ACTIVITY_MATCHED_SCHEMA: scripts/fixtures/work-activity-engine-online-schema.sql
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-contributors-payroll.mjs
+      - name: Verify held unit metadata source and retention contracts
+        env:
+          WORK_UNIT_METADATA_CATALOG_OUT: ${{ runner.temp }}/membership-implementation-ci/catalog.json
+          WORK_UNIT_METADATA_WIRE_OUT: ${{ runner.temp }}/membership-implementation-ci/wire.json
+          WORK_UNIT_METADATA_MEMBERSHIP_WIRE_OUT: ${{ runner.temp }}/membership-implementation-ci/membership-wire.json
+        run: |
+          mkdir -p "$RUNNER_TEMP/membership-implementation-ci"
+          PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-metadata-cohorts.mjs
+      - name: Preserve complete ordered review scope with metadata installed
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-metadata-cohorts-review-parity.mjs
+      - name: Verify complete historical and live membership parity
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-metadata-membership-parity.mjs
+      - name: Preserve complete payroll with metadata installed
+        env:
+          WORK_ACTIVITY_MATCHED_SCHEMA: scripts/fixtures/work-activity-engine-online-schema.sql
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" node scripts/verify-work-unit-metadata-cohorts-payroll.mjs
+      - name: Verify independent backends on the source-matched application schema
+        env:
+          WORK_ACTIVITY_CUTOVER_TEST_DB_URL: postgresql://postgres:fixture-only@localhost:5432/forge_work_activity_cutover_test
+        run: PGLITE_MODULE="$RUNNER_TEMP/work-cutover-matched-db/node_modules/@electric-sql/pglite/dist/index.js" python3 scripts/verify-work-activity-engine-cutover-concurrency.py --source-matched
+      - name: Preserve complete or partial membership fixture evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: held-metadata-membership-ci
+          path: ${{ runner.temp }}/membership-implementation-ci
+          if-no-files-found: ignore
+
+  work-activity-cutover-role-parity:
+    name: Activity actual source-role fixture (release held)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: supabase_admin
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: forge_work_activity_role_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U supabase_admin -d forge_work_activity_role_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify source-owner and authenticator login authority
+        env:
+          WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
+        run: python3 scripts/verify-work-activity-engine-role-parity.py
+      - name: Verify genuine-role read-only catalog and observed revocation wait
+        env:
+          WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
+        run: python3 scripts/verify-work-activity-catalog-concurrency.py
+      - name: Verify genuine review callers and eleven observed concurrent waits
+        env:
+          WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
+        run: python3 scripts/verify-work-unit-review-concurrency.py
+      - name: Measure review volume and actual payroll waits in the disposable fixture
+        env:
+          WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
+          WORK_UNIT_REVIEW_VOLUME_OUT: ${{ runner.temp }}/work-unit-review-volume.json
+        run: python3 scripts/verify-work-unit-review-volume.py
+      - name: Preserve review volume evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-unit-review-volume
+          path: ${{ runner.temp }}/work-unit-review-volume.json
+          if-no-files-found: ignore
+
+      - name: Verify genuine totals permissions, unit and job volume, and active-read payroll waits
+        env:
+          WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
+          WORK_ACTIVITY_TOTALS_VOLUME_OUT: ${{ runner.temp }}/work-activity-totals-volume.json
+        run: python3 scripts/verify-work-activity-totals-postgres.py
+      - name: Preserve activity totals performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-activity-totals-volume
+          path: ${{ runner.temp }}/work-activity-totals-volume.json
+          if-no-files-found: ignore
+
+      - name: Verify genuine contributor permissions, source races and active-read payroll waits
+        env:
+          WORK_ACTIVITY_ROLE_TEST_DB_URL: postgresql://supabase_admin:fixture-only@localhost:5432/forge_work_activity_role_test
+          WORK_UNIT_CONTRIBUTORS_VOLUME_OUT: ${{ runner.temp }}/work-unit-contributors-volume.json
+        run: python3 scripts/verify-work-unit-contributors-postgres.py
+      - name: Preserve contributor performance and partial failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-unit-contributors-volume
+          path: ${{ runner.temp }}/work-unit-contributors-volume.json
+          if-no-files-found: ignore
+
   values-sql-concurrency:
     name: Monthly reviews database and concurrent acceptance
     runs-on: ubuntu-latest
@@ -298,16 +518,59 @@ jobs:
           node scripts/verify-values-idb.mjs --webkit
       - name: Dormant activity journal preserves native storage on phone browsers
         run: |
-          npm run e2e -- work-capture-journal.spec.ts
-          npm run e2e -- work-capture-journal.spec.ts --browser=webkit
+          npm run e2e -- work-capture-journal.spec.ts activity-protocol-journal.spec.ts
+          npm run e2e -- work-capture-journal.spec.ts activity-protocol-journal.spec.ts --browser=webkit
+      - name: Dormant cross-job originals survive native storage and permanent claims
+        run: |
+          npm run e2e -- cross-job-storage-v3-native.spec.ts
+          npm run e2e -- cross-job-storage-v3-native.spec.ts --browser=webkit
+      - name: Dormant attempt evidence preserves one-use sends and atomic storage
+        run: |
+          npm run e2e -- cross-job-attempt-evidence-native.spec.ts
+          npm run e2e -- cross-job-attempt-evidence-native.spec.ts --browser=webkit
+      - name: Original unit decisions survive native storage and explicit recovery
+        run: |
+          npm run e2e -- unit-review-native.spec.ts
+          npm run e2e -- unit-review-native.spec.ts --browser=webkit
       - name: Private work evidence and preserved Summary on phone browsers
         run: |
           npm run e2e -- work-data.spec.ts
           npm run e2e -- work-data.spec.ts --browser=webkit
+      - name: Independent dimension and final QC forms on phone browsers
+        run: |
+          npm run e2e -- unit-review-forms.spec.ts
+          npm run e2e -- unit-review-forms.spec.ts --browser=webkit
       - name: Company configuration and exact-job management on phone browsers
         run: |
           npm run e2e -- work-configuration.spec.ts
           npm run e2e -- work-configuration.spec.ts --browser=webkit
+      - name: Isolated paid clock chain preserves native storage and truthful recovery
+        run: |
+          npm run e2e -- paid-clock-chain.spec.ts
+          npm run e2e -- paid-clock-chain.spec.ts --browser=webkit
+      - name: Original clock screen and current-login offline authority on phone browsers
+        run: |
+          npm run e2e -- paid-clock-offline-authority.spec.ts paid-clock-screen.spec.ts
+          npm run e2e -- paid-clock-offline-authority.spec.ts paid-clock-screen.spec.ts --browser=webkit
+      - name: Mounted review and exact Work/Data activity totals on phone browsers
+        working-directory: app
+        run: |
+          npm run e2e -- unit-review-panel.spec.ts mounted-unit-review.spec.ts activity-totals.spec.ts mounted-activity-totals.spec.ts data-totals.spec.ts
+          npm run e2e -- unit-review-panel.spec.ts mounted-unit-review.spec.ts activity-totals.spec.ts mounted-activity-totals.spec.ts data-totals.spec.ts --browser=webkit
+      - name: Manual selected-unit contributors on phone browsers
+        run: |
+          chromium_status=0
+          npm run e2e -- mounted-unit-contributors.spec.ts || chromium_status=$?
+          webkit_status=0
+          npm run e2e -- mounted-unit-contributors.spec.ts --browser=webkit || webkit_status=$?
+          test "$chromium_status" -eq 0 && test "$webkit_status" -eq 0
+      - name: Controlled Work tiles and dimensions on phone browsers
+        run: |
+          chromium_status=0
+          npm run e2e -- project-activity-view.spec.ts selected-job-work.spec.ts selected-job-route.spec.ts selected-job-shell.spec.ts selected-job-unit-entry.spec.ts || chromium_status=$?
+          webkit_status=0
+          npm run e2e -- project-activity-view.spec.ts selected-job-work.spec.ts selected-job-route.spec.ts selected-job-shell.spec.ts selected-job-unit-entry.spec.ts --browser=webkit || webkit_status=$?
+          test "$chromium_status" -eq 0 && test "$webkit_status" -eq 0
       - run: npm run e2e -- qc-history.spec.ts monday-files.spec.ts schedule-time-conflicts.spec.ts usability-foundations.spec.ts display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts schedule-ai-review.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts crew-unit-records.spec.ts unit-contributors.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts honest-sync.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts hex-portal.spec.ts ask-reporting.spec.ts app-updates.spec.ts using-forge.spec.ts training-importer.spec.ts
       - name: Daily-log progress reports and pre-save photo capture
         run: npm run e2e -- daily-logs-progress.spec.ts
@@ -323,12 +586,31 @@ jobs:
           npm run e2e -- receipt-viewer.spec.ts --browser=webkit
       - name: Job overview stays inside phone screens in Chromium and Safari
         run: |
-          npm run e2e -- job-phone-layout.spec.ts
-          npm run e2e -- job-phone-layout.spec.ts --browser=webkit
+          npm run e2e -- job-phone-layout.spec.ts job-phone-loading-interaction.spec.ts
+          npm run e2e -- job-phone-layout.spec.ts job-phone-loading-interaction.spec.ts --browser=webkit
       # Home unit creation, job handoff, and the phone keyboard viewport are
       # release paths for the crew; keep them in the PR browser gate.
+      - name: Schedule job handoff and ordinary Start day on phone browsers
+        run: |
+          npm run e2e -- schedule-start-work.spec.ts start-day.spec.ts schedule-offline.spec.ts --grep-invert 'Start day with no signal stays on the phone; a reload with no signal shows you clocked in and never offers a second Start day$'
+          npm run e2e -- schedule-start-work.spec.ts start-day.spec.ts schedule-offline.spec.ts --browser=webkit --grep-invert 'Start day with no signal stays on the phone; a reload with no signal shows you clocked in and never offers a second Start day$'
       - run: npm run e2e -- new-design-work.spec.ts
       - run: npx playwright test --browser webkit new-design-work.spec.ts -g "New unit stays within the phone"
+      - name: Saved work survives design switches and owner rollback on phone browsers
+        run: |
+          chromium_status=0
+          npm run e2e -- new-design-continuity.spec.ts new-design-record-continuity.spec.ts new-design-daily-log-continuity.spec.ts new-design-qc-continuity.spec.ts new-design-supplies-continuity.spec.ts || chromium_status=$?
+          webkit_status=0
+          npm run e2e -- new-design-continuity.spec.ts new-design-record-continuity.spec.ts new-design-daily-log-continuity.spec.ts new-design-qc-continuity.spec.ts new-design-supplies-continuity.spec.ts --browser=webkit || webkit_status=$?
+          test "$chromium_status" -eq 0 && test "$webkit_status" -eq 0
+      # Chromium keeps the native offline browser setting. Playwright WebKit
+      # rejects reload itself under setOffline(true), even for plain HTML and
+      # an installed worker, so its request-outage check keeps the exact punch
+      # and once-only delivery assertions without that inspector failure.
+      - name: Start day survives a reload and sends one original punch on phone browsers
+        run: |
+          npm run e2e -- start-day.spec.ts --grep 'Start day with no signal stays on the phone; a reload with no signal shows you clocked in and never offers a second Start day$'
+          npm run e2e -- start-day-request-outage.spec.ts --browser=webkit
       # Expired sign-ins and shared-phone queues need their own browser gate:
       # they can lose a saved punch or send it as the next person even while
       # the ordinary clock screen tests remain green.
@@ -371,9 +653,9 @@ jobs:
             ${{ runner.temp }}/pwa-current/new-dist/
             ${{ runner.temp }}/production-version-before-upgrade.json
           retention-days: 7
-      # The field app is iPhone-first. Keep the empty-boot recovery check on
-      # WebKit too; module-script/load ordering matters to this watchdog.
-      - run: npx playwright test --config playwright.pwa.config.ts --browser webkit empty-boot.pwa.ts
+      # The field app is iPhone-first. Keep the empty-boot recovery and saved
+      # Start day server-outage reload checks on the installed WebKit app too.
+      - run: npx playwright test --config playwright.pwa.config.ts --browser webkit empty-boot.pwa.ts start-day-offline.pwa.ts
       # Signing today's toolbox talk with no signal, and the clock-in behind
       # it (2026-09-25). Its own step for the same reason as the one above.
       - run: npm run e2e -- offline-toolbox-signing.spec.ts
@@ -540,6 +822,21 @@ jobs:
 
       # And the check that keeps this list honest: a test in scripts/ that no
       # step above names is a test nobody runs.
+      - name: Test held cross-job fresh-session no-contact fixture controls
+        run: python3 scripts/test_work_cross_job_fresh_sessions.py
+
+      - name: Test held cross-job protocol 2 no-contact fixture controls
+        run: python3 scripts/test_work_cross_job_v2_postgres.py
+
+      - name: Finite metadata transition trial rejects unsafe execution before contact
+        run: python3 scripts/test_work_unit_metadata_transition_trial.py
+      - name: Test held metadata retention no-contact fixture controls
+        run: python3 scripts/test_work_unit_metadata_retention_postgres.py
+
+      - name: Verify the exact reveal inventory without changing frozen validators
+        run: node --test scripts/work-activity-reveal-inventory.test.mjs
+      - name: Verify synthetic staging evidence preserves original labor
+        run: node --test scripts/design-prototypes/staging-evidence/model.test.mjs
       - name: Test that CI runs every script test
         run: node scripts/ci-runs-script-tests.test.mjs
 

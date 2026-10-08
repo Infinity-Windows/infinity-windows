@@ -81,7 +81,11 @@ vi.mock("../../lib/useToolboxGate", () => ({
   useTodayTalk: () => ({ data: talk, isSuccess: true }),
   useToolboxToday: () => ({ data: signed, isSuccess: true, pending: pendingSign, refused: refusedSign }),
 }));
-vi.mock("../../lib/signedIn", () => ({ signedInUserId: () => signedInId }));
+vi.mock("../../lib/signedIn", () => ({
+  signedInUserId: () => signedInId,
+  signInGeneration: () => 1,
+  subscribeSignedIn: () => () => {},
+}));
 vi.mock("../../lib/supabase", () => ({
   supabase: {
     auth: {

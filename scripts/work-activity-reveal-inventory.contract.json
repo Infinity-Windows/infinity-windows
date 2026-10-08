@@ -1,0 +1,58 @@
+{
+  "formatVersion": 1,
+  "purpose": "Exact successor inventory for the combined reveal development fixtures; no installed closure or release approval",
+  "frozenManifest": {
+    "path": "scripts/work-activity-engine-manifest.json",
+    "sha256": "9a55a2c8f08d03db3fe36e1ef17dc0c80e21ba93f42d611860a31a087d66724b",
+    "sourceCount": 322
+  },
+  "successorManifest": "scripts/work-activity-engine-manifest-reveal.json",
+  "addedSource": {
+    "file": "20261108320000_work_data_exploration_note.sql",
+    "sha256": "6b2bb88a74abdcfbb5ba07abdb0d81c992f6f56e0872adfd815dedfa513600f2"
+  },
+  "validatorCopies": [
+    {
+      "original": "scripts/verify-work-activity-engine-substrate.mjs",
+      "successor": "scripts/verify-work-activity-engine-substrate-reveal.mjs",
+      "originalSha256": "c5c8a1503aa5bbfa58b347f0f505680525395b6b3a58da84268df065cd083617",
+      "replacements": {
+        "scripts/work-activity-engine-manifest.json": "scripts/work-activity-engine-manifest-reveal.json"
+      }
+    },
+    {
+      "original": "scripts/verify-work-activity-engine-cutover.mjs",
+      "successor": "scripts/verify-work-activity-engine-cutover-reveal.mjs",
+      "originalSha256": "4cd8f90ab664bb9d2805d99cd8c3b6c8ba7f7758c93c25adf9ee81feb9d84848",
+      "replacements": {
+        "./verify-work-activity-engine-substrate.mjs": "./verify-work-activity-engine-substrate-reveal.mjs"
+      }
+    },
+    {
+      "original": "scripts/verify-work-activity-engine-concurrency.py",
+      "successor": "scripts/verify-work-activity-engine-concurrency-reveal.py",
+      "originalSha256": "8c933e7c939294c25e7d7d78e22af0fe82ac57143958c6de26b4318e742d4e60",
+      "replacements": {
+        "scripts/verify-work-activity-engine-substrate.mjs": "scripts/verify-work-activity-engine-substrate-reveal.mjs"
+      }
+    },
+    {
+      "original": "scripts/verify-work-activity-catalog.mjs",
+      "successor": "scripts/verify-work-activity-catalog-reveal.mjs",
+      "originalSha256": "01bc19f3db209934c9a396ed5c7c959a9d61bd2ea09030ce6e98fc933ba8f239",
+      "replacements": {
+        "./verify-work-activity-engine-substrate.mjs": "./verify-work-activity-engine-substrate-reveal.mjs"
+      }
+    },
+    {
+      "original": "scripts/verify-work-activity-engine-cutover-concurrency.py",
+      "successor": "scripts/verify-work-activity-engine-cutover-concurrency-reveal.py",
+      "originalSha256": "72325937f2ee2656a61a3c617d9295e8289161752ff1ac04d7056df5a9895521",
+      "replacements": {
+        "scripts/verify-work-activity-engine-cutover.mjs": "scripts/verify-work-activity-engine-cutover-reveal.mjs"
+      }
+    }
+  ],
+  "sourceMatchedBranchUnchanged": true,
+  "releaseHeld": true
+}

@@ -1,10 +1,12 @@
+import { openWorkJournal } from "./storage";
+export { JOURNAL_DB_NAME, JOURNAL_DB_VERSION } from "./storage";
 // Bounded browser command journal foundation (dormant — no UI wiring, no
 // network calls, no dispatcher). This is the one place a "switch personal
 // activity" intent is durably recorded as an immutable, causally-ordered
 // command before anything attempts to send it anywhere.
 //
 // GUARANTEES
-// - A dedicated IndexedDB database (`iw-work-capture-journal-v1`, version 1)
+// - A dedicated IndexedDB database (`iw-work-capture-journal-v1`, version 2; version-one records preserved)
 //   separate from the production v2 outbox/photo database. Nothing here ever
 //   opens, migrates, or touches that database.
 // - Every append is one native `readwrite` transaction that rereads the
@@ -52,11 +54,8 @@
 /** The database name/version this module owns. Exported only as inert
  * metadata (e.g. for a test fixture that needs to open the same database
  * directly) — never mutated, and not a handle to live state. */
-export const JOURNAL_DB_NAME = "iw-work-capture-journal-v1";
-export const JOURNAL_DB_VERSION = 1;
 
-const DB_NAME = JOURNAL_DB_NAME;
-const DB_VERSION = JOURNAL_DB_VERSION;
+
 const COMMANDS_STORE = "commands";
 const HEADS_STORE = "heads";
 const STREAM_INDEX = "by_stream";
@@ -335,44 +334,8 @@ function streamKey(ownerId: string, deviceId: string): string {
 }
 
 function openDb(factory: IDBFactory): Promise<IDBDatabase> {
-  if (!factory) {
-    return Promise.reject(new JournalUnavailableError("IndexedDB is not available in this environment."));
-  }
-  return new Promise((resolve, reject) => {
-    let req: IDBOpenDBRequest;
-    try {
-      req = factory.open(DB_NAME, DB_VERSION);
-    } catch (error) {
-      reject(new JournalUnavailableError("Could not open the work-capture journal database.", { cause: error }));
-      return;
-    }
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(COMMANDS_STORE)) {
-        const commands = db.createObjectStore(COMMANDS_STORE, { keyPath: "command.requestId" });
-        commands.createIndex(STREAM_INDEX, ["command.ownerId", "command.deviceId", "command.sequence"], { unique: true });
-      }
-      if (!db.objectStoreNames.contains(HEADS_STORE)) {
-        db.createObjectStore(HEADS_STORE, { keyPath: "streamKey" });
-      }
-    };
-    let blocked = false;
-    req.onsuccess = () => {
-      const db = req.result;
-      db.onversionchange = () => db.close();
-      if (blocked) {
-        db.close();
-        return;
-      }
-      resolve(db);
-    };
-    req.onerror = () => {
-      reject(new JournalUnavailableError("Opening the work-capture journal database failed.", { cause: req.error }));
-    };
-    req.onblocked = () => {
-      blocked = true;
-      reject(new JournalUnavailableError("The work-capture journal database upgrade is blocked by another open tab."));
-    };
+  return openWorkJournal(factory).catch(error => {
+    throw new JournalUnavailableError("Could not open the work-capture journal database.", { cause: error });
   });
 }
 

@@ -587,6 +587,20 @@ describe("clockOut, startBreak and endBreak are keyed the same way", () => {
     const row = shift({});
     expect(readEndBreak(row)).toBe(row);
   });
+  it("preserves review evidence and refuses to report break/out completion", async () => {
+    const future=shift({status:'needs_finish',clock_in_at:'2099-01-01T00:00:00Z',break_started_at:'2099-01-01T00:30:00Z',break_seconds:321});
+    const original=structuredClone(future);
+    for(const action of [()=>startBreak('s1','rest',PUNCH),()=>clockOut('s1',{injured:false,timeConfirmed:true,breakSeconds:0},PUNCH),()=>endBreak('s1',PUNCH)]){
+      rpc.mockResolvedValueOnce({data:future,error:null});
+      const error=await action().catch(e=>e);
+      expect(error).toBeInstanceOf(ClockRefusal);expect(error.code).toBe('requires_review');
+    }
+    rpc.mockResolvedValueOnce({data:{outcome:'requires_review',shift:future},error:null});
+    await expect(endBreak('s1',PUNCH)).rejects.toMatchObject({code:'requires_review'});
+    expect(rpc).toHaveBeenCalledTimes(4);
+    expect(rpc.mock.calls.every(call=>call[1].p_client_id===PUNCH.clientId)).toBe(true);
+    expect(future).toEqual(original);
+  });
 });
 
 describe("a made-up shift id never reaches a uuid RPC (K0.4)", () => {

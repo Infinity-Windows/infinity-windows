@@ -157,6 +157,15 @@ error_rule_exempt() {
   return 1
 }
 
+# This native-storage formatter converts primitives only. Error/PostgREST
+# objects and functions cannot reach this exact line. Exempt this finding,
+# never the module: an unguarded conversion beside it must still be reported.
+idb_primitive_detail_line() {
+  [ "$1" = "app/src/lib/offline/outboxStore.ts" ] || return 1
+  [ "$(printf '%s' "$2" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')" = \
+    'if (typeof reason !== "object" && typeof reason !== "function") return String(reason);' ]
+}
+
 # The modules that are ALLOWED to name a Postgres code, and why each one is.
 #
 # `schemaErrors.ts` is the home the law names. The three formatters are the
@@ -190,7 +199,8 @@ for f in ${changed_files[@]+"${changed_files[@]}"}; do
     case "$(printf '%s' "$text" | sed 's/^[[:space:]]*//')" in "//"*|"*"*|"/*"*) continue ;; esac
 
     if ! error_rule_exempt "$f"; then
-      if printf '%s' "$text" | grep -qE 'String\([[:space:]]*(err|error|e|ex|caught|reason)[[:space:]]*\)'; then
+      if printf '%s' "$text" | grep -qE 'String\([[:space:]]*(err|error|e|ex|caught|reason)[[:space:]]*\)' &&
+         ! idb_primitive_detail_line "$f" "$text"; then
         report "$f:$ln" error-string \
           "An error becomes text through String(...), which shows an installer raw Postgres wording. Use formatApiError(err)." "$LAW_ERR"
       fi
@@ -318,7 +328,7 @@ fi
 
 # True when master already holds a function of this name, so the statement
 # under the cursor is a rebuild rather than a birth.
-already_on_master() { printf '%s\n' "$master_functions" | grep -qxF "$1"; }
+already_on_master() { grep -qxF "$1" <<< "$master_functions"; }
 
 for f in ${new_migrations[@]+"${new_migrations[@]}"}; do
   stmts="$(awk -f "$AWK_SQL" <(file_at_head "$f"))"
@@ -344,20 +354,20 @@ for f in ${new_migrations[@]+"${new_migrations[@]}"}; do
       continue
     fi
 
-    printf '%s\n' "$stmts" | grep -qE 'alter table (only )?(public\.)?'"$short"' .*enable row level security' ||
+    grep -qE 'alter table (only )?(public\.)?'"$short"' .*enable row level security' <<< "$stmts" ||
       report "$f:$ln" table-without-rls \
         "New table \`$short\` never says \`alter table $short enable row level security\`, so every login reads every row." "$LAW_RLS"
 
-    printf '%s\n' "$stmts" | grep -qE 'revoke .* on (table )?(public\.)?'"$short"' from' ||
+    grep -qE 'revoke .* on (table )?(public\.)?'"$short"' from' <<< "$stmts" ||
       report "$f:$ln" table-keeps-default-grants \
         "New table \`$short\` never revokes its default grants. Supabase hands anon and authenticated a grant on every new table in public; row security is the second lock, not the first." "$LAW_RLS"
 
     # A table nothing in a browser may touch is allowed to have no policy —
     # said out loud, by revoking it from authenticated and granting it to
     # nobody. Anything a crew login can reach needs the partner guard.
-    if printf '%s\n' "$stmts" | grep -E 'grant .* on (table )?(public\.)?'"$short"' to' | grep -q 'authenticated' ||
-       ! printf '%s\n' "$stmts" | grep -E 'revoke .* on (table )?(public\.)?'"$short"' from' | grep -q 'authenticated'; then
-      printf '%s\n' "$stmts" | grep -E 'create policy .* on (public\.)?'"$short"'[ (]' | grep -qF 'not public.is_partner_user()' ||
+    if grep -E 'grant .* on (table )?(public\.)?'"$short"' to' <<< "$stmts" | grep 'authenticated' >/dev/null ||
+       ! grep -E 'revoke .* on (table )?(public\.)?'"$short"' from' <<< "$stmts" | grep 'authenticated' >/dev/null; then
+      grep -E 'create policy .* on (public\.)?'"$short"'[ (]' <<< "$stmts" | grep -F 'not public.is_partner_user()' >/dev/null ||
         report "$f:$ln" policy-without-partner-guard \
           "No policy on \`$short\` carries \`not public.is_partner_user()\`, so a builder's portal login is inside the wall." "$LAW_RLS"
     fi
@@ -367,7 +377,7 @@ for f in ${new_migrations[@]+"${new_migrations[@]}"}; do
   # it. "Nobody" is a fine answer, said out loud with a revoke.
   while IFS=$'\t' read -r ln stmt; do
     [ -n "$ln" ] || continue
-    printf '%s' "$stmt" | grep -q 'security definer' || continue
+    grep -q 'security definer' <<< "$stmt" || continue
     sig="$(printf '%s' "$stmt" | sed -E 's/^create (or replace )?function ([a-z0-9_.]+)\(.*/\2/')"
     short="${sig#public.}"
     if ! plain_name "$short"; then
@@ -375,15 +385,15 @@ for f in ${new_migrations[@]+"${new_migrations[@]}"}; do
       continue
     fi
 
-    printf '%s' "$stmt" | grep -q 'set search_path' ||
+    grep -q 'set search_path' <<< "$stmt" ||
       report "$f:$ln" definer-without-search-path \
         "\`$short\` is SECURITY DEFINER and does not pin \`set search_path\`." "$LAW_DEFINER"
 
-    printf '%s' "$stmt" | grep -q 'returns trigger' && continue
+    grep -q 'returns trigger' <<< "$stmt" && continue
 
     # A rebuild keeps the grant its first migration set. Only a function being
     # BORN here has to say who may call it.
-    if printf '%s' "$stmt" | grep -q '^create or replace function '; then
+    if grep -q '^create or replace function ' <<< "$stmt"; then
       if [ "$master_functions_readable" = 0 ]; then
         note "origin/master could not be read, so \`$short\` was not checked for who may execute it: a \`create or replace\` of a function granted elsewhere inherits that grant, and this cannot tell the two apart."
         continue
@@ -391,8 +401,8 @@ for f in ${new_migrations[@]+"${new_migrations[@]}"}; do
       already_on_master "$short" && continue
     fi
 
-    if ! printf '%s\n' "$stmts" | grep -E 'grant execute on function (public\.)?'"$short"'\(' | grep -q 'authenticated'; then
-      printf '%s\n' "$stmts" | grep -E 'revoke .* on function (public\.)?'"$short"'\(' | grep -q 'authenticated' ||
+    if ! grep -E 'grant execute on function (public\.)?'"$short"'\(' <<< "$stmts" | grep 'authenticated' >/dev/null; then
+      grep -E 'revoke .* on function (public\.)?'"$short"'\(' <<< "$stmts" | grep 'authenticated' >/dev/null ||
         report "$f:$ln" definer-without-grant \
           "\`$short\` is SECURITY DEFINER and the migration never says who may execute it — neither a grant to authenticated nor a revoke from it." "$LAW_DEFINER"
     fi
