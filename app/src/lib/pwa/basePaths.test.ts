@@ -81,8 +81,25 @@ describe("buildWebManifest", () => {
 
   it("points icons at files that exist under the subpath", () => {
     expect(buildWebManifest(PAGES).icons.map((i) => i.src)).toEqual([
-      "/infinity-windows/icon-192.png",
-      "/infinity-windows/icon-512.png",
+      "/infinity-windows/forge-glass-shimmer-v1-192.png",
+      "/infinity-windows/forge-glass-shimmer-v1-512.png",
+    ]);
+  });
+
+  it("publishes the Glass Shimmer icons as plain any-purpose PNGs", () => {
+    expect(buildWebManifest(PAGES).icons).toEqual([
+      {
+        src: "/infinity-windows/forge-glass-shimmer-v1-192.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/infinity-windows/forge-glass-shimmer-v1-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
+      },
     ]);
   });
 
@@ -90,13 +107,17 @@ describe("buildWebManifest", () => {
     const m = buildWebManifest(LOCAL);
     expect(m.start_url).toBe("/");
     expect(m.scope).toBe("/");
-    expect(m.icons.map((i) => i.src)).toEqual(["/icon-192.png", "/icon-512.png"]);
+    expect(m.icons.map((i) => i.src)).toEqual([
+      "/forge-glass-shimmer-v1-192.png",
+      "/forge-glass-shimmer-v1-512.png",
+    ]);
   });
 
-  it("keeps the identity the installed app is known by", () => {
+  it("labels the saved app Forge and keeps how it launches", () => {
     const m = buildWebManifest(PAGES);
-    expect(m.name).toBe("Forge Windows and Doors");
-    expect(m.short_name).toBe("Forge Windows");
+    expect(m.name).toBe("Forge");
+    expect(m.short_name).toBe("Forge");
+    expect(m).not.toHaveProperty("id");
     expect(m.display).toBe("standalone");
     expect(m.background_color).toBe("#0C0B0A");
     expect(m.theme_color).toBe("#0C0B0A");

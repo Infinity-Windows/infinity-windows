@@ -83,16 +83,31 @@ export interface WebManifest {
  */
 export function buildWebManifest(base: string | undefined | null): WebManifest {
   return {
-    name: "Forge Windows and Doors",
-    short_name: "Forge Windows",
+    // "Forge" is the saved Home Screen label the owner chose (2026-10-08); the
+    // document title and in-app wordmark stay "Forge Windows".
+    name: "Forge",
+    short_name: "Forge",
     start_url: withBase(base, ""),
     scope: withBase(base, ""),
     display: "standalone",
     background_color: "#0C0B0A",
     theme_color: "#0C0B0A",
+    // Versioned file names so an installed shortcut's cached icon can't be
+    // mistaken for the new one; the older icon-*.png files stay in public/ for
+    // builds still pointing at them.
     icons: [
-      { src: withBase(base, "icon-192.png"), sizes: "192x192", type: "image/png" },
-      { src: withBase(base, "icon-512.png"), sizes: "512x512", type: "image/png" },
+      {
+        src: withBase(base, "forge-glass-shimmer-v1-192.png"),
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: withBase(base, "forge-glass-shimmer-v1-512.png"),
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
+      },
     ],
   };
 }
