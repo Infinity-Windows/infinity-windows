@@ -104,3 +104,7 @@ call was about where they live on the page, not in the database.
 In the same breath, the per-job cost-code subset (`project_cost_codes`,
 migration 20260973000000) was retired: every clock-in offers the whole active
 library. The table and its RPC stay in the database, unread.
+
+## Owner amendment — October 8, 2026
+
+Site readiness is independent of the setup checklist. The owner selected “Site readiness; show setup items as warnings” after the checklist refusal blocked crews. `set_project_readiness` now allows foreman+ to record Ready with unanswered setup items. The Pipeline card shows those unfinished items, with responsibilities, to foreman+. Checklist answers are neither completed nor erased by marking Ready. The existing role check, state validation, RPC-only writes and toolbox/clock admission requirements remain. This supersedes the readiness refusal described in decision 4 above.
