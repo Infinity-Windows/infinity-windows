@@ -1,0 +1,121 @@
+/* The Job location card (JobLocationPanel.tsx). Every rule is scoped under a
+   .job-location class so nothing here reaches another screen. Long addresses
+   and unbroken coordinate strings wrap instead of widening the card — a phone
+   at 320px must never scroll sideways to read where the job is. */
+
+.job-location {
+  margin-bottom: 16px;
+  min-width: 0;
+}
+
+.job-location-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.job-location-title {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.job-location-edit {
+  min-height: 44px;
+}
+
+.job-location-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+  gap: 10px 16px;
+  margin: 10px 0 0;
+}
+
+.job-location-fact {
+  min-width: 0;
+}
+
+.job-location-value {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.job-location-coords {
+  font-variant-numeric: tabular-nums;
+  user-select: all;
+}
+
+.job-location-note,
+.job-location-hint,
+.job-location-empty-text {
+  margin: 6px 0 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.job-location-empty {
+  margin-top: 8px;
+}
+
+.job-location-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 10px;
+}
+
+.job-location-actions > button {
+  min-height: 44px;
+}
+
+.job-location-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.job-location-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  min-width: 0;
+}
+
+.job-location-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.job-location-input {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  font: inherit;
+}
+
+textarea.job-location-input {
+  resize: vertical;
+}
+
+.job-location-error {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 720px) {
+  .job-location-form {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    align-items: start;
+  }
+
+  .job-location-form > :not(.job-location-field) {
+    grid-column: 1 / -1;
+  }
+}

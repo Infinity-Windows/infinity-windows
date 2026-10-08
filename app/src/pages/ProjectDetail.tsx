@@ -107,6 +107,7 @@ import { SpecsTab } from "../components/project/SpecsTab";
 import { CallForHandsPanel } from "../components/install/CallForHandsPanel";
 import { MissedUnitButton } from "../components/install/MissedUnitButton";
 import { JobDocuments } from "../components/projects/JobDocuments";
+import { useIsPartnerUser } from "../lib/stg";
 import { JobModeBadge } from "../components/JobModeBadge";
 import { GcPanel } from "../components/projects/GcPanel";
 import { BuildFactsPanel } from "../components/projects/BuildFactsPanel";
@@ -137,6 +138,10 @@ const CustomData = lazyOptional(
   () => import("./customWork/CustomData").then((m) => ({ default: m.CustomData })),
   <PartDidNotLoad />,
 );
+const JobLocationPanel = lazyOptional(
+  () => import("../components/projects/JobLocationPanel").then((m) => ({ default: m.JobLocationPanel })),
+  <PartDidNotLoad />,
+);
 const CrewGoalCard = lazy(() => import("../components/projects/CrewGoalCard").then((m) => ({ default: m.CrewGoalCard })));
 
 export function ProjectDetail() {
@@ -145,6 +150,7 @@ export function ProjectDetail() {
   // Read before the tab is resolved: which tabs a URL may open depends on it.
   const { effectiveRole } = useEffectiveRole();
   const isLead = isForemanPlus(effectiveRole);
+  const partner = useIsPartnerUser();
   const t = useT();
   const tabParam = searchParams.get("tab");
   // The tab resolution, TABS list and legacy-redirect effect all depend on
@@ -362,14 +368,14 @@ export function ProjectDetail() {
                   mode pill sits should still find it there. */}
               {project && <ReadinessBadge readyState={project.ready_state} />}
             </h1>
-            <p className="wh-row-sub" style={{ margin: 0 }}>
+            <p className="wh-row-sub" style={{ margin: 0, overflowWrap: "anywhere" }}>
               {project?.name}
               {project?.address ? ` — ${project.address}` : ""}
             </p>
             <ScopeLine counts={scope.data} stories={storiesShown} trackingOnly={trackingOnly} showDoorKinds style={{ marginTop: 2 }} />
           </div>
         </div>
-        <div className="row" style={{ gap: 12, flexWrap: "wrap" }}><Link className="button-like" to={`/service?job=${projectId}`}>{t("servicing.title")}</Link><DirectionsButton address={project?.address} /></div>
+        <div className="row" style={{ gap: 12, flexWrap: "wrap" }}><Link className="button-like" to={`/service?job=${projectId}`}>{t("servicing.title")}</Link><DirectionsButton address={project?.address} latitude={project?.latitude} longitude={project?.longitude} /></div>
       </header>
 
       <ScrollTabs className="hub-tabs" label="Project sections" activeId={tab}>
@@ -399,6 +405,7 @@ export function ProjectDetail() {
       {tab === "custom-data" && <Suspense fallback={<SkeletonCard height={320} />}><CustomData key={projectId} projectId={projectId} /></Suspense>}
       {tab === "overview" && (
         <>
+          {project && <Suspense fallback={<SkeletonCard height={120} />}><JobLocationPanel key={project.id} project={project} isLead={isLead && partner.data === false} /></Suspense>}
           {project && isLead && <JobTimecardExport key={project.id} project={project} />}
           {/* Call for hands on the whole job (job-level-summons slice 4). A
               tracking job has no window sheet to summon from, so it creates
@@ -1229,7 +1236,7 @@ function JobDetailsPanel({
                   <dt className="field-label">{r.label}</dt>
                   <dd>{r.value}</dd>
                   {r.label === "Site address" && (
-                    <DirectionsButton address={r.value} />
+                    <DirectionsButton address={r.value} latitude={project.latitude} longitude={project.longitude} />
                   )}
                 </div>
               ))}

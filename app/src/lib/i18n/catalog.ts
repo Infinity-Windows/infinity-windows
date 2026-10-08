@@ -20,6 +20,7 @@ import type { DesignKey } from "./designCatalog";
 import type { ScheduleConflictKey } from "./scheduleConflictCatalog";
 import type { ValuesKey } from "./valuesCatalog";
 import type { WorkDataKey } from "./workDataCatalog";
+import type { JobLocationKey } from "./jobLocationCatalog";
 
 /**
  * Keys whose Spanish still needs a bilingual crew member to verify it — the
@@ -94,6 +95,13 @@ export const SAFETY_KEYS = [
 ] as const;
 
 export const CATALOG = {
+  "maps.directions": { en: "Directions", es: "Cómo llegar" },
+  "maps.to": { en: "Get directions to {destination}", es: "Cómo llegar a {destination}" },
+  "maps.copyCoordinates": { en: "Copy coordinates", es: "Copiar coordenadas" },
+  "maps.copyAddress": { en: "Copy address", es: "Copiar dirección" },
+  "maps.coordinatesCopied": { en: "Coordinates copied", es: "Coordenadas copiadas" },
+  "maps.addressCopied": { en: "Address copied", es: "Dirección copiada" },
+  "maps.copyFailed": { en: "Could not copy the location", es: "No se pudo copiar la ubicación" },
   "nav.item.summary": { en: "Summary", es: "Resumen" },
   "nav.item.data": { en: "Data", es: "Datos" },
   "crewRecord.wholeComplete": { en: "Entire installation finished (all visits)", es: "Instalación completa terminada (todas las visitas)" },
@@ -5648,7 +5656,7 @@ export const CATALOG = {
  * keys are part of this type through a type-only import, which costs the
  * entry chunk nothing, while its strings ride in the route's own chunk.
  */
-export type TKey = keyof typeof CATALOG | WorkKey | DesignKey | ScheduleConflictKey | ValuesKey | WorkDataKey;
+export type TKey = keyof typeof CATALOG | WorkKey | DesignKey | ScheduleConflictKey | ValuesKey | WorkDataKey | JobLocationKey;
 
 /**
  * Add a lazily loaded phrasebook to the live catalog. Called at module load

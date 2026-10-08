@@ -1,3 +1,4 @@
+import { readWithJobCoordinates } from "../jobLocation";
 // Data layer for Travel Info. Remote-first (Supabase) with a graceful
 // browser-local fallback: until the additive migration is applied the table
 // lookups fail with a "missing table" error and every call transparently falls
@@ -189,7 +190,7 @@ type LocalChild = Record<string, unknown> & { id: string; sort_order?: number };
 
 const TRIP_SELECT =
   "*, trip_crew(profile_id, role, profiles(display_name)), " +
-  "projects(id, job_code, name, address)";
+  "projects(id, job_code, name, address, latitude, longitude)";
 
 interface RawCrewRow {
   profile_id: string;
@@ -229,10 +230,10 @@ function mapTrip(row: Record<string, unknown>): Trip {
 
 /** Every trip the caller may see (RLS scopes crew to their own). */
 export async function listTrips(): Promise<Trip[]> {
-  const { data, error } = await supabase
+  const { data, error } = await readWithJobCoordinates((columns) => supabase
     .from("trips")
-    .select(TRIP_SELECT)
-    .order("start_date", { ascending: false });
+    .select(columns)
+    .order("start_date", { ascending: false }), TRIP_SELECT);
   if (error) {
     if (isMissingTravelTable(error)) return localStore.list();
     throw error;
@@ -243,7 +244,7 @@ export async function listTrips(): Promise<Trip[]> {
 /** Full detail for one trip: crew + flights + lodging + ground + procedures +
  * contacts + attachments (plus company-wide procedure templates). */
 export async function getTrip(id: string): Promise<TripDetail | null> {
-  const tripRes = await supabase.from("trips").select(TRIP_SELECT).eq("id", id).maybeSingle();
+  const tripRes = await readWithJobCoordinates((columns) => supabase.from("trips").select(columns).eq("id", id).maybeSingle(), TRIP_SELECT);
   if (tripRes.error) {
     if (isMissingTravelTable(tripRes.error)) return localStore.get(id);
     throw tripRes.error;

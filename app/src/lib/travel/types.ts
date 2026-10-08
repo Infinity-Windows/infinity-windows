@@ -28,7 +28,7 @@ export interface Trip {
   created_at: string;
   updated_at: string;
   crew: TripCrewMember[];
-  project?: Pick<Project, "id" | "job_code" | "name" | "address"> | null;
+  project?: Pick<Project, "id" | "job_code" | "name" | "address" | "latitude" | "longitude"> | null;
 }
 
 export interface Flight {

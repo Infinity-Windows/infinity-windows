@@ -1,3 +1,4 @@
+import { readWithJobCoordinates } from "../jobLocation";
 import { listTimeOff } from "../timeOff/api";
 import { availableAssignments } from "../timeOff/model";
 // Data layer for crew scheduling. Remote-first (Supabase) with a graceful
@@ -175,12 +176,14 @@ interface RawAssignmentRow {
     job_code: string;
     name: string;
     address: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
   } | null;
 }
 
 const SELECT =
   "*, schedule_assignment_members(profile_id, role, profiles(display_name)), " +
-  "projects(id, job_code, name, address), package_deliveries(id, label)";
+  "projects(id, job_code, name, address, latitude, longitude), package_deliveries(id, label)";
 
 function mapRow(row: RawAssignmentRow): ScheduleAssignment {
   const members: AssignmentMember[] = (row.schedule_assignment_members ?? []).map(
@@ -244,12 +247,12 @@ export async function listAssignments(
   fromISO: string,
   toISO: string,
 ): Promise<ScheduleAssignment[]> {
-  const { data, error } = await supabase
+  const { data, error } = await readWithJobCoordinates((columns) => supabase
     .from("schedule_assignments")
-    .select(SELECT)
+    .select(columns)
     .lte("start_date", toISO)
     .gte("end_date", fromISO)
-    .order("start_date");
+    .order("start_date"), SELECT);
   if (error) {
     if (isMissingScheduleTable(error)) return localStore.list(fromISO, toISO);
     throw error;
@@ -263,11 +266,11 @@ export async function listAssignments(
 
 /** All still-draft assignments (drives the unpublished-changes bar). */
 export async function listDraftAssignments(): Promise<ScheduleAssignment[]> {
-  const { data, error } = await supabase
+  const { data, error } = await readWithJobCoordinates((columns) => supabase
     .from("schedule_assignments")
-    .select(SELECT)
+    .select(columns)
     .eq("status", "draft")
-    .order("start_date");
+    .order("start_date"), SELECT);
   if (error) {
     if (isMissingScheduleTable(error)) return localStore.drafts();
     throw error;
@@ -301,14 +304,14 @@ export async function listMyPublished(
   );
   if (ids.length === 0) return [];
 
-  const { data, error } = await supabase
+  const { data, error } = await readWithJobCoordinates((columns) => supabase
     .from("schedule_assignments")
-    .select(SELECT)
+    .select(columns)
     .in("id", ids)
     .eq("status", "published")
     .lte("start_date", toISO)
     .gte("end_date", fromISO)
-    .order("start_date");
+    .order("start_date"), SELECT);
   if (error) {
     if (isMissingScheduleTable(error)) {
       return filterMyPublished(readLocal(), profileId, fromISO, toISO);
@@ -322,12 +325,12 @@ export async function listMyPublished(
 export async function listProjectAssignments(
   projectId: string,
 ): Promise<ScheduleAssignment[]> {
-  const { data, error } = await supabase
+  const { data, error } = await readWithJobCoordinates((columns) => supabase
     .from("schedule_assignments")
-    .select(SELECT)
+    .select(columns)
     .eq("project_id", projectId)
     .eq("status", "published")
-    .order("start_date");
+    .order("start_date"), SELECT);
   if (error) {
     if (isMissingScheduleTable(error)) {
       return readLocal()
@@ -595,10 +598,10 @@ export async function logEvent(input: ScheduleEventInput): Promise<void> {
 
 async function listById(ids: string[]): Promise<ScheduleAssignment[]> {
   if (ids.length === 0) return [];
-  const { data, error } = await supabase
+  const { data, error } = await readWithJobCoordinates((columns) => supabase
     .from("schedule_assignments")
-    .select(SELECT)
-    .in("id", ids);
+    .select(columns)
+    .in("id", ids), SELECT);
   if (error) {
     if (isMissingScheduleTable(error)) {
       const set = new Set(ids);

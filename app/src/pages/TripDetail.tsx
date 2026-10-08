@@ -271,7 +271,7 @@ export function TripDetail() {
       {trip.project?.address && (
         <div className="travel-jobsite">
           <MapPin size={14} aria-hidden /> <span>{trip.project.job_code ?? t("travelDetail.jobsite")}</span>
-          <DirectionsButton address={trip.project.address} label={t("travelDetail.jobsite")} />
+          <DirectionsButton address={trip.project.address} latitude={trip.project.latitude} longitude={trip.project.longitude} label={t("travelDetail.jobsite")} />
           {trip.project.id && (
             <Link to={`/projects/${trip.project.id}`} className="button-like">
               {t("travelDetail.openJob")}

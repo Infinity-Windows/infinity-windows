@@ -1,7 +1,8 @@
 import { useRef } from "react";
 import { Copy, MapPin, Navigation, X } from "lucide-react";
-import { buildDirectionsUrls } from "../../lib/mapsLinks";
+import { buildDirectionsUrls, directionsDestination, hasCoordinates } from "../../lib/mapsLinks";
 import { pushToast, toastError } from "../../lib/toast";
+import { useT } from "../../lib/i18n";
 import { useFocusTrap } from "../../lib/useFocusTrap";
 
 /**
@@ -12,18 +13,25 @@ export function MapsChooserSheet({
   open,
   onClose,
   address,
+  latitude,
+  longitude,
   title = "Get directions",
 }: {
   open: boolean;
   onClose: () => void;
   address: string;
+  latitude?: number | null;
+  longitude?: number | null;
   title?: string;
 }) {
+  const t = useT();
   const sheetRef = useRef<HTMLDivElement>(null);
   useFocusTrap(sheetRef, open, onClose);
 
   if (!open) return null;
-  const urls = buildDirectionsUrls(address);
+  const urls = buildDirectionsUrls(address, latitude, longitude);
+  const destination = directionsDestination(address, latitude, longitude) ?? address;
+  const pinned = hasCoordinates(latitude, longitude);
 
   const openUrl = (url: string) => {
     window.open(url, "_blank", "noopener,noreferrer");
@@ -32,10 +40,10 @@ export function MapsChooserSheet({
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(address);
-      pushToast("Address copied", "success");
+      await navigator.clipboard.writeText(destination);
+      pushToast(t(pinned ? "maps.coordinatesCopied" : "maps.addressCopied"), "success");
     } catch (e) {
-      toastError(e, "Could not copy the address");
+      toastError(e, t("maps.copyFailed"));
     }
   };
 
@@ -53,7 +61,7 @@ export function MapsChooserSheet({
         <div className="maps-head">
           <div className="maps-head-text">
             <h2 className="maps-title">{title}</h2>
-            <p className="maps-address">{address}</p>
+            <p className="maps-address">{address}{pinned && address !== destination && <><br />{destination}</>}</p>
           </div>
           <button type="button" className="capture-close" aria-label="Close" onClick={onClose}>
             <X size={20} />
@@ -74,7 +82,7 @@ export function MapsChooserSheet({
           </button>
           <button type="button" className="maps-option muted-option" onClick={copy}>
             <Copy size={18} aria-hidden />
-            <span>Copy address</span>
+            <span>{t(pinned ? "maps.copyCoordinates" : "maps.copyAddress")}</span>
           </button>
         </div>
       </div>

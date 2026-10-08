@@ -71,6 +71,9 @@ export interface Project {
   job_code: string;
   name: string;
   address: string | null;
+  /** Manually saved site point; absent on older schemas/fixtures. */
+  latitude?: number | null;
+  longitude?: number | null;
   status: "active" | "completed" | "cancelled";
   /** Which work modes this job allows (a non-empty subset of {data,tracking}).
    * Written only via set_project_modes() — the column is client-write-locked

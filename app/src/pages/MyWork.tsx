@@ -517,7 +517,7 @@ export function MyWork() {
             }}
           >
             <DirectionsButton
-              address={todayAssignment.project?.address}
+              address={todayAssignment.project?.address} latitude={todayAssignment.project?.latitude} longitude={todayAssignment.project?.longitude}
               title={t("mywork.directionsTitle")}
             />
           </div>
