@@ -68,6 +68,25 @@ describe("shapeFor", () => {
     expect(shapeFor({ "unit_sessions.profile_id": 2 })).toBe("retired");
     expect(shapeFor({ "daily_logs.filed_by": 1 })).toBe("retired");
   });
+
+  it("retires for a retained unit observation or activity command alone", () => {
+    expect(shapeFor({ "work_unit_fact_revisions.observation_actor_id": 1 })).toBe("retired");
+    expect(shapeFor({ "personal_activity_commands.subject_profile_id": 1 })).toBe("retired");
+    expect(shapeFor({ "work_activity_clock_receipts.profile_id": 1 })).toBe("retired");
+  });
+
+  it.each([
+    "work_activity_source_history.actor_id", "work_activity_source_history.original_identities",
+    "work_unit_review_commands.actor_id", "work_unit_dimension_verifications.reviewer_id",
+    "work_unit_dimension_verifications.observation_actor_id", "work_unit_review_events.actor_id",
+    "work_unit_review_events.original_identities", "work_unit_review_defects.creator_id",
+    "work_unit_review_defect_events.actor_id",
+  ])("keeps the person's history and names a lone retained %s record", key => {
+    const counts = { ...NOTHING, [key]: 1 };
+    expect(shapeFor(counts)).toBe("retired");
+    expect(historyHighlights(counts)).toMatchObject([{ key, words: expect.stringMatching(/^1 /) }]);
+    expect(removalSentence("Mia", counts)).toContain("every record kept under their name");
+  });
 });
 
 describe("the sentence the owner reads", () => {
@@ -93,6 +112,16 @@ describe("the sentence the owner reads", () => {
     expect(removalSentence("Mia", { "receipts.uploaded_by": 1 })).toContain(
       "1 receipt on file",
     );
+  });
+
+  it("names a retained measurement and clock receipt in plain words", () => {
+    const sentence = removalSentence("Mia", {
+      "work_unit_fact_revisions.observation_actor_id": 1,
+      "work_activity_clock_receipts.profile_id": 2,
+    });
+    expect(sentence).toContain("1 unit measurement observation");
+    expect(sentence).toContain("2 retained clock receipts");
+    expect(sentence).toContain("every record kept under their name");
   });
 
   it("names three things at most and says there is more", () => {
