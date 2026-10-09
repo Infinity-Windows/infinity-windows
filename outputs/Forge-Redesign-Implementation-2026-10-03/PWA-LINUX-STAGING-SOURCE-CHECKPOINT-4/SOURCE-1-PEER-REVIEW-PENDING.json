@@ -1,0 +1,11 @@
+{
+  "checkpoint": "PWA-LINUX-STAGING-SOURCE-CHECKPOINT-1",
+  "scope": "exact source and content package only",
+  "opus55": "PENDING_PARENT_ROUTE_NO_RECEIPT",
+  "fable": "PENDING_PARENT_ROUTE_NO_RECEIPT",
+  "rootReview": "PENDING",
+  "executionApproved": false,
+  "published": false,
+  "workflowEnrolled": false,
+  "reason": "Worker was explicitly scoped not to contact peers or recursively delegate. Prior plan receipts do not cover new implementation."
+}

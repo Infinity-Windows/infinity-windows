@@ -1,0 +1,26 @@
+{
+  "scope": "Read-only exact pinned metadata; no imports/config/list/runtime",
+  "packages": {
+    "playwright": {
+      "sourcePath": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/package.json",
+      "sha256": "638ab746b40d3986e16e13b08418beaa2262c47e8bc843b745589af15dead35b",
+      "version": "1.62.0",
+      "packageJsonExport": "./package.json",
+      "liveFileMatchesFrozenHash": true
+    },
+    "playwright-core": {
+      "sourcePath": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright-core/package.json",
+      "sha256": "4556ebbf21a31c5e8dabb49c991ec291c5f00ffcad8b18cda45e4070b8a473bd",
+      "version": "1.62.0",
+      "packageJsonExport": "./package.json",
+      "liveFileMatchesFrozenHash": true
+    },
+    "@playwright/test": {
+      "sourcePath": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/@playwright/test/package.json",
+      "sha256": "351697e1ef6a68a63557ffedf1992955a2d8979b11e0bf9f175820956951c65b",
+      "version": "1.62.0",
+      "packageJsonExport": "./package.json",
+      "liveFileMatchesFrozenHash": true
+    }
+  }
+}

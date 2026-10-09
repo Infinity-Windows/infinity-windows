@@ -1,0 +1,28 @@
+{
+  "original837Unchanged": true,
+  "manifestSha256": "3d315d3c90f95c3484ef9af98c6ca8d222da9b826030cd5b215f5d08239d6f5b",
+  "copyChangedFiles": [
+    "INHERITED-NODE-TESTS.txt",
+    "INHERITED-RECONSTRUCTION-TESTS.txt",
+    "INHERITED-TRANSPORT-TESTS.txt",
+    "METADATA-TEST-RESULTS.txt",
+    "ORCHESTRATION-TEST-RESULTS.txt",
+    "browser-metadata.mjs",
+    "browser-metadata.test.mjs",
+    "orchestration_gates.py",
+    "test_orchestration.py",
+    "validate-orchestration.py"
+  ],
+  "historicalRenames": {
+    "MANIFEST.json": "SOURCE-3-MANIFEST.json",
+    "HANDOFF.md": "SOURCE-3-HANDOFF.md",
+    "PACKAGE-RECIPE.md": "SOURCE-3-PACKAGE-RECIPE.md"
+  },
+  "payload754TarRuntimeDriverWorkflowBootstrapExact": true,
+  "source3FableLaneExactUnchangedFiles": [
+    "PROPOSED-WORKFLOW.yml.txt",
+    "SETUP-SHELL.sh.txt",
+    "PROTOCOL-SOURCE-PINS.json",
+    "SOURCE3-VALIDATION.json"
+  ]
+}

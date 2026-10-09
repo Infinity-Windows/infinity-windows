@@ -1,0 +1,117 @@
+{
+  "sourceFiles": {
+    "app/package.json": {
+      "sha256": "ca24a5be8471785a53bf8fa458b1abf503d96f115a200024842a17037e5bc8df",
+      "bytes": 1641,
+      "sourceCommit": "a703caf274d6e7627cfc2c688ed7c351a55be465",
+      "liveMatches": true
+    },
+    "app/package-lock.json": {
+      "sha256": "b73730093a563941c1ead405d43537467a171733d27a14ca358467c41765b663",
+      "bytes": 300252,
+      "sourceCommit": "a703caf274d6e7627cfc2c688ed7c351a55be465",
+      "liveMatches": true
+    },
+    ".nvmrc": {
+      "sha256": "f14b4987904bcb5814e4459a057ed4d20f58a633152288a761214dcd28780b56",
+      "bytes": 3,
+      "sourceCommit": "a703caf274d6e7627cfc2c688ed7c351a55be465",
+      "liveMatches": true
+    },
+    ".github/workflows/ci.yml": {
+      "sha256": "39b72c6e7f5da84fa87cd62428fc72ba859f0f438bdfbf76f6563ee7f357b57a",
+      "bytes": 43567,
+      "sourceCommit": "a703caf274d6e7627cfc2c688ed7c351a55be465",
+      "liveMatches": true
+    }
+  },
+  "packages": {
+    "@playwright/test": {
+      "version": "1.62.0",
+      "resolved": "https://registry.npmjs.org/@playwright/test/-/test-1.62.0.tgz",
+      "integrity": "sha512-9zOJ6ZQRAena31MpOH9VSzIz8Ou3YJ/wtY/eQm5T2uhfhG7/U3COrMS8xOtUrZrp9OgdmzEnIYODye3nY1VqzA==",
+      "dev": true,
+      "license": "Apache-2.0",
+      "dependencies": {
+        "playwright": "1.62.0"
+      },
+      "bin": {
+        "playwright": "cli.js"
+      },
+      "engines": {
+        "node": ">=20"
+      }
+    },
+    "playwright": {
+      "version": "1.62.0",
+      "resolved": "https://registry.npmjs.org/playwright/-/playwright-1.62.0.tgz",
+      "integrity": "sha512-Z14dG305dgaLu6foB1TXQagFiW8JfSUIUaUuPaKQ6NtBPKF1P/qXcqfh6c6K/icPqdy37JmjbiBXf6JNg6Sylw==",
+      "dev": true,
+      "license": "Apache-2.0",
+      "dependencies": {
+        "playwright-core": "1.62.0"
+      },
+      "bin": {
+        "playwright": "cli.js"
+      },
+      "engines": {
+        "node": ">=20"
+      },
+      "optionalDependencies": {
+        "fsevents": "2.3.2"
+      }
+    },
+    "playwright-core": {
+      "version": "1.62.0",
+      "resolved": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.62.0.tgz",
+      "integrity": "sha512-nsNRyq0r2zsG8AcRHWknc9QRA5XCueC7gWMrs+Gx2tlZn9hcl8zudfh00lhJPY1DE7NmZ6bDsT9g2yey8mXljA==",
+      "dev": true,
+      "license": "Apache-2.0",
+      "bin": {
+        "playwright-core": "cli.js"
+      },
+      "engines": {
+        "node": ">=20"
+      }
+    },
+    "typescript": {
+      "version": "6.0.3",
+      "resolved": "https://registry.npmjs.org/typescript/-/typescript-6.0.3.tgz",
+      "integrity": "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==",
+      "dev": true,
+      "license": "Apache-2.0",
+      "bin": {
+        "tsc": "bin/tsc",
+        "tsserver": "bin/tsserver"
+      },
+      "engines": {
+        "node": ">=14.17"
+      }
+    },
+    "@types/node": {
+      "version": "24.13.3",
+      "resolved": "https://registry.npmjs.org/@types/node/-/node-24.13.3.tgz",
+      "integrity": "sha512-Dh8vAsV36ig5wa9OX4pXvMc9D3Veibfw2wix0CUwYODLD8nkj9UsLjASr49nPg+2eKzxhBV+v7L8pXvT4e639Q==",
+      "dev": true,
+      "license": "MIT",
+      "dependencies": {
+        "undici-types": "~7.18.0"
+      }
+    },
+    "undici-types": {
+      "version": "7.18.2",
+      "resolved": "https://registry.npmjs.org/undici-types/-/undici-types-7.18.2.tgz",
+      "integrity": "sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==",
+      "dev": true,
+      "license": "MIT"
+    }
+  },
+  "nodeExact": "v22.23.1",
+  "nvmrcOnlyMajor": true,
+  "runtimeSourceHashProvenance": {
+    "sourceWorktree": "project-work-configuration",
+    "sourceHead": "b09b09d2",
+    "lockTie": "Three Playwright package tarball integrity strings match A703 committed lock and this worktree installed .package-lock.json; seven runtimeSources SHA-256 values were measured from this worktree, not A703. Linux files still require exact hash comparison before list."
+  },
+  "rangeExactness": "app/package.json has caret and tilde ranges; only npm ci with exact committed app/package-lock.json b73730093a563941c1ead405d43537467a171733d27a14ca358467c41765b663 selects exact versions."
+}

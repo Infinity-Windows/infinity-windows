@@ -363,6 +363,13 @@ jobs:
           curl --fail --show-error --silent --connect-timeout 10 --max-time 20 --header "Cache-Control: no-cache" "https://app.forgewd.com/version.json?ci-release=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-before-upgrade" -o "$RUNNER_TEMP/production-version-before-upgrade.json"
           python3 ../scripts/pwa-release-baseline.py "$RUNNER_TEMP/production-version-before-upgrade.json" --expect "$IW_PWA_OLD_REF"
       - name: Full installed-app suite from pinned deployed build
+        env:
+          IW_PWA_ENGINE_TRACE: "1"
+          IW_PWA_SLOW_SHELL_TRACE: "1"
+          IW_PWA_CAUSAL_TRACE: "1"
+          IW_PWA_RETURNING_PHONE_TRACE: "1"
+          IW_PWA_ACTIVATION_GATE_COMPARE: "0"
+          IW_PWA_NO_HTML_MODULEPRELOAD: "0"
         run: npx playwright test --config playwright.pwa.config.ts
       - name: Preserve current-baseline upgrade evidence
         uses: actions/upload-artifact@v4
@@ -446,6 +453,59 @@ jobs:
             app/e2e/test-results/
             ${{ runner.temp }}/pwa-older/old-dist/
             ${{ runner.temp }}/pwa-older/new-dist/
+          retention-days: 7
+
+  pwa-causal-original:
+    name: Trace exact f9 interrupted-download sequence on Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        working-directory: app
+    env:
+      IW_MAP_PORT: "5196"
+      IW_PWA_REUSE: "1"
+      IW_PWA_ACTIVATION_GATE_COMPARE: "0"
+      IW_PWA_NO_HTML_MODULEPRELOAD: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - uses: actions/download-artifact@v4
+        with:
+          name: pwa-current-builds-and-results
+          run-id: 37246658287
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/pwa-original
+      - name: Refuse missing or changed archived bundles before the harness can rebuild
+        run: python3 ../scripts/verify-pwa-archived-bundles.py "$RUNNER_TEMP/pwa-original/_temp/pwa-current" "$RUNNER_TEMP/pwa-archive-receipt.json" current-f9
+      - name: Replay the original complete sequence once with causal document timeline
+        env:
+          IW_PWA_CACHE: ${{ runner.temp }}/pwa-original/_temp/pwa-current
+          IW_PWA_ENGINE_TRACE: "1"
+          IW_PWA_SLOW_SHELL_TRACE: "1"
+          IW_PWA_CAUSAL_TRACE: "1"
+          IW_PWA_RETURNING_PHONE_TRACE: "1"
+        run: npx playwright test --config playwright.pwa.config.ts --max-failures=1
+      - name: Verify archived bundles remain unchanged after the sequence
+        if: always()
+        run: python3 ../scripts/verify-pwa-archived-bundles.py "$RUNNER_TEMP/pwa-original/_temp/pwa-current" "$RUNNER_TEMP/pwa-archive-after-receipt.json" current-f9
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pwa-causal-original-results
+          path: |
+            app/e2e/test-results/
+            ${{ runner.temp }}/pwa-archive-receipt.json
+            ${{ runner.temp }}/pwa-archive-after-receipt.json
           retention-days: 7
 
   verify-script:

@@ -1,0 +1,103 @@
+{
+  "sourceHead": "a703caf274d6e7627cfc2c688ed7c351a55be465",
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "HeadlessChrome/151.0.7922.34",
+    "revision": "@782af9cb30a53f54487e5d2e44738645a8ec457c",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+    "jsVersion": "15.1.206.8"
+  },
+  "traceCategories": [
+    "CacheStorage",
+    "ServiceWorker",
+    "blink.resource",
+    "blink.user_timing",
+    "devtools.timeline",
+    "disabled-by-default-devtools.timeline",
+    "disabled-by-default-loading",
+    "disabled-by-default-netlog.sensitive",
+    "loading",
+    "netlog",
+    "resources",
+    "toplevel"
+  ],
+  "traceReceiptPath": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-A703-ARCHIVED-FAIL-ARTIFACT/infinity-windows/infinity-windows/app/e2e/test-results/upgrade-path.pwa.ts-a-down-bc4ee-sh-doing-nothing-afterwards/browser-engine-receipt.json",
+  "traceReceiptSha256": "1ece2d757e062900ceec30fe8c034bbfb3795573446e2cbc0599840167234c9e",
+  "order": [
+    "baseline",
+    "blob",
+    "baseline",
+    "stream"
+  ],
+  "flags": {
+    "IW_PWA_REUSE": "1",
+    "IW_PWA_ENGINE_TRACE": "1",
+    "IW_PWA_SLOW_SHELL_TRACE": "1",
+    "IW_PWA_CAUSAL_TRACE": "1",
+    "IW_PWA_RETURNING_PHONE_TRACE": "1",
+    "IW_PWA_ACTIVATION_GATE_COMPARE": "0",
+    "IW_PWA_NO_HTML_MODULEPRELOAD": "0"
+  },
+  "originalSources": {
+    "playwright.pwa.config.ts": {
+      "sourcePath": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-pwa-diagnostic/app/playwright.pwa.config.ts",
+      "sha256": "4cad162379bb81de77c9bb0ba5aa33fae85b983e87807cf6d4d2b0b39d513e71"
+    },
+    "e2e/upgrade-path.pwa.ts": {
+      "sourcePath": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-pwa-diagnostic/app/e2e/upgrade-path.pwa.ts",
+      "sha256": "46055937677d5711c79812185283432630b742c213e80c19c88a103edd63c448"
+    },
+    "e2e/support/pwa.ts": {
+      "sourcePath": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-pwa-diagnostic/app/e2e/support/pwa.ts",
+      "sha256": "963f970f8579cccc0f844281717e450e88591c7748dc7f7ec7c215709b6d0dbe"
+    },
+    "e2e/support/pwaSlowReloadEvidence.ts": {
+      "sourcePath": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-pwa-diagnostic/app/e2e/support/pwaSlowReloadEvidence.ts",
+      "sha256": "305fbe62664842153c45ca9a4bc23f83bdafaa869488207400cd1154573dc5eb"
+    },
+    "e2e/support/pwaEngineTrace.ts": {
+      "sourcePath": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-pwa-diagnostic/app/e2e/support/pwaEngineTrace.ts",
+      "sha256": "e274d7ebdcc834af03e635ff917206aee79eb0b572dad60323d3ab8012c95ac9"
+    },
+    "e2e/support/pwaHarness.ts": {
+      "sourcePath": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-pwa-diagnostic/app/e2e/support/pwaHarness.ts",
+      "sha256": "8ea02b1a64110cff38d561daeeeaf60c7ca101bbfb7984e8ca49d97a26eb7449"
+    },
+    "package.json": {
+      "sourcePath": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-pwa-diagnostic/app/package.json",
+      "sha256": "ca24a5be8471785a53bf8fa458b1abf503d96f115a200024842a17037e5bc8df"
+    }
+  },
+  "variants": {
+    "baseline": {
+      "manifestSha256": "3552f90b21e672cf039dbf8941e2bdfdb8916fb69e3bb9aba85319f87d62f5e5",
+      "workerSha256": "45e16118ba470d4a006b41855c1f8918637a6bfdafb2c2fa58c256de31ff0ea2"
+    },
+    "blob": {
+      "manifestSha256": "98d2a41de79bc58b54509bf4bbd0c1493685ad183df8e29cc32deefeac828c6f",
+      "workerSha256": "50dff85554ab38cbbbb8f218c9a8a42c7ee26ea3f3e370681f0b91426aac0914"
+    },
+    "stream": {
+      "manifestSha256": "18b7a7d735ce483a6114ab7209be56b405740a62533bf9b3edaa4f8d89619a5d",
+      "workerSha256": "594431901fce6129124c61e633f8d10664c2c4c710d3e63cd23ab44e9a40aa49"
+    }
+  },
+  "originalVerifierSha256": "8e7f1794dbb6bce05914bcf07f590eafe7b210b4d58371a18ee211c18b05e11b",
+  "originalCompact": {
+    "old": "231841e43bc8f3a6ef189c9976ff17f0156ba951cad82fdc6151bd946214c6c1",
+    "new": "e821fb290fc6bb5a4a72fe892d5b52fd23719c3744af57e60995380377620e73"
+  },
+  "originalOldWorkerSha256": "daba2a4209b568fa8b0de9c1197d4be27c83279c45f31341a0baeffaae3decb7",
+  "nodeVersion": "v22.23.1",
+  "playwrightCLI": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/cli.js",
+  "playwrightVersion": "1.62.0",
+  "runtimeSources": {
+    "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/package.json": "638ab746b40d3986e16e13b08418beaa2262c47e8bc843b745589af15dead35b",
+    "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright-core/package.json": "4556ebbf21a31c5e8dabb49c991ec291c5f00ffcad8b18cda45e4070b8a473bd",
+    "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/@playwright/test/package.json": "351697e1ef6a68a63557ffedf1992955a2d8979b11e0bf9f175820956951c65b",
+    "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/cli.js": "5e79302a6aad7d835d92d5ae6b4244c91cf61b28e94d7917279090e6c231f7a1",
+    "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/lib/runner/index.js": "6dcf135a144b0f243848128bb68e0a25898b8ad764a34326f36ab45d9a9e1685",
+    "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/lib/common/index.js": "a28824ce622f5c8733e0e28f4604a8ee9ac1c3b11c9093354e1d8061f6ff305a",
+    "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright-core/lib/coreBundle.js": "3258d1cf334c6afc95f22aa9c292436cb976b391e0437f1359c83b84f0cb9d66"
+  }
+}

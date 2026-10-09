@@ -1,0 +1,22 @@
+{
+  "PWA-RESPONSE-EXPERIMENT-SOURCE-PROPOSAL-1": {
+    "entriesVerified": 13,
+    "manifestSha256": "2a8300ffa5489ab1c984b65cd304c10abf7aa89cff1058beb752bb4b46c606e3"
+  },
+  "PWA-RESPONSE-EXPERIMENT-SOURCE-PROPOSAL-2": {
+    "entriesVerified": 12,
+    "manifestSha256": "8c1188d5cfec15499e59d3100321f45b02b7bc6dffa18664f65d3bf0bb9ddb14"
+  },
+  "PWA-F9-WORKER-PARITY-REHEARSAL-1": {
+    "entriesVerified": 2711,
+    "manifestSha256": "195cd36435225570c966622b0927e594e08405e8e2282a6f86ac0e6184b58101"
+  },
+  "PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-1": {
+    "entriesVerified": 26,
+    "manifestSha256": "09967415a950b241e5fc0e47957047ec803e38713081bf252c3c8a65da65376d"
+  },
+  "liveHead": "a703caf274d6e7627cfc2c688ed7c351a55be465",
+  "liveStatus": "",
+  "originalSourcePinsVerified": 7,
+  "original660AndDerivativePairs": "PASS via unchanged rehearsal verifier"
+}

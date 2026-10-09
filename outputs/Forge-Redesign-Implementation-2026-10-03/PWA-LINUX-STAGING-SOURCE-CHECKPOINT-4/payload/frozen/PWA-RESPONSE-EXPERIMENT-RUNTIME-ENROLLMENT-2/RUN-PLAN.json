@@ -1,0 +1,103 @@
+{
+  "status": "HELD_SOURCE_ONLY_NO_CONFIG_LIST_OR_RUNTIME_EXECUTED",
+  "requires": "Actual dual-peer review and separately pinned dependency execution staging; see HANDOFF",
+  "entrypoint": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/run-arm.mjs",
+  "sequence": [
+    "saved Playwright --list JSON",
+    "assert exactly one unchanged case",
+    "one Playwright test process",
+    "graceful server teardown",
+    "spawn pinned Node validate-run.mjs",
+    "save original test exit separately from validation"
+  ],
+  "arms": [
+    {
+      "index": 1,
+      "mode": "baseline",
+      "argv": [
+        "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/run-arm.mjs"
+      ],
+      "env": {
+        "IW_PWA_REUSE": "1",
+        "IW_PWA_ENGINE_TRACE": "1",
+        "IW_PWA_SLOW_SHELL_TRACE": "1",
+        "IW_PWA_CAUSAL_TRACE": "1",
+        "IW_PWA_RETURNING_PHONE_TRACE": "1",
+        "IW_PWA_ACTIVATION_GATE_COMPARE": "0",
+        "IW_PWA_NO_HTML_MODULEPRELOAD": "0",
+        "IW_MAP_PORT": "5196",
+        "IW_PWA_RUN_INDEX": "1",
+        "IW_PWA_RESPONSE_MODE": "baseline",
+        "IW_PWA_CACHE": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/derived-pairs/baseline",
+        "IW_PWA_RUN_DIR": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNS-<unique-id>/01-baseline"
+      }
+    },
+    {
+      "index": 2,
+      "mode": "blob",
+      "argv": [
+        "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/run-arm.mjs"
+      ],
+      "env": {
+        "IW_PWA_REUSE": "1",
+        "IW_PWA_ENGINE_TRACE": "1",
+        "IW_PWA_SLOW_SHELL_TRACE": "1",
+        "IW_PWA_CAUSAL_TRACE": "1",
+        "IW_PWA_RETURNING_PHONE_TRACE": "1",
+        "IW_PWA_ACTIVATION_GATE_COMPARE": "0",
+        "IW_PWA_NO_HTML_MODULEPRELOAD": "0",
+        "IW_MAP_PORT": "5196",
+        "IW_PWA_RUN_INDEX": "2",
+        "IW_PWA_RESPONSE_MODE": "blob",
+        "IW_PWA_CACHE": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/derived-pairs/blob",
+        "IW_PWA_RUN_DIR": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNS-<unique-id>/02-blob"
+      }
+    },
+    {
+      "index": 3,
+      "mode": "baseline",
+      "argv": [
+        "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/run-arm.mjs"
+      ],
+      "env": {
+        "IW_PWA_REUSE": "1",
+        "IW_PWA_ENGINE_TRACE": "1",
+        "IW_PWA_SLOW_SHELL_TRACE": "1",
+        "IW_PWA_CAUSAL_TRACE": "1",
+        "IW_PWA_RETURNING_PHONE_TRACE": "1",
+        "IW_PWA_ACTIVATION_GATE_COMPARE": "0",
+        "IW_PWA_NO_HTML_MODULEPRELOAD": "0",
+        "IW_MAP_PORT": "5196",
+        "IW_PWA_RUN_INDEX": "3",
+        "IW_PWA_RESPONSE_MODE": "baseline",
+        "IW_PWA_CACHE": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/derived-pairs/baseline",
+        "IW_PWA_RUN_DIR": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNS-<unique-id>/03-baseline"
+      }
+    },
+    {
+      "index": 4,
+      "mode": "stream",
+      "argv": [
+        "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+        "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/run-arm.mjs"
+      ],
+      "env": {
+        "IW_PWA_REUSE": "1",
+        "IW_PWA_ENGINE_TRACE": "1",
+        "IW_PWA_SLOW_SHELL_TRACE": "1",
+        "IW_PWA_CAUSAL_TRACE": "1",
+        "IW_PWA_RETURNING_PHONE_TRACE": "1",
+        "IW_PWA_ACTIVATION_GATE_COMPARE": "0",
+        "IW_PWA_NO_HTML_MODULEPRELOAD": "0",
+        "IW_MAP_PORT": "5196",
+        "IW_PWA_RUN_INDEX": "4",
+        "IW_PWA_RESPONSE_MODE": "stream",
+        "IW_PWA_CACHE": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/derived-pairs/stream",
+        "IW_PWA_RUN_DIR": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNS-<unique-id>/04-stream"
+      }
+    }
+  ]
+}

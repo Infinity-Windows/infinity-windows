@@ -1,0 +1,8 @@
+{
+  "url": "https://nodejs.org/dist/v22.23.1/node-v22.23.1-linux-x64.tar.xz",
+  "distributionSha256": "9749e988f437343b7fa832c69ded82a312e41a03116d766797ac14f6f9eee578",
+  "checksumUrl": "https://nodejs.org/dist/v22.23.1/SHASUMS256.txt",
+  "checksumFileSha256": "158f2e2c580c610b9cef2853f3444c7369b84cc23e7ad764e3c40e9d60d82ea0",
+  "distributionDownloaded": false,
+  "installed": false
+}

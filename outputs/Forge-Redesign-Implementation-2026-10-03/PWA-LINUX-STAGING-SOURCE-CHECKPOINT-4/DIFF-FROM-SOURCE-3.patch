@@ -1,0 +1,61 @@
+--- source3/orchestration_gates.py
++++ source4/orchestration_gates.py
+@@ -18,8 +18,8 @@
+  for key in env:
+   if key in ['PWA_PACKAGE','PWA_CONTROL','PWA_SCRATCH','PWA_UNIQUE','PWA_PYTHON']:continue
+   plain=re.sub(r'^npm_(?:package_)?config_','',key.lower())
+-  if re.match(r'^(?:_?pw|playwright|selenium)',plain):require(key=='PLAYWRIGHT_BROWSERS_PATH','unexpected browser/launch env '+key)
+- return {k:v for k,v in env.items() if k.startswith('PLAYWRIGHT_')}
++  if re.match(r'^(?:pwdebug|_?pw_|_?pwtest|playwright_|selenium_remote_)',plain):require(key=='PLAYWRIGHT_BROWSERS_PATH','unexpected browser/launch env '+key)
++ return {k:v for k,v in env.items() if k.startswith(('PLAYWRIGHT_','SELENIUM_'))}
+ def verify_download(archive,checksums):
+  require(sha(archive)==NODE_SHA,'chosen Node distribution checksum mismatch');require(sha(checksums)==CHECKSUM_SHA,'official checksum-file mismatch')
+  matches=[line.split() for line in Path(checksums).read_text().splitlines() if line.endswith('  '+NODE_NAME+'.tar.xz')]
+--- source3/browser-metadata.mjs
++++ source4/browser-metadata.mjs
+@@ -7,9 +7,9 @@
+  for(const [key,value]of Object.entries(env)){
+   if(['PWA_PACKAGE','PWA_CONTROL','PWA_SCRATCH','PWA_UNIQUE','PWA_PYTHON'].includes(key))continue;
+   const canonical=key.toLowerCase().replace(/^npm_(?:package_)?config_/,'');
+-  if(/^(?:_?pw|playwright|selenium)/.test(canonical))assert(key==='PLAYWRIGHT_BROWSERS_PATH'&&value===browsersPath,'unexpected launch/browser environment: '+key);
++  if(/^(?:pwdebug|_?pw_|_?pwtest|playwright_|selenium_remote_)/.test(canonical))assert(key==='PLAYWRIGHT_BROWSERS_PATH'&&value===browsersPath,'unexpected launch/browser environment: '+key);
+  }
+- assert.equal(env.PLAYWRIGHT_BROWSERS_PATH,browsersPath);return Object.fromEntries(Object.entries(env).filter(([k])=>k.startsWith('PLAYWRIGHT_')));
++ assert.equal(env.PLAYWRIGHT_BROWSERS_PATH,browsersPath);return Object.fromEntries(Object.entries(env).filter(([k])=>(k.startsWith('PLAYWRIGHT_')||k.startsWith('SELENIUM_'))));
+ }
+ export function proveProtocol({config,spec,runner,fixture,core,env,browsersPath}){
+  assertMetadataEnvironment(env,browsersPath);
+--- source3/test_orchestration.py
++++ source4/test_orchestration.py
+@@ -47,6 +47,12 @@
+   reject_environment({'PWA_CONTROL':'/control','PLAYWRIGHT_BROWSERS_PATH':'/new'})
+   for key in ['NODE_OPTIONS','NODE_PATH','NODE_PRESERVE_SYMLINKS','PWDEBUG','PW_TEST_CONNECT_WS_ENDPOINT','PW_TEST_REUSE_CONTEXT','npm_config_pwdebug','npm_package_config_pwdebug','PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH','SELENIUM_REMOTE_URL']:
+    with self.assertRaises(ValueError):reject_environment({key:''})
++ def test_realistic_runner_environment_is_supported_and_browser_values_recorded(self):
++  env={'PWD':'/home/runner/work/forge','OLDPWD':'/home/runner','SHLVL':'1','_':'/usr/bin/python3','HOME':'/home/runner','PATH':'/opt/node/bin:/usr/bin','SELENIUM_JAR_PATH':'/usr/share/java/selenium-server.jar','ImageOS':'ubuntu24','PWA_CONTROL':'/control','PWA_PACKAGE':'/source','PWA_SCRATCH':'/scratch','PWA_UNIQUE':'1-1','PWA_PYTHON':'/usr/bin/python3','PLAYWRIGHT_BROWSERS_PATH':'/browser'}
++  self.assertEqual(reject_environment(env),{'PLAYWRIGHT_BROWSERS_PATH':'/browser','SELENIUM_JAR_PATH':'/usr/share/java/selenium-server.jar'})
++ def test_launch_affecting_prefixes_and_aliases_stay_refused(self):
++  for key in ['PWDEBUGIMPL','PWTEST_UNDER_TEST','PWTEST_CLI_EXECUTABLE_PATH','_PW_TEST_CONNECT','npm_config_pw_test_connect_ws_endpoint','npm_package_config_pwtest_under_test','npm_config_playwright_browsers_path','npm_package_config_selenium_remote_url','PLAYWRIGHT_DOWNLOAD_HOST','SELENIUM_REMOTE_CAPABILITIES']:
++   with self.subTest(key=key),self.assertRaises(ValueError):reject_environment({'PWD':'/work',key:''})
+  def test_wrong_node_checksum_and_changed_dependency_lock(self):
+   a=self.root/'node.tar.xz';a.write_bytes(b'fake');c=self.root/'SHASUMS256.txt';c.write_text(NODE_SHA+'  '+NODE_NAME+'.tar.xz\n')
+   with self.assertRaisesRegex(ValueError,'distribution'):verify_download(a,c)
+--- source3/browser-metadata.test.mjs
++++ source4/browser-metadata.test.mjs
+@@ -9,3 +9,6 @@
+ test('PWDEBUG, npm aliases, remote and context reuse variables refuse; owned PWA env is inert',()=>{assertMetadataEnvironment({PLAYWRIGHT_BROWSERS_PATH:'/cache',PWA_CONTROL:'/control'},'/cache');for(const k of ['PWDEBUG','npm_config_pwdebug','npm_package_config_pwdebug','PW_TEST_CONNECT_WS_ENDPOINT','PW_TEST_REUSE_CONTEXT','SELENIUM_REMOTE_URL','NODE_PRESERVE_SYMLINKS'])assert.throws(()=>assertMetadataEnvironment({...base.env,[k]:''},'/cache'));});
+ test('fake registry resolves exact headless descriptor and records selected executable hash',async()=>{const calls=[];const result=await resolveSelected({protocol:proveProtocol(base),browsers,browsersPath:'/cache',registry:{findExecutable:name=>{calls.push(name);return {name,browserName:'chromium',executablePath:()=>'/cache/chromium_headless_shell-1234/bin/headless'};}},inspectExecutable:async path=>({realpath:path,regular:true,executable:true,sha256:'a'.repeat(64)})});assert.deepEqual(calls,['chromium-headless-shell']);assert.equal(result.registryName,'chromium-headless-shell');assert.equal(result.executableSha256,'a'.repeat(64));});
+ test('wrong full-browser selection, symlink, missing executable and wrong registry revision refuse',async()=>{for(const variant of ['full','symlink','missing','revision']){const p=proveProtocol(base);const b=structuredClone(browsers);if(variant==='revision')b.browsers[0].revision='1235';await assert.rejects(()=>resolveSelected({protocol:p,browsers:b,browsersPath:'/cache',registry:{findExecutable:name=>({name,browserName:'chromium',executablePath:()=>variant==='full'?'/cache/chromium-1234/chrome':'/cache/chromium_headless_shell-1234/bin/headless'})},inspectExecutable:async path=>{if(variant==='missing')throw Error('ENOENT');return {realpath:variant==='symlink'?'/other':path,regular:true,executable:true,sha256:'b'.repeat(64)};}}));}});
++
++test('realistic runner environment passes and records inert Selenium metadata',()=>{const env={PWD:'/home/runner/work/forge',OLDPWD:'/home/runner',SHLVL:'1',_:'/usr/bin/node',HOME:'/home/runner',PATH:'/opt/node/bin:/usr/bin',SELENIUM_JAR_PATH:'/usr/share/java/selenium-server.jar',ImageOS:'ubuntu24',PWA_CONTROL:'/control',PWA_PACKAGE:'/source',PWA_SCRATCH:'/scratch',PWA_UNIQUE:'1-1',PWA_PYTHON:'/usr/bin/python3',PLAYWRIGHT_BROWSERS_PATH:'/cache'};assert.deepEqual(assertMetadataEnvironment(env,'/cache'),{SELENIUM_JAR_PATH:'/usr/share/java/selenium-server.jar',PLAYWRIGHT_BROWSERS_PATH:'/cache'});});
++test('launch-affecting test/debug prefixes and npm aliases still refuse',()=>{for(const key of ['PWDEBUGIMPL','PWTEST_UNDER_TEST','PWTEST_CLI_EXECUTABLE_PATH','_PW_TEST_CONNECT','npm_config_pw_test_connect_ws_endpoint','npm_package_config_pwtest_under_test','npm_config_playwright_browsers_path','npm_package_config_selenium_remote_url','PLAYWRIGHT_DOWNLOAD_HOST','SELENIUM_REMOTE_CAPABILITIES'])assert.throws(()=>assertMetadataEnvironment({...base.env,PWD:'/work',[key]:''},'/cache'));});
+--- source3/validate-orchestration.py
++++ source4/validate-orchestration.py
+@@ -26,5 +26,5 @@
+  dest=O/('SOURCE-2-'+key if key in renamed else key);assert (source2/key).read_bytes()==dest.read_bytes(),key
+ source1=B/'PWA-LINUX-STAGING-SOURCE-CHECKPOINT-1';m1=json.loads((source1/'MANIFEST.json').read_text());assert sha(source1/'MANIFEST.json')=='e525f4e245d12ad9efd8bd300b0996c65c3ceffe6c98e3f68ec1a3b148778628';assert {p.relative_to(source1).as_posix():{'bytes':p.stat().st_size,'sha256':sha(p)} for p in source1.rglob('*') if p.is_file() and p!=source1/'MANIFEST.json'}==m1['files']
+ assert not any(p.name.startswith('.test-') for p in O.iterdir());assert not any(p.is_symlink() for p in O.rglob('*'))
+-result={'scope':'SOURCE3_OFFLINE_ONLY_NO_PLAYWRIGHT_OR_CONFIG_IMPORT_BROWSER_INSTALL_OR_NETWORK','checks':checks,'newNodeTests':5,'newPythonTests':10,'inheritedNodeTests':60,'inheritedPythonTests':8,'yamlParsed':True,'allWorkflowShellSyntaxPassed':True,'inlineBootstrapByteExactToReviewedSource':True,'source2OriginalEntriesVerified':803,'source2All804FilesPreservedInCopy':True,'source1OriginalEntriesVerified':793,'source2DriverAndElevenCorrectionsByteIdentical':True,'payloadTarSha256':sha(O/'payload.tar'),'payloadTarBytes':(O/'payload.tar').stat().st_size,'payloadEntries':len(json.loads((O/'TRANSPORT-MANIFEST.json').read_text())),'testScratchRemaining':0,'newHelperFiles':['bootstrap.py','orchestration_gates.py','orchestrate.py','browser-metadata.mjs'],'researchManifestSha256':sha(O/'research-inputs/MANIFEST.json')}
+-(O/'SOURCE3-VALIDATION.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result,indent=2))
++result={'scope':'SOURCE4_OFFLINE_ONLY_NO_PLAYWRIGHT_OR_CONFIG_IMPORT_BROWSER_INSTALL_OR_NETWORK','checks':checks,'newNodeTests':7,'newPythonTests':12,'inheritedNodeTests':60,'inheritedPythonTests':8,'yamlParsed':True,'allWorkflowShellSyntaxPassed':True,'inlineBootstrapByteExactToReviewedSource':True,'source2OriginalEntriesVerified':803,'source2All804FilesPreservedInCopy':True,'source1OriginalEntriesVerified':793,'source2DriverAndElevenCorrectionsByteIdentical':True,'payloadTarSha256':sha(O/'payload.tar'),'payloadTarBytes':(O/'payload.tar').stat().st_size,'payloadEntries':len(json.loads((O/'TRANSPORT-MANIFEST.json').read_text())),'testScratchRemaining':0,'newHelperFiles':['bootstrap.py','orchestration_gates.py','orchestrate.py','browser-metadata.mjs'],'researchManifestSha256':sha(O/'research-inputs/MANIFEST.json')}
++(O/'SOURCE4-VALIDATION.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result,indent=2))

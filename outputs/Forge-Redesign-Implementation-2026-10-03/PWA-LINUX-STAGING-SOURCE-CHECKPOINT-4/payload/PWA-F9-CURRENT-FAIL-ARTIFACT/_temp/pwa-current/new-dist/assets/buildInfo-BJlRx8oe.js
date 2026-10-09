@@ -1,0 +1,1 @@
+var e=`new-887ce56`,t=`2026-10-05T00:43:33.570Z`;function n(e=`/`){return`${e.endsWith(`/`)?e:`${e}/`}version.json`}export{t as n,n as r,e as t};

@@ -1,0 +1,25 @@
+{
+  "verifiedAt": "2026-10-05T18:46:52.332437+00:00",
+  "actions": {
+    "actions/checkout": {
+      "ref": "v4",
+      "sha": "11d5960a326750d5838078e36cf38b85af677262",
+      "source": "https://api.github.com/repos/actions/checkout/git/refs/tags/v4"
+    },
+    "actions/upload-artifact": {
+      "ref": "v4",
+      "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+      "source": "https://api.github.com/repos/actions/upload-artifact/git/refs/tags/v4"
+    }
+  },
+  "localPinnedBundle": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright-core/lib/coreBundle.js",
+  "bundleSha256": "3258d1cf334c6afc95f22aa9c292436cb976b391e0437f1359c83b84f0cb9d66",
+  "selection": "no channel + headless -> chromium-headless-shell; metadata helper still unimplemented",
+  "sources": [
+    "https://playwright.dev/docs/browsers#chromium-headless-shell",
+    "https://docs.github.com/en/actions/reference/security/secure-use"
+  ],
+  "installation": false,
+  "execution": false,
+  "approvedWorkflow": false
+}

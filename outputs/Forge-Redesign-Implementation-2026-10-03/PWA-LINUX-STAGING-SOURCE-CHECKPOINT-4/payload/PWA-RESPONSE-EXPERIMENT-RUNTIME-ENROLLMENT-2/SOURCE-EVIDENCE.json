@@ -1,0 +1,33 @@
+{
+  "modelRole": "Astra; no recursive delegation",
+  "reviewReceiptsReadInFull": {
+    "CLAUDE-FABLE-PWA-RUNTIME-ENROLLMENT-1-RECEIPT.json": "9077924d66f3be275d593737c35cd60f3b6b2805349087639a59212bd7491fe7",
+    "CLAUDE-PWA-RUNTIME-ENROLLMENT-1-RECEIPT.json": "cba7d91ce527c87cefb1fba6bf7bf6d894d1250f67a3238fd03e91877f1d7b91"
+  },
+  "readLimits": "Full enrollment gates/adapter/helper/config/tests/verifier/pins and both actual reviewer result texts; scoped current spec/harness and installed Playwright grep, JSON serialization, shutdown and autoattach source. Prior source/rehearsal findings retained with full manifest preservation checks. No browser evidence produced.",
+  "A703LockPlaywrightVersions": {
+    "@playwright/test": "1.62.0",
+    "playwright": "1.62.0",
+    "playwright-core": "1.62.0"
+  },
+  "installedSourcePins": {
+    "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/package.json": "638ab746b40d3986e16e13b08418beaa2262c47e8bc843b745589af15dead35b",
+    "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright-core/package.json": "4556ebbf21a31c5e8dabb49c991ec291c5f00ffcad8b18cda45e4070b8a473bd",
+    "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/@playwright/test/package.json": "351697e1ef6a68a63557ffedf1992955a2d8979b11e0bf9f175820956951c65b",
+    "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/cli.js": "5e79302a6aad7d835d92d5ae6b4244c91cf61b28e94d7917279090e6c231f7a1",
+    "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/lib/runner/index.js": "6dcf135a144b0f243848128bb68e0a25898b8ad764a34326f36ab45d9a9e1685",
+    "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright/lib/common/index.js": "a28824ce622f5c8733e0e28f4604a8ee9ac1c3b11c9093354e1d8061f6ff305a",
+    "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/playwright-core/lib/coreBundle.js": "3258d1cf334c6afc95f22aa9c292436cb976b391e0437f1359c83b84f0cb9d66"
+  },
+  "sourceLines": {
+    "grep": "runner/index.js:2611-2617; common/index.js:2648-2654",
+    "jsonReport": "runner/index.js:4060-4160",
+    "graceful": "runner/index.js:855-884",
+    "autoAttach": "coreBundle.js:38109",
+    "workerConsole": "coreBundle.js:37958-37979"
+  },
+  "newDebuggerCommands": 0,
+  "configLoads": 0,
+  "browserProcesses": 0,
+  "serverProcesses": 0
+}

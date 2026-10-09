@@ -1,0 +1,1 @@
+import{F as e}from"./timeclock-IhnO4SFF.js";function t(t=new Date){return e(t.toISOString())}function n(e){return new Date(`${e}T00:00:00`).toLocaleDateString(void 0,{month:`short`,day:`numeric`,year:`numeric`})}function r(e,t){let n=new Set(t),r=new Set,i=[];for(let t of e)n.has(t)||r.has(t)||(r.add(t),i.push(t));return i}export{r as n,t as r,n as t};

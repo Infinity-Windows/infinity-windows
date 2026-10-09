@@ -1,0 +1,31 @@
+{
+  "source1ManifestSha256": "e525f4e245d12ad9efd8bd300b0996c65c3ceffe6c98e3f68ec1a3b148778628",
+  "opus": {
+    "model": "claude-opus-5-5",
+    "session": "26f107f9-3a41-4e06-b5c4-bbcd187d44f1",
+    "scope": "source1 binding/driver/runtime source review; no execution or independent hashes",
+    "requiredFindingsImplemented": [
+      "NODE_PRESERVE_SYMLINKS unset refusal and null receipt",
+      "process-origin internal deadline and driver-lifetime sticky watchdog receipt"
+    ],
+    "nonblockingResolved": [
+      "Linux plan records realpath Node",
+      "all3 exact pinned1.62 package.json exports confirmed offline"
+    ],
+    "armMinimumStartThreshold": "unchanged;100-second reserve; no claim every started arm can complete"
+  },
+  "fable": {
+    "model": "claude-fable-5-1",
+    "session": "8e799e3b-b34a-4b7d-9fbb-ac541c947bcc",
+    "scope": "source1 transport/reconstruction approval held; no execution or independent hashes",
+    "recommendationsImplemented": [
+      "single bounded immutable archive snapshot plus each-write name/membership/hash validation",
+      "synthetic four-pair worker/old/nonworker exact equality assertions",
+      "test-local cleanup hooks including read-only scratch files"
+    ]
+  },
+  "source2ActualPeerReview": "PENDING_PARENT_ROUTE",
+  "rootReview": "PENDING",
+  "executionApproved": false,
+  "missingCloudOrchestrationAuthored": false
+}

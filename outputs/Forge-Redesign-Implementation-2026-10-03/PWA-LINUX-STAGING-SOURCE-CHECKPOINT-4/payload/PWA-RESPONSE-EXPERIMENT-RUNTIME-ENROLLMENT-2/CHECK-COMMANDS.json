@@ -1,0 +1,36 @@
+{
+  "executedNoContact": [
+    [
+      "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+      "--test",
+      "outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/enrollment.test.mjs",
+      "outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/corrections.test.mjs"
+    ],
+    [
+      "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+      "--test",
+      "outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-SOURCE-PROPOSAL-2/response-experiment.test.mjs"
+    ],
+    [
+      "/Users/emmatimpson/.nvm/versions/node/v22.23.1/bin/node",
+      "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/project-work-configuration/app/node_modules/typescript/bin/tsc",
+      "--project",
+      "outputs/Forge-Redesign-Implementation-2026-10-03/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/app/tsconfig.enrollment.json",
+      "--noEmit"
+    ],
+    [
+      "python3",
+      "outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/verify-rehearsal.py"
+    ]
+  ],
+  "otherChecks": "node --check each owned *.mjs; manifest SHA verification; git status/rev-parse; A703 git show lockfile versions; source SHA comparisons",
+  "typecheckDependencyLink": "temporary owned app/node_modules symlink to existing dependencies only, removed before freeze",
+  "NOTExecuted": [
+    "run-arm.mjs",
+    "start-verified-harness.mjs",
+    "validate-run.mjs against a real arm",
+    "Playwright --list",
+    "browser/server/config load",
+    "app/worker build"
+  ]
+}

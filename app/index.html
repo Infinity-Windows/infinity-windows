@@ -56,6 +56,7 @@
                 resources: resources
               }));
               sessionStorage.setItem(key, String(now));
+              console.info("FORGE-PWA-EMPTY-BOOT", JSON.stringify({at:now,key:key}));
               window.location.reload();
               return;
             }
