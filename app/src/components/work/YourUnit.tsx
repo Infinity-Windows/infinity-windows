@@ -290,7 +290,7 @@ export function YourUnit({ nextUp, locked, jobId, shift, work, now }: YourUnitPr
                 {t("work.unit.openClock")}
               </button>
             )}
-            <button type="button" className="ws-btn" onClick={() => navigate(`/current-work?job=${justAdded.project_id}&unit=${justAdded.id}`)}>
+            <button type="button" className="ws-btn" onClick={() => navigate(`/current-work?job=${justAdded.project_id}&unit=${justAdded.id}&details=1`)}>
               {t("work.unit.details")}
             </button>
           </div>

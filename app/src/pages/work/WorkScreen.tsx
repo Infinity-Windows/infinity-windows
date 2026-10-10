@@ -297,7 +297,7 @@ export function WorkScreen() {
             const job = unitJobs.data?.find((row) => row.id === unit.project_id);
             return (
               <Link className="ws-saved-unit" key={unit.id}
-                to={`/current-work?job=${unit.project_id ?? ""}&unit=${unit.id}`}>
+                to={`/current-work?job=${unit.project_id ?? ""}&unit=${unit.id}&details=1`}>
                 <span><strong>{unit.label}</strong> · {unit.type_label}</span>
                 <span className="ws-meta">{job ? `${job.job_code} · ${job.name}` : t("work.unit.assignedJob")}</span>
                 <span className="ws-saved-unit-open">{t("work.unit.details")} ›</span>
