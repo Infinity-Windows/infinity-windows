@@ -295,15 +295,19 @@ for (const reload of [false, true]) {
 /**
  * One read of the outbox's own database that never answers, for one entry.
  * Every other read, and every later read of the same entry, goes through.
- * The first read inside a send is the "sending" mark's look-up of the stored
- * photo (IndexedDbOutboxStore.put), so this holds the send at its start.
+ * Target getBlob's readonly, entries-only transaction after the sending-state
+ * compare-and-swap commits. A fake request in that readwrite transaction would
+ * not keep its native transaction pending. This controls the awaited blob-read
+ * promise; it does not model a native IndexedDB transaction stall.
  */
 async function holdableOutboxReads(page: Page) {
   await page.addInitScript(() => {
     const w = window as unknown as { __holdOutboxRead?: string | null; __heldOutboxRead?: boolean };
     const realGet = IDBObjectStore.prototype.get;
     IDBObjectStore.prototype.get = function (this: IDBObjectStore, key: IDBValidKey | IDBKeyRange) {
-      if (w.__holdOutboxRead && this.name === "entries" && key === w.__holdOutboxRead) {
+      if (w.__holdOutboxRead && this.transaction.db.name === "wops-write-outbox"
+        && this.transaction.mode === "readonly" && this.transaction.objectStoreNames.length === 1
+        && this.name === "entries" && key === w.__holdOutboxRead) {
         w.__holdOutboxRead = null;
         w.__heldOutboxRead = true;
         return { result: undefined, error: null, readyState: "pending", onsuccess: null, onerror: null } as unknown as IDBRequest;
@@ -349,6 +353,22 @@ test("a photo whose send never answers does not hold the others: they upload, an
   await expect
     .poll(() => page.evaluate(() => (window as unknown as { __heldOutboxRead?: boolean }).__heldOutboxRead === true))
     .toBe(true);
+  // The persisted sending mark distinguishes a stalled blob read from an
+  // intercepted compare-and-swap that completed without setting its result.
+  await expect.poll(() => page.evaluate((id) => new Promise<string | null>((resolve, reject) => {
+    const open = indexedDB.open("wops-write-outbox", 2);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const read = db.transaction("metadata", "readonly").objectStore("metadata").get(id);
+      read.onerror = () => { db.close(); reject(read.error); };
+      read.onsuccess = () => {
+        try { resolve(read.result ? JSON.parse(read.result.meta).status as string : null); }
+        catch (error) { reject(error); }
+        finally { db.close(); }
+      };
+    };
+  }), held.id)).toBe("sending");
   // Stuck on that one read, nothing else goes.
   await page.waitForTimeout(1_000);
   expect(server.uploads).toHaveLength(0);

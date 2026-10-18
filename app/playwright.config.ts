@@ -53,6 +53,8 @@ export default defineConfig({
     env: {
       VITE_SUPABASE_URL: "https://e2efixture.supabase.co",
       VITE_SUPABASE_ANON_KEY: "sb_publishable_e2e_fixture_not_a_secret",
+      // Exercise owner Live Chat against fixtures, never a real AI session.
+      VITE_LIVE_ASK_PILOT: "true",
     },
   },
 });
