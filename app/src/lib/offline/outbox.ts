@@ -822,6 +822,9 @@ export async function recoverAndDrain(): Promise<void> {
 async function recoverLocalQueue(): Promise<void> {
   try {
     const moved = await migrateLegacyUploads(store);
+    if (moved.left > 0 || moved.dropped > 0) {
+      logOfflineEvent({ type: "queue", scope: "recovery", count: moved.left + moved.dropped, message: `${moved.left} legacy uploads remain unresolved; ${moved.dropped} unreadable legacy rows were removed by the existing importer. Review recovery before retrying.` });
+    }
     if (moved.moved > 0 || moved.left > 0) {
       logOfflineEvent({
         type: "flush",
@@ -831,7 +834,7 @@ async function recoverLocalQueue(): Promise<void> {
       });
     }
   } catch {
-    /* the old store could not be opened; nothing to move this session */
+    logOfflineEvent({ type: "queue", scope: "recovery", message: "Legacy upload recovery could not finish reading or moving saved files. Recovery is incomplete; no automatic recovery retry was scheduled." });
   }
   try {
     const all = await store.getAll();
@@ -841,7 +844,7 @@ async function recoverLocalQueue(): Promise<void> {
       if (fixed !== e) await store.swap(e.id, e, fixed);
     }
   } catch {
-    /* ignore */
+    logOfflineEvent({ type: "queue", scope: "recovery", message: "Saved-write recovery could not finish checking interrupted writes. Recovery is incomplete; check device storage before restarting recovery." });
   }
   await recoverFailedTransportPhotos();
 }
@@ -852,6 +855,7 @@ async function recoverLocalQueue(): Promise<void> {
 async function recoverFailedTransportPhotos(): Promise<void> {
   const signer = signerNow();
   if (!signer.userId) return;
+  let unresolved = 0;
   try {
     const now = Date.now();
     for (const entry of await store.getAll()) {
@@ -859,15 +863,16 @@ async function recoverFailedTransportPhotos(): Promise<void> {
       if (next === entry || !belongsTo(entry, signer)) continue;
       try {
         const blob = await store.getBlob(entry.id);
-        if (!blob || blob.size === 0) continue;
+        if (!blob || blob.size === 0) { unresolved++; continue; }
         await store.swap(entry.id, entry, next);
       } catch {
-        /* One unreadable file must not block recovery of the other photos. */
+        unresolved++; // Report once; one file must not block the others.
       }
     }
   } catch {
-    /* A later sign-in or queue refresh can try again; nothing is discarded. */
+    logOfflineEvent({ type: "queue", scope: "recovery", message: "Photo recovery could not read saved writes. Recovery is incomplete; a later sign-in can check again. No photo was removed by this recovery step." });
   }
+  if (unresolved > 0) logOfflineEvent({ type: "queue", scope: "recovery", count: unresolved, message: "Photo recovery is incomplete: original files could not be read or recovery state could not be saved. Records were retained; review device storage before retrying." });
 }
 
 /**
