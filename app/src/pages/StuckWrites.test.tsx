@@ -420,63 +420,15 @@ describe("someone else's work on this phone", () => {
 });
 
 describe("work saved before an update, whose owner Forge cannot tell", () => {
-  it("is shown as such, never sent as anyone, and can be thrown away — with the same second tap as any other", async () => {
-    // Codex review of #660, P1 #1. Nothing on the entry says who saved it,
-    // so the only way out a person gets is throwing it away, on purpose.
-    // Non-clock op on purpose: a legacy CLOCK punch gets a different UI
-    // (the recovery record below), never Throw away.
-    q.unknown = [
-      stuckWrite({ id: "u-1", op: "daily_log", status: "queued", attemptCount: 0, lastError: null }),
-    ];
+  it("retains unknown writes and installs without offering owner-only actions", async () => {
+    q.unknown = [stuckWrite({ id: "u-1", op: "daily_log", status: "queued", attemptCount: 0, lastError: null })];
+    q.unknownInstalls = [{ id: "i-anon", payload: { openingCode: "W9", createdAt: new Date().toISOString(), createdBy: null }, step: "queued", status: "pending" } as unknown as InstallOutboxRecord];
     const el = await mount();
-    expect(el.textContent).toContain("Saved before an update — Forge can't tell who saved it");
     const section = el.querySelector('[data-testid="stuck-unknown"]')!;
     expect(section.textContent).toContain("Daily log");
-    // No Try again, and no way to send it under this person's name.
-    const labels = [...section.querySelectorAll("button")].map((b) => b.textContent);
-    expect(labels).toEqual(["Throw away"]);
-    expect(el.textContent).not.toContain("Nothing stuck");
-
-    const tap = async () => {
-      await act(async () => {
-        [...section.querySelectorAll("button")][0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-    };
-    await tap();
-    // One tap only asks.
-    expect(q.discarded).toEqual([]);
-    expect([...section.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Sure? this deletes it"]);
-    await tap();
-    expect(q.discarded).toEqual(["u-1"]);
-  });
-
-  it("includes a finished unit that names no one: Throw away is the one way out, on the second tap", async () => {
-    q.unknownInstalls = [
-      {
-        id: "i-anon",
-        payload: { openingCode: "W9", createdAt: new Date(Date.now() - 5 * 60_000).toISOString(), createdBy: null },
-        step: "queued",
-        installEventId: null,
-        attemptCount: 0,
-        lastError: null,
-        status: "pending",
-      } as unknown as InstallOutboxRecord,
-    ];
-    const el = await mount();
-    const section = el.querySelector('[data-testid="stuck-unknown"]')!;
     expect(section.textContent).toContain("Window W9 finished");
-    expect([...section.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Throw away"]);
-    const tap = async () => {
-      await act(async () => {
-        [...section.querySelectorAll("button")][0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-    };
-    await tap();
+    expect(section.querySelectorAll("button")).toHaveLength(0);
     expect(q.discarded).toEqual([]);
-    await tap();
-    expect(q.discarded).toEqual(["i-anon"]);
   });
 });
 

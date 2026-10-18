@@ -85,10 +85,13 @@ vi.mock("../supabase", () => ({
 }));
 
 let signedIn: FakeSession | null = A;
+let signGeneration = 0;
 vi.mock("../signedIn", () => ({
   signedInEmail: () => signedIn?.user.email ?? null,
   signedInUserId: () => signedIn?.user.id ?? null,
   rememberSignedIn: () => {},
+  signInMark: () => ({ userId: signedIn?.user.id ?? null, generation: signGeneration }),
+  stillSignedInAs: (mark: { userId: string | null; generation: number }, who: string) => mark.generation === signGeneration && mark.userId === who && signedIn?.user.id === who,
   subscribeSignedIn: () => () => {},
 }));
 vi.mock("./telemetry", () => ({ logOfflineEvent: () => {} }));
@@ -101,6 +104,13 @@ vi.mock("../voiceAudio", () => ({
   },
 }));
 
+// Test cleanup owns its fixture store; production discard is owner/state guarded.
+vi.mock("./outboxStore", async importOriginal => {
+  const actual = await importOriginal<typeof import("./outboxStore")>();
+  const fixtureStore = new actual.MemoryOutboxStore();
+  return { ...actual, createDefaultStore: () => fixtureStore, fixtureStore };
+});
+const { fixtureStore } = await import("./outboxStore") as unknown as { fixtureStore: import("./outbox-core").OutboxStore };
 const outbox = await import("./outbox");
 
 const PUNCH = (clientId: string) => ({
@@ -125,6 +135,7 @@ function setOnline(value: boolean) {
 }
 /** Sign out and sign in as somebody else (or nobody), the way the phone would. */
 function switchTo(who: FakeSession | null) {
+  if (signedIn?.user.id !== who?.user.id) signGeneration++;
   current = who;
   signedIn = who;
 }
@@ -134,7 +145,7 @@ async function clearQueue() {
   // tests but the first, which starts on an empty store anyway.
   const list = (outbox as { listAll?: () => Promise<{ id: string }[]> }).listAll;
   if (!list) return;
-  for (const e of await list()) await outbox.discardFailed(e.id);
+  for (const e of await list()) await fixtureStore.delete(e.id);
 }
 
 beforeEach(async () => {
@@ -367,10 +378,10 @@ describe("a queued write goes out only as the person who saved it", () => {
     expect(outbox.getCounts().clock).toBe(0);
     expect(outbox.getClockQueueSnapshot().entries).toEqual([]);
 
-    // The way out is throwing it away, by hand.
-    await outbox.discardFailed(legacy.id);
-    expect(await outbox.listAll()).toEqual([]);
-    expect(outbox.getUnknownOwnerCount()).toBe(0);
+    // Unknown authorship must be preserved for a separate recovery decision.
+    await expect(outbox.discardFailed(legacy.id)).rejects.toThrow();
+    expect((await outbox.listAll()).map(e => e.id)).toEqual([legacy.id]);
+    expect(outbox.getUnknownOwnerCount()).toBe(1);
   });
 
   it("install media handed over while someone else is signed in stays its photographer's, never the drainer's", async () => {
@@ -472,5 +483,50 @@ describe("a queued write goes out only as the person who saved it", () => {
     await outbox.drain();
     expect(sent.map((s) => [s.fn, s.token])).toEqual([["hex_portal_save_case", "token-A"]]);
     expect(await outbox.listAll()).toEqual([]);
+  });
+});
+
+
+describe("atomic manual write actions", () => {
+  async function failedPhoto() {
+    await outbox.enqueueClockIn({ projectId: "p1", costCodeId: "cc1", punch: PUNCH("manual-fixture") });
+    const [entry] = await outbox.listAll();
+    const failed = { ...entry, status: "failed" as const, attemptCount: 8, lastError: "fixture failure" };
+    await fixtureStore.put(failed, new Blob(["original"]));
+    return failed;
+  }
+  it("retains foreign and pending writes, including their original media", async () => {
+    const e = await failedPhoto(); switchTo(B);
+    await expect(outbox.retryFailed(e.id)).rejects.toThrow();
+    await expect(outbox.discardFailed(e.id)).rejects.toThrow();
+    switchTo(A); await fixtureStore.put({ ...e, status: "queued" });
+    await expect(outbox.discardFailed(e.id)).rejects.toThrow();
+    expect(await (await fixtureStore.getBlob(e.id))!.text()).toBe("original");
+  });
+  it("retries a failed owned write without changing intent or dropping media", async () => {
+    const e = await failedPhoto(); await outbox.retryFailed(e.id);
+    expect(await outbox.listAll()).toEqual([expect.objectContaining({ id: e.id, ownerId: e.ownerId, payload: e.payload, status: "queued", attemptCount: 0 })]);
+    expect(await (await fixtureStore.getBlob(e.id))!.text()).toBe("original");
+    await fixtureStore.put(e); await outbox.discardFailed(e.id);
+    expect(await outbox.listAll()).toEqual([]); expect(await fixtureStore.getBlob(e.id)).toBeNull();
+  });
+  it("does not resurrect a removed row or delete a changed row", async () => {
+    const e = await failedPhoto();
+    const swap = fixtureStore.swap.bind(fixtureStore);
+    vi.spyOn(fixtureStore, "swap").mockImplementationOnce(async (...args) => { await fixtureStore.delete(e.id); return swap(...args); });
+    await expect(outbox.retryFailed(e.id)).rejects.toThrow("changed");
+    expect(await outbox.listAll()).toEqual([]);
+    await fixtureStore.put(e, new Blob(["retained"]));
+    vi.spyOn(fixtureStore, "swap").mockImplementationOnce(async (...args) => { await fixtureStore.put({ ...e, status: "sending" }); return swap(...args); });
+    await expect(outbox.discardFailed(e.id)).rejects.toThrow("changed");
+    expect((await outbox.listAll())[0].status).toBe("queued");
+    expect(await fixtureStore.getBlob(e.id)).not.toBeNull();
+    vi.restoreAllMocks();
+  });
+  it("rejects a sign-out and same-owner sign-in during the storage wait", async () => {
+    const e = await failedPhoto(); const swap = fixtureStore.swap.bind(fixtureStore);
+    vi.spyOn(fixtureStore, "swap").mockImplementationOnce(async (...args) => { switchTo(null); switchTo(A); return swap(...args); });
+    await expect(outbox.discardFailed(e.id)).rejects.toThrow("changed");
+    expect((await outbox.listAll())[0]).toMatchObject(e); vi.restoreAllMocks();
   });
 });

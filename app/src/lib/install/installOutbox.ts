@@ -19,7 +19,7 @@ import {
 } from "../offline/outbox-core";
 import { enqueueUpload, listAll } from "../offline/outbox";
 import { stableId } from "../offline/stableId";
-import { signedInEmail, signedInUserId, stillSignedInAs, type SignInMark } from "../signedIn";
+import { signedInEmail, signedInUserId, signInMark, stillSignedInAs, type SignInMark } from "../signedIn";
 import type { Ownership, Signer } from "../offline/entryOwner";
 import { submitInstallEvent, type InstallSendAs, type SubmitInstallParams } from "./api";
 import { clientWithToken, supabase } from "../supabase";
@@ -490,8 +490,8 @@ export async function enqueueInstall(
  *
  * `ownerId`, written at Submit since #660, decides. A record saved before
  * installs carried it goes by the one name it does carry, the submitter's
- * email. A record naming nobody is `unknown`: never sent as anyone, and only
- * a person throwing it away clears it.
+ * email. A record naming nobody is `unknown`: retained for recovery, never
+ * sent or removed through owner-only manual actions.
  */
 export function installOwnership(record: InstallOutboxRecord, signer: Signer): Ownership {
   const owner = record.payload.ownerId;
@@ -921,6 +921,35 @@ export async function listFailedInstalls(): Promise<InstallOutboxRecord[]> {
   return (await listInstalls()).filter((r) => r.status === "failed");
 }
 
+/** Check identity and the latest checkpoint inside the same transaction.
+ * A failed record has no active sender; retry preserves its media and stage.
+ * No stale snapshot can recreate a removed record or erase an active stage. */
+async function changeFailedInstall(id: string, discard: boolean): Promise<void> {
+  const mark = signInMark(), signer = signerNow();
+  const db = await openDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      const read = store.get(id);
+      let changed = false;
+      tx.oncomplete = () => changed ? resolve() : reject(new Error("Saved install changed or is not yours; refresh before trying again"));
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error ?? new Error("Install action aborted"));
+      read.onsuccess = () => {
+        const row = read.result as InstallStoreRow | undefined;
+        const record = row && deserializeInstallOutbox(row.meta);
+        if (!record || record.status !== "failed" || installOwnership(record, signer) !== "mine"
+          || !mark.userId || !stillSignedInAs(mark, mark.userId) || sendingIds.has(id)) return;
+        if (discard) store.delete(id);
+        else store.put({ ...row, meta: serializeInstallOutbox({ ...record, status: "pending", attemptCount: 0, nextAttemptAt: Date.now(), lastError: null }) });
+        changed = true;
+      };
+    });
+  } finally { db.close(); }
+  notifySyncListeners();
+}
+
 /**
  * Put one failed install back in the queue and try it now.
  *
@@ -934,20 +963,7 @@ export async function listFailedInstalls(): Promise<InstallOutboxRecord[]> {
  * button does nothing.
  */
 export async function retryFailedInstall(id: string): Promise<void> {
-  const rows = await listRows();
-  const row = rows.find((r) => r.id === id);
-  if (!row) return;
-  const record = deserializeInstallOutbox(row.meta);
-  if (!record || record.status !== "failed") return;
-  const revived: InstallOutboxRecord = {
-    ...record,
-    status: "pending",
-    attemptCount: 0,
-    nextAttemptAt: Date.now(),
-    lastError: null,
-  };
-  await putRecord(revived, row.blobs ?? []);
-  notifySyncListeners();
+  await changeFailedInstall(id, false);
   await flushInstallOutbox();
 }
 
@@ -959,8 +975,7 @@ export async function retryFailedInstall(id: string): Promise<void> {
  * makes, never something a cleanup sweep does on its own.
  */
 export async function discardFailedInstall(id: string): Promise<void> {
-  await removeRecord(id);
-  notifySyncListeners();
+  await changeFailedInstall(id, true);
 }
 
 /**

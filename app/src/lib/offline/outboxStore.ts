@@ -101,12 +101,12 @@ export class MemoryOutboxStore implements OutboxStore {
     return this.blobs.get(id) ?? null;
   }
 
-  async swap(id: string, expected: OutboxEntry | null, next: OutboxEntry | null): Promise<boolean> {
+  async swap(id: string, expected: OutboxEntry | null, next: OutboxEntry | null, canCommit?: () => boolean): Promise<boolean> {
     const stored = this.entries.get(id);
     const current = stored === undefined ? null : deserializeEntry(stored);
     // An unreadable row matches nothing: it is not the entry anyone read.
     if (stored !== undefined && current === null) return false;
-    if (!sameState(current, expected)) return false;
+    if (!sameState(current, expected) || (canCommit && !canCommit())) return false;
     if (next) {
       this.entries.set(id, serializeEntry(next));
     } else {
@@ -496,7 +496,7 @@ export class IndexedDbOutboxStore implements OutboxStore {
    * that decides and the write it allows cannot be split by another write —
    * least of all by one that was queued behind a stalled open and runs late.
    */
-  async swap(id: string, expected: OutboxEntry | null, next: OutboxEntry | null): Promise<boolean> {
+  async swap(id: string, expected: OutboxEntry | null, next: OutboxEntry | null, canCommit?: () => boolean): Promise<boolean> {
     const db = await openDb();
     try {
       return await writeTransaction<boolean>(db, "swap", (tx, result, fail) => {
@@ -512,7 +512,7 @@ export class IndexedDbOutboxStore implements OutboxStore {
             const row = rowRead.result as Row | undefined;
             const overlay = metaRead.result as MetaRow | undefined;
             const current = row ? deserializeEntry(effectiveMeta(row, overlay)) : null;
-            const ok = !(row && current === null) && sameState(current, expected);
+            const ok = !(row && current === null) && sameState(current, expected) && (!canCommit || canCommit());
             if (ok) {
               if (next) {
                 if (row) metadata.put({ id, meta: serializeEntry(next) } satisfies MetaRow);

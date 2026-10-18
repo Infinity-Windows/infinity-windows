@@ -279,6 +279,7 @@ function installFakeIndexedDb(): Map<string, FakeRow> {
       rows.delete(id);
       return settle(undefined);
     },
+    get: (id: string) => settle(rows.get(id)),
     getAll: () => settle([...rows.values()]),
   };
   const db = {
@@ -290,7 +291,7 @@ function installFakeIndexedDb(): Map<string, FakeRow> {
         oncomplete: (() => void) | null;
         onerror: (() => void) | null;
       };
-      setTimeout(() => tx.oncomplete?.(), 0);
+      setTimeout(() => setTimeout(() => tx.oncomplete?.(), 0), 0);
       return tx;
     },
     close: () => {},
@@ -1241,5 +1242,52 @@ describe("coordinated durable install stages", () => {
     await sendInstallsNow();
     expect(rows.get(row.id)).toBe(row);
     expect(outbox.handedOff).toHaveLength(0);
+  });
+});
+
+
+describe("atomic manual install actions", () => {
+  let rows: Map<string, FakeRow>;
+  beforeEach(() => { rows = installFakeIndexedDb(); });
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
+  function saved(over: Partial<InstallOutboxRecord> = {}) {
+    const record = { ...RECORD, status: "failed" as const, step: "rpc_done" as const, installEventId: "already-filed", ...over };
+    const row = { id: record.id, meta: serializeInstallOutbox(record), blobs: [new Blob(["original"])] };
+    rows.set(record.id, row); return row;
+  }
+  it("only discards failed installs belonging to the current sign-in", async () => {
+    const { discardFailedInstall } = await import("./installOutbox");
+    const original = saved();
+    rememberSignedIn({ user: { id: "other", email: "other@crew.com" } });
+    await expect(discardFailedInstall(original.id)).rejects.toThrow();
+    expect(rows.get(original.id)).toEqual(original);
+    rememberSignedIn({ user: { id: "installer-1", email: "installer@crew.com" } });
+    saved({ status: "pending" });
+    await expect(discardFailedInstall(original.id)).rejects.toThrow();
+    saved(); await discardFailedInstall(original.id); expect(rows.size).toBe(0);
+  });
+  it("retry preserves checkpoint, original bytes and identity while offline", async () => {
+    const { retryFailedInstall } = await import("./installOutbox");
+    vi.stubGlobal("navigator", { onLine: false });
+    const original = saved(); await retryFailedInstall(original.id);
+    const row = rows.get(original.id)!;
+    expect(deserializeInstallOutbox(row.meta)).toMatchObject({ step: "rpc_done", installEventId: "already-filed", status: "pending", attemptCount: 0, payload: RECORD.payload });
+    expect(row.blobs).toEqual(original.blobs);
+  });
+  it("rejects missing, unreadable and ownerless installs without destroying originals", async () => {
+    const { discardFailedInstall, retryFailedInstall } = await import("./installOutbox");
+    await expect(retryFailedInstall("missing")).rejects.toThrow(); expect(rows.size).toBe(0);
+    const ownerless = saved({ payload: { ...RECORD.payload, createdBy: null, ownerId: undefined } });
+    await expect(retryFailedInstall(ownerless.id)).rejects.toThrow();
+    await expect(discardFailedInstall(ownerless.id)).rejects.toThrow();
+    expect(rows.get(ownerless.id)).toEqual(ownerless);
+    const row = saved(); row.meta = "unreadable";
+    await expect(discardFailedInstall(row.id)).rejects.toThrow(); expect(rows.get(row.id)).toEqual(row);
+  });
+  it("rejects a sign-in generation change while opening storage", async () => {
+    const { discardFailedInstall } = await import("./installOutbox");
+    const row = saved(); const action = discardFailedInstall(row.id);
+    rememberSignedIn(null); rememberSignedIn({ user: { id: "installer-1", email: "installer@crew.com" } });
+    await expect(action).rejects.toThrow(); expect(rows.get(row.id)).toEqual(row);
   });
 });

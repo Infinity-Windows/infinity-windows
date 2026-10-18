@@ -2943,8 +2943,8 @@ export const CATALOG = {
     es: "Guardado antes de una actualización — Forge no puede saber quién lo guardó",
   },
   "stuck.unknown.body": {
-    en: "An older version didn't note who saved these, so Forge won't send them as anyone. If one was yours, tell your foreman, then throw it away.",
-    es: "Una versión anterior no anotó quién guardó esto, así que Forge no lo enviará a nombre de nadie. Si algo era tuyo, avísale a tu capataz y luego elimínalo.",
+    en: "An older version didn't note who saved these. Forge keeps them on this device and won't send or discard them. Ask your foreman to review the original work before recovery.",
+    es: "Una versión anterior no anotó quién guardó esto. Forge lo conserva en este dispositivo y no lo enviará ni eliminará. Pide a tu capataz que revise el trabajo original antes de recuperarlo.",
   },
   // A legacy CLOCK punch with no known owner is different from every other
   // unknown-owner row: throwing it away can make a real clock-in or

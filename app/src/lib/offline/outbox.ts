@@ -1760,14 +1760,16 @@ export async function pendingPhotoEntries(): Promise<{ id: string; createdAt: nu
  * half-fixed state this feature exists to end.
  */
 export async function retryFailed(id: string): Promise<void> {
+  const mark = signInMark(), signer = signerNow();
+  const allowed = () => Boolean(mark.userId && stillSignedInAs(mark, mark.userId));
   const all = await store.getAll();
-  const target = all.find((e) => e.id === id);
-  if (!target) return;
+  const target = all.find(e => e.id === id);
+  if (!target || target.status !== "failed" || !belongsTo(target, signer)) throw new Error("This saved write is no longer yours to retry");
   const now = Date.now();
-  await store.put(retryEntry(target, now));
+  if (!await store.swap(id, target, retryEntry(target, now), allowed)) throw new Error("Saved write changed; refresh before retrying");
   for (const e of all) {
-    if (e.status === "failed" && e.dependsOn === id) {
-      await store.put(retryEntry(e, now));
+    if (e.status === "failed" && e.dependsOn === id && belongsTo(e, signer)) {
+      await store.swap(e.id, e, retryEntry(e, now), allowed);
     }
   }
   await refresh();
@@ -1781,6 +1783,10 @@ export async function retryFailed(id: string): Promise<void> {
  * somebody did, so it must be a decision, never a cleanup sweep.
  */
 export async function discardFailed(id: string): Promise<void> {
-  await store.delete(id);
+  const mark = signInMark(), signer = signerNow();
+  const target = (await store.getAll()).find(e => e.id === id);
+  if (!target || target.status !== "failed" || !belongsTo(target, signer)) throw new Error("This saved write is no longer yours to discard");
+  const allowed = () => Boolean(mark.userId && stillSignedInAs(mark, mark.userId));
+  if (!await store.swap(id, target, null, allowed)) throw new Error("Saved write changed; refresh before discarding");
   await refresh();
 }

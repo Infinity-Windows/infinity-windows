@@ -864,7 +864,8 @@ export interface OutboxStore {
    * finally answers after the watchdog recorded the attempt, a failure record
    * for an entry that has since been sent or thrown away — changes nothing.
    */
-  swap(id: string, expected: OutboxEntry | null, next: OutboxEntry | null): Promise<boolean>;
+  /** Optional synchronous guard runs at the atomic write boundary (e.g. sign-in generation). */
+  swap(id: string, expected: OutboxEntry | null, next: OutboxEntry | null, canCommit?: () => boolean): Promise<boolean>;
   /** Values only: save a verified receipt and remove this exact write in one transaction. */
   acknowledgeValues?(entry: OutboxEntry, receipt: unknown, context?: { signal?: AbortSignal; canCommit?: () => boolean }): Promise<boolean>;
 }
