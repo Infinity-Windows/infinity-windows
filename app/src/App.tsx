@@ -1,3 +1,4 @@
+import { initOutboxAutoFlush, stopOutboxAutoFlush } from "./lib/offline/outbox";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
@@ -494,6 +495,7 @@ function SectionAura() {
 }
 
 export default function App() {
+  useEffect(() => { initOutboxAutoFlush(); return stopOutboxAutoFlush; }, []);
   const [session, setSession] = useState<Session | null>(null);
   /** The auth server ended this phone's sign-in; nobody tapped Sign out. */
   const [signedOutByServer, setSignedOutByServer] = useState(false);

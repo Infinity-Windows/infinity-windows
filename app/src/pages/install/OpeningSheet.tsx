@@ -99,7 +99,6 @@ import { useToolboxToday } from "../../lib/useToolboxGate";
 import { useClock } from "../../lib/clockContext";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import {
-  initInstallOutboxAutoFlush,
   submitInstallViaOutbox,
 } from "../../lib/install/installOutbox";
 import {
@@ -269,9 +268,6 @@ export function OpeningSheet() {
   };
 
   useEffect(() => {
-    // The pill starts this too; here as well so a sheet opened straight from
-    // a cold link is never waiting on a component further up the tree.
-    initInstallOutboxAutoFlush();
     // The transcript retry stays with this sheet on purpose — see
     // lib/install/transcriptions.ts for why the pill does not start it.
     initTranscriptionAutoRetry();

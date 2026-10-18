@@ -50,7 +50,6 @@ import { myTodayCompletion } from "./toolbox";
 import {
   confirmedSignatureFor,
   getToolboxQueueSnapshot,
-  initOutboxAutoFlush,
   signingTimeAtLeast,
   subscribe,
   subscribeToolboxSent,
@@ -170,11 +169,7 @@ export function useToolboxToday(profileId: string | null | undefined, enabled = 
     () => confirmedSignatureFor(profileId),
     () => confirmedSignatureFor(profileId),
   );
-  // The queue has to have been read for a signature on it to count; whoever
-  // mounts first asks (it is once per session).
-  useEffect(() => {
-    initOutboxAutoFlush();
-  }, []);
+  // App bootstrap hydrates the queue before a pending signature counts.
   // The moment Forge files a signature this phone sent, its row becomes the
   // cached answer — without it the screens would fall back to the last read,
   // the empty one from before the signature, until a re-read came back. Any

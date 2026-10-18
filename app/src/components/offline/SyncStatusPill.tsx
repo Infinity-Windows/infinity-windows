@@ -42,7 +42,6 @@ import { combineQueues, PILL_DESTINATION } from "../../lib/offline/pillQueues";
 import { withHeld } from "../../lib/offline/pillHeld";
 import { useConnection } from "../../lib/offline/useWeakSignal";
 import {
-  initInstallOutboxAutoFlush,
   installCounts,
   subscribeSyncListeners,
 } from "../../lib/install/installOutbox";
@@ -54,7 +53,6 @@ import { pendingLegacyUploadCount } from "../../lib/install/legacyUploadQueue";
 function useInstallOutboxCount(): { pending: number; failed: number; theirs: number; unknown: number } {
   const [count, setCount] = useState({ pending: 0, failed: 0, theirs: 0, unknown: 0 });
   useEffect(() => {
-    initInstallOutboxAutoFlush();
     let cancelled = false;
     const refresh = () => {
       void installCounts().then((next) => {

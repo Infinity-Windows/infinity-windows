@@ -379,7 +379,10 @@ test("a photo whose send never answers does not hold the others: they upload, an
   expect(server.rows.map((r) => r.client_id)).not.toContain(held.id);
 
   // Its backoff passes and the next drain sends it: all three, once each.
-  await page.clock.fastForward("00:45");
+  // Let IndexedDB continuations and the next deadline interleave with time.
+  // fastForward jumps before the final attachment's async drain has settled,
+  // leaving its newly installed timer in the future of a frozen clock.
+  await page.clock.runFor("00:45");
   await expect.poll(() => server.rows.length, { timeout: 30_000 }).toBe(3);
   expect(new Set(server.rows.map((r) => r.client_id)).size).toBe(3);
   expect(server.rows.map((r) => r.client_id)).toContain(held.id);
