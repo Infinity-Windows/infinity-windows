@@ -555,6 +555,8 @@ describe("clock verification at the sheet", () => {
     const buttons = [...el.querySelectorAll<HTMLButtonElement>("button")];
     await act(async () => buttons.find(b => b.textContent === "Check again")!.click());
     expect(retry).toHaveBeenCalledOnce();
+    await act(async () => el.querySelector<HTMLAnchorElement>('a[href="/diagnostics"]')!.click());
+    expect(close).toHaveBeenCalledOnce();
     expect(clockInCalls()).toHaveLength(0);
     expect(server.calls.some(c => c.fn === "finish_shift")).toBe(false);
   });
