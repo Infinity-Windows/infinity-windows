@@ -27,7 +27,7 @@ export function ClockButtons({ buttons, deps }: { buttons: ClockButton[]; deps?:
   const t = useT();
   const clock = useClock();
   const restoring = useIsRestoring();
-  const clockKnown = Boolean(clock.profileId) && !clock.loading && !restoring;
+  const clockKnown = Boolean(clock.profileId) && !clock.loading && !restoring && !clock.verification?.recoveryRequired;
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<OneTapOutcome | null>(null);
   if (!buttons.length) return null;

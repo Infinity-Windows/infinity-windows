@@ -317,6 +317,10 @@ jobs:
       # their own, so a branch appending to the long list above doesn't collide
       # with this one.
       - run: npm run e2e -- clock-in-once.spec.ts crew-clock.spec.ts
+      - name: Failed clock refresh recovers in Chromium and Safari
+        run: |
+          npm run e2e -- clock-refresh.spec.ts
+          npm run e2e -- clock-refresh.spec.ts --browser=webkit
       - name: Receipt images open full screen in Chromium and Safari
         run: |
           npm run e2e -- receipt-viewer.spec.ts receipts.spec.ts pdf-receipts.spec.ts photos-kind.spec.ts

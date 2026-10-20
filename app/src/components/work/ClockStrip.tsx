@@ -60,6 +60,9 @@ import { ToolboxSignCard } from "../clock/ToolboxSignCard";
 import { ToolboxSignStatus } from "../clock/ToolboxSignStatus";
 import type { ToolboxTodayView } from "../../lib/useToolboxGate";
 import { JobPickSheet, type JobPick } from "./JobPickSheet";
+import { ClockReadNotice } from "../clock/ClockReadNotice";
+import type { ClockReadState } from "../../lib/clockReadState";
+import { signInMark, stillSignedInAs } from "../../lib/signedIn";
 
 function clockInLabel(iso: string): string {
   const d = new Date(iso);
@@ -76,6 +79,8 @@ export interface ClockStripProps {
    * yet, and nothing that punches is offered.
    */
   clockKnown: boolean;
+  verification?: ClockReadState;
+  onRecheck?: () => void;
   /** Today's published job, to preselect (K1.3). */
   todayJobId: string | null;
   /** The schedule has answered (or failed) — priming waits for it, so the
@@ -88,10 +93,12 @@ export interface ClockStripProps {
   onShiftChanged: () => void;
 }
 
-export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleSettled, talk, gate, toolboxDone, onShiftChanged }: ClockStripProps) {
+export function ClockStrip({ profileId, shift, clockKnown, verification, onRecheck, todayJobId, scheduleSettled, talk, gate, toolboxDone, onShiftChanged }: ClockStripProps) {
   const t = useT();
   const queryClient = useQueryClient();
   const onClock = isOnTheClock(shift);
+  const stateRef = useRef({ shift, clockKnown, verification });
+  stateRef.current = { shift, clockKnown, verification };
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!onClock) return;
@@ -174,7 +181,12 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
 
   const doStart = useMutation({
     mutationFn: async (tap: StartTap) => {
+      const mark = signInMark();
+      const allowed = () => stateRef.current.clockKnown && !stateRef.current.verification?.recoveryRequired &&
+        !stateRef.current.shift && stillSignedInAs(mark, profileId);
+      if (!allowed()) throw new Error(t("clockBadge.check"));
       const geo = await captureGeoSoft();
+      if (!allowed()) throw new Error(t("clockBadge.check"));
       return startShiftOrQueue({
         profileId,
         projectId: tap.projectId,
@@ -234,6 +246,9 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
   };
 
   // ---- Not known yet --------------------------------------------------------
+  if (verification?.recoveryRequired) {
+    return <ClockReadNotice state={verification} onRetry={onRecheck ?? (() => {})} />;
+  }
   if (!clockKnown) {
     return (
       <section
@@ -259,6 +274,7 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
     return (
       <>
         <section className="ws-card ws-clock ws-clock--on" aria-label={t("work.clock.a11y")} data-testid="ws-clock">
+          {verification?.status === "saved" && <ClockReadNotice state={verification} onRetry={onRecheck ?? (() => {})} />}
           {/* One row, one line: the fact and the job code on the left, the
               timer on the right. The job's full name is on the Today card
               under it (and in this label's tooltip); a row that wrapped is

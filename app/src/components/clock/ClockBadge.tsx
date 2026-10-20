@@ -35,6 +35,12 @@ export function ClockBadge() {
     return () => clearInterval(tick);
   }, [ticking]);
 
+  if (clock.verification?.recoveryRequired || clock.verification?.status === "saved") {
+    return <button type="button" className="clock-badge" onClick={clock.openClock} data-testid="clock-badge">
+      <span className="clock-badge-icon" aria-hidden><ClockIcon size={18}/></span>
+      <span className="clock-badge-text">{t(clock.verification.recoveryRequired ? "clockBadge.check" : "clockBadge.saved")}</span>
+    </button>;
+  }
   if (!shift) return null;
 
   const onBreak = Boolean(shift.break_started_at);

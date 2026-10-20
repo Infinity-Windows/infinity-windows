@@ -252,6 +252,8 @@ export function WorkScreen() {
         profileId={profileId}
         shift={shift}
         clockKnown={clockKnown}
+        verification={clock.verification}
+        onRecheck={clock.recheck}
         todayJobId={todayJobId}
         scheduleSettled={schedule.isSuccess || schedule.isError}
         talk={todayTalk.data ?? null}

@@ -45,6 +45,8 @@ import { useOpenShiftView } from "../../lib/useOpenShiftView";
 import { ToolboxSignCard } from "./ToolboxSignCard";
 import { ToolboxSignStatus } from "./ToolboxSignStatus";
 import { ClockQueueStatus } from "./ClockQueueStatus";
+import { ClockReadNotice } from "./ClockReadNotice";
+import { signInMark, stillSignedInAs } from "../../lib/signedIn";
 import {
   clockIn,
   elapsedWorkSeconds,
@@ -80,6 +82,8 @@ export function ClockInBlock() {
   // phone's queued punches applied (K0.1) — so the block and the nav timer
   // always agree, and a clock-in still on the phone is never offered again.
   const openShift = useOpenShiftView(profileId);
+  const clockStateRef = useRef(openShift);
+  clockStateRef.current = openShift;
   const recents = useQuery({
     queryKey: ["recentJobs", profileId],
     queryFn: () => listRecentJobs(profileId!),
@@ -257,7 +261,12 @@ export function ClockInBlock() {
   const tapNow = (): StartTap => ({ punch: mintPunch(), ...picksRef.current });
   const doStart = useMutation({
     mutationFn: async (tap: StartTap): Promise<{ behindSignature: boolean }> => {
+      const mark = signInMark();
+      const allowed = () => !clockStateRef.current.verification.recoveryRequired && !clockStateRef.current.shift &&
+        Boolean(profileId && stillSignedInAs(mark, profileId));
+      if (!allowed()) throw new Error(t("clockBadge.check"));
       const geo = await captureGeoSoft();
+      if (!allowed()) throw new Error(t("clockBadge.check"));
       // Today's signature is still on this phone: the punch waits behind it
       // in the outbox (see the note at the top). It shows as clocked in at
       // once, from the queue, like any queued punch (K0.1), and is paid from
@@ -354,6 +363,9 @@ export function ClockInBlock() {
   // than a half-built card. In the running app the provider has this cached, so
   // there is no flash.
   if (!profileId) return null;
+  if (openShift.verification.recoveryRequired) {
+    return <ClockReadNotice state={openShift.verification} onRetry={openShift.recheck} />;
+  }
 
   // ---- ON THE CLOCK: a slim status bar. Switch / Clock out open the full
   // sheet, which owns the injury flag and the runaway-shift finish guard. ----
@@ -364,6 +376,7 @@ export function ClockInBlock() {
       : t("clock.status.working");
     return (
       <section className="clockin-bar" aria-label={t("clockblock.onClock")}>
+        {openShift.verification.status === "saved" && <ClockReadNotice state={openShift.verification} onRetry={openShift.recheck} />}
         <span className="clockin-live-dot" aria-hidden />
         <div className="clockin-bar-job">
           <span className="clockin-bar-label">{t("clockblock.onClock")}</span>

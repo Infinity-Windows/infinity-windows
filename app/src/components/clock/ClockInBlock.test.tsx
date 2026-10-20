@@ -8,16 +8,19 @@
 // today's toolbox talk.
 
 import { act } from "react";
+import {MemoryRouter} from "react-router-dom";
+import {clockReadFor} from "../../lib/clockRead";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 // Keep the read helpers real (formatClock/elapsedWorkSeconds/isOnTheClock) but
 // hold the network still: the writes and reads all become resolved spies, so a
 // cache invalidation after a punch never reaches for a server behind the test.
 // vi.mock is hoisted above the file, so the spy is defined via vi.hoisted.
-const { clockInSpy, costCodesHolder } = vi.hoisted(() => ({
+const { clockInSpy, costCodesHolder, openShiftHolder } = vi.hoisted(() => ({
   clockInSpy: vi.fn(async () => ({}) as unknown),
+  openShiftHolder: { current: null as unknown },
   // The project-aware clock picker (slice 3) reads getClockCostCodesForProject;
   // this holder lets each mount seed what it returns.
   costCodesHolder: { current: [] as unknown[] },
@@ -27,7 +30,7 @@ vi.mock("../../lib/timeclock", async (importOriginal) => {
   return {
     ...actual,
     clockIn: clockInSpy,
-    getOpenShift: vi.fn(async () => null),
+    getOpenShift: vi.fn(async () => openShiftHolder.current),
     listCostCodes: vi.fn(async () => []),
     listRecentJobs: vi.fn(async () => []),
     getJobLastGeo: vi.fn(async () => null),
@@ -104,11 +107,18 @@ vi.mock("../../lib/toolbox", async (importOriginal) => {
 
 import { ClockInBlock } from "./ClockInBlock";
 import type { ClockPunch, TimeShift } from "../../lib/timeclock";
-import { discardFailed, listAll } from "../../lib/offline/outbox";
+import { discardFailed, getClockQueueSnapshot, listAll, recoverAndDrain } from "../../lib/offline/outbox";
 import { localDateOf } from "../../lib/toolboxSign";
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
+
+beforeAll(async () => {
+  // A mounted app waits for the phone's durable queue to be read. Start the
+  // fixture from that same ready state instead of relying on test order.
+  await recoverAndDrain();
+  expect(getClockQueueSnapshot().ready).toBe(true);
+});
 
 afterEach(async () => {
   act(() => root?.unmount());
@@ -146,6 +156,8 @@ interface Seed {
 }
 
 function mount(seed: Seed = {}): HTMLElement {
+  rememberSignedIn({user:{id:"me",email:"me@example.test"}});
+  openShiftHolder.current = seed.shift ?? null;
   const qc = new QueryClient({
     defaultOptions: {
       queries: {
@@ -164,6 +176,8 @@ function mount(seed: Seed = {}): HTMLElement {
     display_name: "Dana",
   });
   qc.setQueryData(["openShift", "me"], seed.shift ?? null);
+  // These existing picker tests start from a clock already confirmed in this session.
+  clockReadFor(qc,"me").confirm(seed.shift??null);
   // The picker follows the chosen job; seed both the primed ("p1") and unprimed
   // ("all") scopes so the cost codes are there synchronously either way, and
   // point the mocked fetch at the same list for any other scope.
@@ -186,7 +200,7 @@ function mount(seed: Seed = {}): HTMLElement {
   act(() => {
     root!.render(
       <QueryClientProvider client={qc}>
-        <ClockInBlock />
+        <MemoryRouter><ClockInBlock /></MemoryRouter>
       </QueryClientProvider>,
     );
   });
@@ -970,7 +984,9 @@ describe("a clock punch still on the phone (K0.1)", () => {
   const queuedIds: string[] = [];
   const PUNCH = {
     clientId: "9b2f0c14-7d3a-4e51-8a06-3f2c9d1e4b77",
-    tappedAt: "2026-09-23T13:02:00.000Z",
+    // A saved punch has had time to accrue work; a tap minted on this exact
+    // millisecond correctly displays 0:00:00 and proves nothing about timing.
+    tappedAt: new Date(Date.now() - 2 * 60_000).toISOString(),
     clockCheckedAt: null,
     clockSkewMs: null,
   };

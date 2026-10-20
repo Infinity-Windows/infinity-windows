@@ -13,6 +13,7 @@ import { SignMyTimecardCard } from "../components/timecard/SignOffCard";
 import { useT } from "../lib/i18n";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { isForemanPlus } from "../lib/install/types";
+import { ClockReadNotice } from "../components/clock/ClockReadNotice";
 
 export function Timecard() {
   const t = useT();
@@ -34,6 +35,7 @@ export function Timecard() {
         <BackChip fallback="/" label={t("timecard.home")} />
       </header>
       {me.data?.id && <SignMyTimecardCard profileId={me.data.id} />}
+      {myOpen.verification.status !== "verified" && <ClockReadNotice state={myOpen.verification} onRetry={myOpen.recheck} />}
       {me.data?.id && (
         <TimecardPanel
           personId={me.data.id}
@@ -44,7 +46,7 @@ export function Timecard() {
           canApprove={isForemanPlus(effectiveRole)}
           projects={projects.data ?? []}
           costCodes={costCodes.data ?? []}
-          openShift={myOpen.shift}
+          openShift={myOpen.verification.recoveryRequired ? null : myOpen.shift}
         />
       )}
     </div>

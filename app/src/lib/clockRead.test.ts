@@ -1,0 +1,16 @@
+import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
+import { createClockRead } from "./clockRead";
+import { rememberSignedIn } from "./signedIn";
+import { CLOCK_READ_TIMEOUT_MS } from "./clockReadState";
+import type { TimeShift } from "./timeclock";
+const row={id:"s",profile_id:"a",clock_in_at:"2026-10-20T13:00:00Z",status:"open",clock_out_at:null} as TimeShift;
+beforeEach(()=>{rememberSignedIn({user:{id:"a"}});vi.useFakeTimers();});
+afterEach(()=>{vi.useRealTimers();rememberSignedIn(null);});
+describe("actual clock read receipts",()=>{
+ it("only a scoped completed read verifies a row, including null",async()=>{const read=vi.fn(async()=>row);const r=createClockRead("a",read);expect(r.snapshot().checkedAt).toBe(0);expect(await r.load()).toBe(row);expect(r.snapshot()).toMatchObject({checking:false,failed:false});expect(r.snapshot().checkedAt).toBeGreaterThan(0);const empty=createClockRead("a",async()=>null);expect(await empty.load()).toBeNull();expect(empty.snapshot().fingerprint).toBe("null");});
+ it("ends an authentication-before-fetch hang and ignores its late answer",async()=>{let resolve!:(s:TimeShift)=>void;let signal:AbortSignal|undefined;const r=createClockRead("a",(_id,s)=>{signal=s;return new Promise<TimeShift>(x=>{resolve=x;});});const result=r.load().catch(e=>e);await vi.advanceTimersByTimeAsync(CLOCK_READ_TIMEOUT_MS);expect((await result).message).toContain("timed out");expect(signal?.aborted).toBe(true);expect(r.snapshot()).toMatchObject({checking:false,failed:true,checkedAt:0});resolve(row);await Promise.resolve();expect(r.snapshot().checkedAt).toBe(0);});
+ it("a retry can succeed after a timed-out read and the old result cannot overwrite it",async()=>{let first!:(s:TimeShift)=>void;const read=vi.fn().mockImplementationOnce(()=>new Promise<TimeShift>(x=>{first=x;})).mockResolvedValueOnce(null);const r=createClockRead("a",read);const wait=r.load().catch(e=>e);await vi.advanceTimersByTimeAsync(CLOCK_READ_TIMEOUT_MS);await wait;await r.load();first(row);await Promise.resolve();expect(r.snapshot()).toMatchObject({fingerprint:"null",failed:false,checking:false});});
+ it("rejects A to B to A during a read even though profile id returns",async()=>{let resolve!:(s:TimeShift)=>void;const r=createClockRead("a",()=>new Promise<TimeShift>(x=>{resolve=x;}));const wait=r.load().catch(e=>e);rememberSignedIn({user:{id:"b"}});rememberSignedIn({user:{id:"a"}});resolve(row);expect((await wait).name).toBe("AbortError");expect(r.snapshot().checkedAt).toBe(0);});
+ it("abort ends the full read without publishing a later answer",async()=>{let resolve!:(s:TimeShift)=>void;const r=createClockRead("a",()=>new Promise<TimeShift>(x=>{resolve=x;}));const c=new AbortController();const wait=r.load(c.signal).catch(e=>e);c.abort();expect((await wait).name).toBe("AbortError");resolve(row);await Promise.resolve();expect(r.snapshot().checkedAt).toBe(0);});
+ it("rejects the wrong returned owner and reads begun while signed out",async()=>{const r=createClockRead("a",async()=>({...row,profile_id:"b"}));await expect(r.load()).rejects.toThrow("different sign-in");rememberSignedIn(null);await expect(r.load()).rejects.toThrow("sign-in changed");expect(r.snapshot().checkedAt).toBe(0);});
+});
