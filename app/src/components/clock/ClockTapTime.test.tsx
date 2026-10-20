@@ -588,3 +588,13 @@ describe("clock verification at the sheet", () => {
     expect(clockInCalls()).toHaveLength(0);
   });
 });
+
+
+it("labels a saved off-clock screen without preventing a deliberate offline Start", () => {
+  const saved: ClockReadState = { status: "saved", recoveryRequired: false, checking: false };
+  const el = render(<ClockSheet profileId="me" shift={null} verification={saved}
+    onRecheck={() => {}} onClose={() => {}} onChanged={() => {}} />);
+  expect(el.textContent).toContain("Last saved: off the clock. Changes will sync when connected.");
+  expect(el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")?.disabled).toBe(false);
+  expect(clockInCalls()).toHaveLength(0);
+});

@@ -164,6 +164,10 @@ export function useOpenShiftView(
     shift: view.shift, profileId, actorMatches: actorMatches && snapshot.ready, checking: receipt.checking || !snapshot.ready,
     verified: receiptMatches && !receipt.failed && !view.pending,
     recentVerifiedNull: receiptMatches && receipt.fingerprint === "null",
+    // A deliberately saved empty clock supports cold-relaunch offline Start.
+    // It remains saved, never verified. An unmatched/refused queued punch or
+    // an unaccepted own ACK is conflicting evidence, so null cannot bypass it.
+    savedNull: query.data === null && entries.length === 0 && !receipt.invalidated,
     queueHasState: snapshot.ready && (view.queueHasState || reader.hasAcknowledgedIntent(query.data, now)), now,
   });
   return { ...view, query, ready: snapshot.ready, verification, recheck: () => { void query.refetch({ cancelRefetch: true }); } };

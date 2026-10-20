@@ -3,7 +3,11 @@ import { useT } from "../../lib/i18n";
 import "../../lib/i18n/clockReadCatalog";
 import type { ClockReadState } from "../../lib/clockReadState";
 
-export function ClockReadNotice({ state, onRetry }: { state: ClockReadState; onRetry: () => void }) {
+export function ClockReadNotice({ state, onRetry, savedOffClock = false }: {
+  state: ClockReadState;
+  onRetry: () => void;
+  savedOffClock?: boolean;
+}) {
   const t = useT();
   const saved = state.status === "saved";
   return (
@@ -12,7 +16,8 @@ export function ClockReadNotice({ state, onRetry }: { state: ClockReadState; onR
       <h3 style={{ margin: "0 0 8px" }}>
         {t(saved ? "clockRead.saved" : state.checking ? "clockRead.checking" : "clockRead.unavailable")}
       </h3>
-      <p className="muted">{t(saved ? "clockRead.savedBody" : state.checking ? "clockRead.checkingBody" : "clockRead.body")}</p>
+      <p className="muted">{t(saved ? savedOffClock ? "clockRead.savedOffBody" : "clockRead.savedBody"
+        : state.checking ? "clockRead.checkingBody" : "clockRead.body")}</p>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
         <button type="button" className="button-like" disabled={state.checking} onClick={onRetry}>
           {t(state.checking ? "clockRead.checking" : "clockRead.retry")}

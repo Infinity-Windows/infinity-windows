@@ -35,7 +35,7 @@ export function Timecard() {
         <BackChip fallback="/" label={t("timecard.home")} />
       </header>
       {me.data?.id && <SignMyTimecardCard profileId={me.data.id} />}
-      {myOpen.verification.status !== "verified" && <ClockReadNotice state={myOpen.verification} onRetry={myOpen.recheck} />}
+      {myOpen.verification.status !== "verified" && <ClockReadNotice state={myOpen.verification} onRetry={myOpen.recheck} savedOffClock={!myOpen.shift} />}
       {me.data?.id && (
         <TimecardPanel
           personId={me.data.id}

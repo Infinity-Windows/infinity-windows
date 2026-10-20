@@ -871,7 +871,7 @@ export function ClockSheet({
         {initialPick?.returnToAsk && <Link className="clock-return-ask" to="/ask" onClick={onClose}>{t("clock.returnToAsk")}</Link>}
 
         {verification?.recoveryRequired ? <div className="clock-sheet-body"><ClockReadNotice state={verification} onRetry={onRecheck??(()=>{})}/></div> : <>
-        {verification?.status==="saved"&&<ClockReadNotice state={verification} onRetry={onRecheck??(()=>{})}/>}
+        {verification?.status==="saved"&&<ClockReadNotice state={verification} onRetry={onRecheck??(()=>{})} savedOffClock={!shift}/>}
         {/* ---- ON THE CLOCK ---- */}
         {mode === "main" && shift && (
           <div className="clock-sheet-body">

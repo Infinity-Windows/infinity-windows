@@ -214,7 +214,7 @@ test("English: a hung read reaches neutral recovery within the 15-second deadlin
   expect(server.writes).toEqual([]);
 });
 
-test("Spanish: a saved null stays unknown while a new read is held, then Start appears after verified null", async ({ page }) => {
+test("Spanish: a saved null remains an explicitly saved off-clock state while a new read is held", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "installer", uiDesign: "new", language: "es" });
   await hideWrongProjectBanner(page);
   await stubGeolocationDenied(page);
@@ -229,9 +229,10 @@ test("Spanish: a saved null stays unknown while a new read is held, then Start a
   await page.reload();
   await expect.poll(() => server.heldReads).toBeGreaterThan(0);
   const notice = page.getByTestId("work-screen").getByTestId("clock-read-notice");
-  await expect(notice.getByRole("heading", { name: "Verificando tu reloj" })).toBeVisible();
-  await expect(page.getByTestId("ws-start-day")).toHaveCount(0);
-  await evidenceShot(page, "clock-refresh-cached-null-checking-es");
+  await expect(notice.getByRole("heading", { name: "Reloj guardado" })).toBeVisible();
+  await expect(notice).toContainText("Último estado guardado: fuera de turno. Los cambios se sincronizarán al conectarte.");
+  await expect(page.getByTestId("ws-start-day")).toBeEnabled();
+  await evidenceShot(page, "clock-refresh-cached-null-saved-es");
   expect(server.writes).toEqual([]);
 
   await server.releaseHeld("none");

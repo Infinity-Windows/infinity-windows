@@ -34,6 +34,8 @@ export function clockReadState(input: {
   checking: boolean;
   verified: boolean;
   recentVerifiedNull: boolean;
+  /** Explicit stored null, after the owned queue was applied; never missing data. */
+  savedNull?: boolean;
   queueHasState: boolean;
   now: number;
 }): ClockReadState {
@@ -44,7 +46,8 @@ export function clockReadState(input: {
     // This phone's actual saved punch remains usable offline. A queued-out
     // is evidence too; an unrelated queued break/out is not.
     if ((input.queueHasState && (!shift || savedShiftIsPlausible(shift, input.now))) ||
-        savedShiftIsPlausible(shift, input.now) || (!shift && input.recentVerifiedNull)) {
+        savedShiftIsPlausible(shift, input.now) || (!shift && input.recentVerifiedNull) ||
+        (shift === null && input.savedNull)) {
       return { status: "saved", recoveryRequired: false, checking };
     }
   }

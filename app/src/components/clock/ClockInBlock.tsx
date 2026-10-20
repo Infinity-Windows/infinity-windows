@@ -453,6 +453,7 @@ export function ClockInBlock() {
 
   return (
     <section className="clockin-block" aria-label={t("clockblock.title")}>
+      {openShift.verification.status === "saved" && <ClockReadNotice state={openShift.verification} onRetry={openShift.recheck} savedOffClock />}
       <div>
         <h2 className="clockin-block-title">{t("clockblock.title")}</h2>
         <p className="clockin-block-sub">{t("clockblock.subtitle")}</p>

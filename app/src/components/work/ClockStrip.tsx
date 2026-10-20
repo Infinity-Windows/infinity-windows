@@ -329,6 +329,7 @@ export function ClockStrip({ profileId, shift, clockKnown, verification, onReche
   const busy = doStart.isPending;
   return (
     <section className="ws-card ws-clock ws-clock--off" aria-label={t("work.clock.a11y")} data-testid="ws-clock">
+      {verification?.status === "saved" && <ClockReadNotice state={verification} onRetry={onRecheck ?? (() => {})} savedOffClock />}
       <div className="ws-clock-pick">
         <div className="ws-clock-pick-text">
           <span className="ws-label">{t("work.clock.job")}</span>

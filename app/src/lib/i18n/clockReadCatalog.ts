@@ -6,6 +6,7 @@ export const CLOCK_READ_CATALOG={
  "clockRead.checkingBody":{en:"Checking Forge for your current shift. Your saved punches stay on this phone.",es:"Estamos consultando tu turno actual en Forge. Tus marcajes guardados se conservan en este teléfono."},
  "clockRead.body":{en:"We could not confirm your current shift. Your saved punches are kept. Check again before changing this clock.",es:"No pudimos confirmar tu turno actual. Tus marcajes guardados se conservan. Verifica de nuevo antes de cambiar este reloj."},
  "clockRead.saved":{en:"Saved clock",es:"Reloj guardado"},
+ "clockRead.savedOffBody":{en:"Last saved: off the clock. Changes will sync when connected.",es:"Último estado guardado: fuera de turno. Los cambios se sincronizarán al conectarte."},
  "clockRead.savedBody":{en:"Showing the clock saved on this phone. We have not confirmed it with Forge yet. Offline punches are still saved.",es:"Se muestra el reloj guardado en este teléfono. Aún no lo confirmamos con Forge. Los marcajes sin conexión siguen guardándose."},
  "clockRead.retry":{en:"Check again",es:"Verificar de nuevo"},
  "clockRead.diagnostics":{en:"Open diagnostics",es:"Abrir diagnóstico"},

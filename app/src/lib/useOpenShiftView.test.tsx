@@ -105,10 +105,10 @@ describe("mounted shared clock evidence", () => {
     expect(latest.verification).toMatchObject({ status: "unavailable", recoveryRequired: true });
   });
 
-  it("accepts a newly delivered null immediately, before the next clock tick, and expires it", async () => {
+  it("accepts a newly delivered null immediately and retains only saved evidence after expiry", async () => {
     const read = deferred<TimeShift | null>();
     fake.read.mockReturnValueOnce(read.promise).mockRejectedValue(new Error("offline"));
-    await mount(null);
+    await mount(undefined);
     expect(latest.verification.recoveryRequired).toBe(true);
     await act(async () => { vi.setSystemTime(NOW + 10); read.resolve(null); });
     await flush();
@@ -117,6 +117,30 @@ describe("mounted shared clock evidence", () => {
     await flush();
     expect(latest.verification).toMatchObject({ status: "saved", recoveryRequired: false });
     await act(async () => { await vi.advanceTimersByTimeAsync(CLOCK_READ_MAX_AGE_MS + 1000); });
+    expect(latest.verification).toMatchObject({ status: "saved", recoveryRequired: false });
+  });
+
+  it("preserves cold-relaunch offline Start from an explicit saved null, then shows its one queued tap", async () => {
+    fake.read.mockRejectedValue(new Error("offline"));
+    await mount(null);
+    expect(latest.verification).toMatchObject({ status: "saved", recoveryRequired: false });
+    expect(clockReadFor(qc, "a").snapshot().checkedAt).toBe(0);
+    const start = entry("clock_in", { projectId: "job", clientId: "original-tap" });
+    await act(async () => fake.set([start]));
+    expect(latest.shift).toMatchObject({ id: `pending:${start.id}`, clock_in_at: start.payload.tappedAt });
+    expect(latest.pending?.entryId).toBe(start.id);
+    expect(fake.state.snapshot.entries).toEqual([start]);
+  });
+
+  it("does not manufacture saved off-clock state from missing data or another actor's cache", async () => {
+    fake.read.mockRejectedValue(new Error("offline"));
+    await mount(undefined);
+    expect(latest.verification.recoveryRequired).toBe(true);
+    await act(async () => {
+      qc.setQueryData(["openShift", "a"], null);
+      rememberSignedIn({ user: { id: "b" } });
+    });
+    await flush();
     expect(latest.verification.recoveryRequired).toBe(true);
   });
 
@@ -173,7 +197,10 @@ describe("mounted shared clock evidence", () => {
     expect(latest.verification).toMatchObject({ status: "saved", recoveryRequired: false });
     await act(async () => { rememberSignedIn({ user: { id: "b" } }); rememberSignedIn({ user: { id: "a" } }); });
     expect(reader.acknowledge(clockOut, null)).toBe(false);
-    expect(latest.verification.recoveryRequired).toBe(true);
+    // Signing in again can still use the explicit saved empty cache, but
+    // never renews the old send's acknowledgement or a server-read receipt.
+    expect(reader.snapshot().checkedAt).toBe(0);
+    expect(latest.verification).toMatchObject({ status: "saved", recoveryRequired: false });
   });
 
   it("does not authorize an unrelated acknowledgement beside an applied clock-in", async () => {
@@ -255,6 +282,27 @@ describe("mounted shared clock evidence", () => {
     await act(async () => clockReadFor(qc, "a").invalidateReadProof());
     expect(latest.verification.recoveryRequired).toBe(true);
     expect(latest.verification.status).toBe("unavailable");
+    fake.read.mockRejectedValueOnce(new Error("offline"));
+    await act(async () => latest.recheck());
+    await flush();
+    expect(latest.verification.recoveryRequired).toBe(true);
+    fake.read.mockResolvedValueOnce(null);
+    await act(async () => latest.recheck());
+    await flush();
+    expect(latest.verification).toMatchObject({ status: "verified", recoveryRequired: false });
+  });
+
+  it("matching new local intent can resolve the rejected-ACK veto without treating cached null as proof", async () => {
+    await mount(null);
+    const reader = clockReadFor(qc, "a");
+    await act(async () => reader.invalidateReadProof());
+    expect(latest.verification.recoveryRequired).toBe(true);
+    const start = entry("clock_in", { projectId: "job", clientId: "new-tap" });
+    await act(async () => fake.set([start]));
+    expect(latest.shift?.id).toBe(`pending:${start.id}`);
+    expect(latest.verification.recoveryRequired).toBe(false);
+    await act(async () => { expect(reader.acknowledge(start, row({ client_id: "new-tap" }))).toBe(true); });
+    expect(reader.snapshot().invalidated).toBe(false);
   });
 
   it("accepts the queued clock-out ACK after a newer read still reports its same target", async () => {
@@ -279,7 +327,7 @@ describe("mounted shared clock evidence", () => {
   it("bounds auth-before-fetch hangs and ignores a late answer after a successful retry", async () => {
     const first = deferred<TimeShift | null>();
     fake.read.mockReturnValueOnce(first.promise).mockResolvedValueOnce(row());
-    await mount(null);
+    await mount(undefined);
     await act(async () => { await vi.advanceTimersByTimeAsync(CLOCK_READ_TIMEOUT_MS); });
     expect(fake.read.mock.calls[0][1].aborted).toBe(true);
     expect(latest.verification).toMatchObject({ status: "unavailable", recoveryRequired: true });

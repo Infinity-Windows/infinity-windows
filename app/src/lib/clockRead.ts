@@ -6,6 +6,8 @@ import { CLOCK_READ_TIMEOUT_MS, CLOCK_READ_MAX_AGE_MS, clockReadFingerprint } fr
 interface ReadSnapshot {
   checking: boolean;
   failed: boolean;
+  /** An own punch was acknowledged without matching local evidence. */
+  invalidated: boolean;
   checkedAt: number;
   fingerprint: string;
   mark: SignInMark | null;
@@ -13,7 +15,7 @@ interface ReadSnapshot {
 
 /** Deliberately outside the persisted query cache: hydration cannot verify a clock. */
 export function createClockRead(profileId: string, read = getOpenShift) {
-  let snapshot: ReadSnapshot = { checking: false, failed: false, checkedAt: 0, fingerprint: "unknown", mark: null };
+  let snapshot: ReadSnapshot = { checking: false, failed: false, invalidated: false, checkedAt: 0, fingerprint: "unknown", mark: null };
   // ClockSheet clears the cache after queuing a clock-out. Keep the row that
   // the person actually saw long enough to match that punch, without making
   // an arbitrary queued clock-out evidence of being off the clock.
@@ -72,13 +74,13 @@ export function createClockRead(profileId: string, read = getOpenShift) {
       // A read begun before this punch landed must not subsequently replace
       // its result (especially with the previous empty answer).
       generation++;
-      publish({ checking: false, failed: false, checkedAt: 0, fingerprint: "unknown", mark: null });
+      publish({ checking: false, failed: false, invalidated: false, checkedAt: 0, fingerprint: "unknown", mark: null });
       return true;
     },
     invalidateReadProof() {
       generation++;
       acknowledged = null;
-      publish({ checking: false, failed: true, checkedAt: 0, fingerprint: "unknown", mark: null });
+      publish({ checking: false, failed: true, invalidated: true, checkedAt: 0, fingerprint: "unknown", mark: null });
     },
     hasAcknowledgedIntent(shift: TimeShift | null | undefined, now: number): boolean {
       return Boolean(acknowledged && stillSignedInAs(acknowledged.mark, profileId) &&
@@ -93,7 +95,7 @@ export function createClockRead(profileId: string, read = getOpenShift) {
       generation++;
       readRevision++;
       lastReadShift = shift;
-      publish({ checking: false, failed: false, checkedAt: Date.now(), fingerprint: clockReadFingerprint(shift), mark });
+      publish({ checking: false, failed: false, invalidated: false, checkedAt: Date.now(), fingerprint: clockReadFingerprint(shift), mark });
     },
     async load(signal?: AbortSignal): Promise<TimeShift | null> {
       const mark = signInMark();
@@ -121,7 +123,7 @@ export function createClockRead(profileId: string, read = getOpenShift) {
         if (shift && shift.profile_id !== profileId) throw new Error("Clock belongs to a different sign-in");
         readRevision++;
         lastReadShift = shift;
-        publish({ checking: false, failed: false, checkedAt: Date.now(), fingerprint: clockReadFingerprint(shift), mark });
+        publish({ checking: false, failed: false, invalidated: false, checkedAt: Date.now(), fingerprint: clockReadFingerprint(shift), mark });
         return shift;
       } catch (error) {
         if (attempt === generation) publish({ ...snapshot, checking: false, failed: true });
