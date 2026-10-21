@@ -1,0 +1,9 @@
+DATA OWNER COMPARISON — October 21, 2026
+New-design /data on matt/forge-synthesis. Real owner accounts only, after existing authentication and non-preview checks. Other roles retain current WorkData behavior. No new roles, schema, profile flags, or deployment.
+Existing report: DataHub from this checkout, not a connection to production.
+Proposed: explicitly labeled three-chart design outline; charts not connected yet.
+Pilot: original October 10 Data Designer sample, embedded with script-only sandbox (no same-origin) and strict offline CSP. Connections, forms and external resources blocked. Extracted handoff data-srcdoc; generated broad CSP removed. Review asset to retire when settled.
+Evidence: existing WorkData reconciliation; Summary remains linked.
+Tab choice is in-memory only. Visited panels retain separate filters. No false filter equivalence between sample/live and different calculations. Account-generation key resets workspace across sign-in changes. Arrow/Home/End keyboard support and 44px tab targets.
+Validation: initial TypeScript check passed;42 existing WorkData API/calculation tests passed;lint and diffcheck passed. Browser verified report loads, pilot renders, proposed is labeled, keyboard moves tabs,390px has no page overflow (375px client/scroll). Owner preview controls retain existing navigation behavior; restored owner and reopened Data. Real-owner condition source-inspected; no separate nonowner sign-in performed. Final incremental type check reported in chat.
+No business writes, global rollout, merge or push. Proposed remains an outline until actual chart work; Existing is synthesis baseline, not a freshly verified production revision.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { listProjectsAnyStatus } from "../lib/api";
@@ -12,6 +12,7 @@ import { fetchWorkDataSnapshot } from "../lib/workData/api";
 import { reconcileWorkday } from "../lib/workData/reconcile";
 import { summarizeCohort, unitLabor } from "../lib/workData/cohorts";
 import "./WorkData.css";
+const DataComparison = lazy(() => import("./dataReview/DataComparison").then(m => ({ default: m.DataComparison })));
 
 function subscribeNetwork(cb: () => void) {
   window.addEventListener("online", cb); window.addEventListener("offline", cb);
@@ -40,7 +41,11 @@ export function WorkData() {
   if (role.isPreviewing || roleRank(role.realRole) < roleRank("supervisor") || roleRank(role.effectiveRole) < roleRank("supervisor"))
     return <div className="page"><h1>{t("wdata.title")}</h1><p>{t("wdata.restricted")}</p></div>;
   if (!online) return <div className="page"><h1>{t("wdata.title")}</h1><p>{t("wdata.offline")}</p></div>;
-  return <WorkDataReport key={`${generation}:${role.realRole}:${role.effectiveRole}`} boundary={`${generation}:${role.realRole}:${role.effectiveRole}`} />;
+  const boundary = `${generation}:${role.realRole}:${role.effectiveRole}`;
+  const evidence = <WorkDataReport key={boundary} boundary={boundary} />;
+  return role.realRole === "owner"
+    ? <Suspense fallback={<p role="status">{t("wdata.loading")}</p>}><DataComparison key={boundary} evidence={evidence} /></Suspense>
+    : evidence;
 }
 
 function WorkDataReport({ boundary }: { boundary: string }) {
