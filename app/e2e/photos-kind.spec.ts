@@ -200,3 +200,49 @@ test("a foreman's empty receipts list does not, because they see them all", asyn
   await expect(page.getByText("No receipts yet")).toBeVisible();
   await expect(page.getByText("You only see receipts you added.")).toHaveCount(0);
 });
+
+for (const uiDesign of ["classic", "new"] as const) {
+  test(`${uiDesign} gallery orders delayed uploads by capture time across jobs and within a job`, async ({ page }, testInfo) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await hideWrongProjectBanner(page);
+    await useSupabaseFixtures(page, { role: "foreman", uiDesign });
+    await usePhotoStorage(page);
+    const otherJob = jobFixtures().find((j) => j.projectId !== BLACK22.projectId)!;
+    // Upload order deliberately disagrees with capture date and time.
+    const rows = [
+      { ...photoRow(1), taken_at: "2026-09-09T16:25:00Z", caption: "Sep 9 early", project_id: otherJob.projectId },
+      { ...photoRow(2), taken_at: "2026-09-21T15:40:00Z", caption: "Sep 21 early" },
+      { ...photoRow(3), taken_at: "2026-09-08T22:17:00Z", caption: "Sep 8", project_id: otherJob.projectId },
+      { ...photoRow(4), taken_at: "2026-09-21T19:55:00Z", caption: "Sep 21 late" },
+      { ...photoRow(5), taken_at: "2026-09-09T17:12:00Z", caption: "Sep 9 late", project_id: otherJob.projectId },
+    ];
+    await page.route("**/rest/v1/attachments**", (route) => {
+      const filter = new URL(route.request().url()).searchParams.get("project_id");
+      const visible = filter ? rows.filter((r) => `eq.${r.project_id}` === filter) : rows;
+      return json(route, visible, visible.length);
+    });
+
+    await page.goto("/photos");
+    await expect(page.locator(".photos-day-label")).toHaveText([
+      "Mon, Sep 21, 2026", "Wed, Sep 9, 2026", "Tue, Sep 8, 2026",
+    ]);
+    await expect(page.locator(".photos-day .photo-card img")).toHaveCount(5);
+    expect(await page.locator(".photos-day .photo-card img").evaluateAll(
+      (images) => images.map((img) => img.getAttribute("alt")),
+    )).toEqual(["Sep 21 late", "Sep 21 early", "Sep 9 late", "Sep 9 early", "Sep 8"]);
+    await page.screenshot({ path: testInfo.outputPath(`gallery-${uiDesign}-date-order.png`), fullPage: true });
+
+    await page.getByLabel("Filter by job").selectOption(BLACK22.projectId);
+    await expect(page.locator(".photos-day-label")).toHaveText(["Mon, Sep 21, 2026"]);
+    expect(await page.locator(".photos-day .photo-card img").evaluateAll(
+      (images) => images.map((img) => img.getAttribute("alt")),
+    )).toEqual(["Sep 21 late", "Sep 21 early"]);
+
+    // The job hub uses the same feed and must have the same ordering.
+    await page.goto(`/projects/${BLACK22.projectId}?tab=photos`);
+    await expect(page.locator(".photos-day-label")).toHaveText(["Mon, Sep 21, 2026"]);
+    expect(await page.locator(".photos-day .photo-card img").evaluateAll(
+      (images) => images.map((img) => img.getAttribute("alt")),
+    )).toEqual(["Sep 21 late", "Sep 21 early"]);
+  });
+}
