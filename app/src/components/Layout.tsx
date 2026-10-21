@@ -1,4 +1,6 @@
 import { AppUpdates } from "./updates/AppUpdates";
+import { SteelHeader, SteelBrand } from "./steel/SteelHeader";
+import "./steel/steel.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -27,7 +29,6 @@ import { useClock } from "../lib/clockContext";
 import { useDesign } from "../lib/design/context";
 import { useDisplayMode } from "../lib/displayMode";
 import { useT } from "../lib/i18n";
-import { ClockBadge } from "./clock/ClockBadge";
 import { formatClock } from "../lib/timeclock";
 import { shiftGuard } from "../lib/shiftGuard";
 import { effectiveRole, previewableRoles, useViewAsRole } from "../lib/viewAsRoleContext";
@@ -382,9 +383,9 @@ export function Layout() {
       <SummonBell />
       <div className="app-frame">
         <aside className="app-rail" aria-label="Primary">
-          <Link to="/" className="rail-brand" aria-label="Forge Windows home">
+          {isNewDesign ? <SteelBrand /> : <Link to="/" className="rail-brand" aria-label="Forge Windows home">
             <InfinityLogo variant="full" size={22} />
-          </Link>
+          </Link>}
           {/* Desktop's only door to Capture. The bottom bar — and with it the
               centre (+) FAB — is display:none from 860px up, so without this
               the button the owner asked to be "on every tab and view" simply
@@ -433,10 +434,8 @@ export function Layout() {
               row carries the "Clocked in 7:02" badge on the left — the door
               to break / clock out from any screen now that the bar has no
               Clock tab. */}
-          <div className="sync-strip" data-design={isNewDesign ? "new" : undefined}>
-            {isNewDesign && <ClockBadge />}
-            <SyncStatusPill />
-          </div>
+          {isNewDesign ? <SteelHeader onOpenMenu={openMenu} menuOpen={menuOpen} /> :
+            <div className="sync-strip"><SyncStatusPill /></div>}
           {previewingPerson ? (
             <div className="view-as-banner" role="status">
               <span>

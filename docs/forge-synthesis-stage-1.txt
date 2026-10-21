@@ -1,0 +1,34 @@
+FORGE SYNTHESIS — STAGE 1 PROGRESS
+Prepared October 20, 2026 (America/Denver)
+Branch: matt/forge-synthesis
+
+MEETING UPDATE
+Delivered: first Steel Work shell around the existing app. Shared graphite/ember palette, reused Forge branding, compact navigation/status header, visible Work heading and job entry, phone bottom navigation and tablet secondary columns. Existing clock, toolbox, work and menu behavior remains the implementation behind the presentation. No schema changes or data repair.
+Intention: make clock/job/next work understandable before adding General/Specific and consolidating redundant entrances. Preserve capabilities first, then simplify paths.
+Next stage: review the field hierarchy, map navigation destinations, and design selected-job General/Specific within this shell. Keep unit/source data contracts as a separate open decision.
+
+IMPLEMENTATION
+- SteelHeader and scoped steel.css are shared by the existing New design. Classic design remains under the existing switch.
+- Workshop logo asset reused; no Workshop backend, fixture server or parallel product architecture imported.
+- Work heading and Browse jobs link added; clock/job/unit cards remain ahead of secondary content.
+- Existing permission-aware navigation registry and clock/sync components reused.
+- DEV-only VITE_STEEL_PREVIEW shows the design without writing the profile/design cache. Device frames follow their viewport width without changing saved display preference. Production respects the existing company/person design switch.
+- Tablet layout keeps primary context full width and secondary content in columns. Full list/detail and dense table designs remain later work.
+
+VALIDATION
+TypeScript build passed, including the final incremental check.
+58 existing navigation/design tests passed. First sandbox attempt could not rename Vitest temporary files; rerun with normal host permissions passed.
+Changed-file lint found only the pre-existing Layout useEffect shift dependency warning; no new lint errors.
+Browser review at 320/390/768/1024 widths in the actual app, with hosted reads and business writes blocked. Browse jobs navigation exercised and returned to Work. No clock or business write controls submitted.
+Guard ordering and mutation/RPC/upload transport check passed after making its startup tag matcher accept Vite's HMR query string.
+Not validated: physical phone/tablet, keyboard interaction, all roles, active shift/break/queued/error variants, end-to-end offline timing or release readiness. These remain staged qualification work.
+
+REVIEW
+Actual app: http://127.0.0.1:5174/
+Local device wrapper: http://127.0.0.1:5186/steel/review-implementation.html
+Reference prototype: http://127.0.0.1:5186/steel/index.html
+Keep actual app and sample reference visibly distinct. Local wrappers/runtimes are review aids to retire during cleanup; no new backend or fabricated product data added.
+
+DECISIONS STILL OPEN
+Navigation consolidation, final activity selection interaction, unit/spec/package schema, data reconciliation, role-specific acceptance, and release timing. No merge or deployment performed.
+

@@ -1,0 +1,81 @@
+/* Steel belongs to the existing New design. Classic keeps its own palette. */
+html:root[data-design="new"] {
+  color-scheme: dark;
+  --background: #101418;
+  --foreground: #f2f5f6;
+  --bg: #101418;
+  --surface: #12171b;
+  --card: #191f24;
+  --card-raised: #20272d;
+  --card-hot: #29333b;
+  --text: #f2f5f6;
+  --text-secondary: #d2dbe0;
+  --muted: #b0bbc1;
+  --muted-foreground: #b0bbc1;
+  --faint: #a4b1b9;
+  --border: #465159;
+  --primary: #f47731;
+  --accent: #f47731;
+  --accent-hover: #ff914f;
+  --accent-bg: #39271e;
+  --accent-soft: #39271e;
+  --accent-line: #a65c32;
+  --primary-foreground: #101418;
+  --ink: #101418;
+  --ring: #f47731;
+}
+html[data-design="new"] body { background: var(--bg); color: var(--text); }
+html[data-design="new"] .app-rail { background: #12171b; }
+.steel-brand { display: flex; justify-content: center; padding: 14px; }
+.steel-brand img { width: 142px; height: 76px; object-fit: cover; mix-blend-mode: screen; }
+.steel-header {
+  display: flex; align-items: center; gap: 12px; min-height: 60px;
+  padding: 8px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
+  background: #12171b; border-bottom: 1px solid var(--border);
+}
+.steel-menu {
+  display: grid; place-items: center; flex: none; width: 44px; height: 44px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--text);
+}
+.steel-header-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); }
+.steel-mobile-brand { display: none; }
+.steel-mobile-brand img { width: 76px; height: 40px; object-fit: cover; mix-blend-mode: screen; }
+.steel-header-status { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-left: auto; min-width: 0; }
+.steel-header-status .clock-badge { min-width: 0; max-width: 100%; }
+.steel-header-status .clock-badge-text { white-space: normal; overflow-wrap: anywhere; }
+html[data-design="new"] :is(button, a, input, select, textarea):focus-visible { outline: 2px solid #ffac76; outline-offset: 3px; }
+html[data-design="new"] .tabbar { background: #12171b; border-color: var(--border); }
+html[data-design="new"] .work-screen { gap: 12px; max-width: 1040px; padding-top: 16px; }
+.steel-work-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.steel-eyebrow { margin: 0 0 4px; font-size: 11px; font-weight: 750; letter-spacing: .12em; color: var(--muted); }
+.steel-work-heading h1 { margin: 0; font: 750 28px/1.15 var(--font-body, sans-serif); letter-spacing: -.025em; }
+html[data-design="new"] .steel-work-heading > .ws-btn { flex: none; width: auto; font-size: 14px; }
+html[data-design="new"] .work-screen .ws-card { padding: 12px 14px; border-radius: 14px; background: var(--card); gap: 8px; }
+html[data-design="new"] .work-screen :is(.ws-h2, .ws-unit-title) { font-family: var(--font-body, sans-serif); }
+html[data-design="new"] .work-screen .ws-btn { min-height: 44px; border-radius: 9px; }
+html[data-design="new"] .work-screen .ws-btn--primary { background: var(--accent); color: #101418; border-color: var(--accent); }
+html[data-design="new"] .ws-saved-unit { padding: 12px 0; border-bottom: 1px solid var(--border); }
+/* Task order stays clock -> job -> unit at every width. Tablet columns start
+   below that context so a wider screen never changes what the next action is. */
+@media (min-width: 700px) {
+  html[data-design="new"] .work-screen { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  html[data-design="new"] .work-screen > * { min-width: 0; }
+  html[data-design="new"] .work-screen > :is(.steel-work-heading, .ws-clock, .ws-today, .ws-unit, .ws-heads-ups) { grid-column: 1 / -1; }
+}
+@media (min-width: 860px) {
+  html[data-design="new"] { --nav-width: 216px; }
+  .steel-menu { display: none; }
+}
+@media (max-width: 420px) {
+  .steel-header-title { display: none; }
+  .steel-mobile-brand { display: flex; align-items: center; }
+  .steel-header-status .sync-pill-text { display: none; }
+  .steel-header-status .sync-pill { min-width: 44px; min-height: 44px; justify-content: center; }
+  .steel-work-heading h1 { font-size: 25px; }
+}
+/* Respect the app's explicit Phone/desktop layout preference too. */
+html[data-design="new"][data-display-layout="phone"] .steel-menu { display: grid; }
+html[data-design="new"][data-display-layout="desktop"] .steel-menu { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  html[data-design="new"] .work-screen * { scroll-behavior: auto; }
+}

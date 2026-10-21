@@ -36,6 +36,8 @@ import { getCompanySettings } from "../../lib/companySettings";
 import { listProjectsAnyStatus } from "../../lib/api";
 import { useWork } from "../../lib/customWork/useWork";
 import { useT } from "../../lib/i18n";
+import { useLanguage } from "../../lib/i18n";
+import { useDesign } from "../../lib/design/context";
 import "../../lib/i18n/workCatalog";
 import { getMyProfile, listMyOpeningsAllJobs, listOpenings } from "../../lib/install/api";
 import { blockedUnits, listSessionsForOpenings } from "../../lib/install/sessions";
@@ -68,6 +70,8 @@ export const SCHEDULE_WINDOW_DAYS = 7;
 
 export function WorkScreen() {
   const t = useT();
+  const es = useLanguage().lang === "es";
+  const steel = useDesign().design === "new";
   // The Work landing holds nothing unsaved of its own — every sheet on it
   // claims itself — so the automatic update may apply here (safeSurface.ts).
   useSafeSurface();
@@ -246,7 +250,11 @@ export function WorkScreen() {
 
   return (
     <div className="page work-screen" data-testid="work-screen">
-      <h1 className="ws-sr-only">{t("work.title")}</h1>
+      {steel ? <header className="steel-work-heading">
+        <div><p className="steel-eyebrow">{es ? "TU JORNADA" : "YOUR WORKDAY"}</p>
+          <h1>{t("work.title")}</h1></div>
+        <Link to="/projects" className="ws-btn">{es ? "Ver trabajos" : "Browse jobs"}</Link>
+      </header> : <h1 className="ws-sr-only">{t("work.title")}</h1>}
       <LiveSummonsStrip />
       <ClockStrip
         profileId={profileId}
