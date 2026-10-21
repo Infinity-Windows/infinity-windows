@@ -4,7 +4,7 @@ import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { roleRank } from "../../lib/nav";
 import { useT } from "../../lib/i18n";
 import "../../lib/i18n/workCatalog";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getOpening } from "../../lib/install/api";
@@ -37,10 +37,14 @@ import "./customWork.css";
 export function CurrentWork() {
   const t = useT();
   const work = useWork();
-  const { effectiveRole } = useEffectiveRole();
+  const { effectiveRole, isLoading: roleLoading } = useEffectiveRole();
   const lead = roleRank(effectiveRole) >= 1;
   const [params, setParams] = useSearchParams();
   const [editing, setEditing] = useState<WorkUnit | "new" | null>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (editing) editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [editing]);
   const [idle, setIdle] = useState(false),
     [idleNote, setIdleNote] = useState("");
   const [stage, setStage] = useState("Installing");
@@ -77,6 +81,15 @@ export function CurrentWork() {
   const selectedUnit =
     work.units.find((u) => u.id === params.get("unit")) ??
     work.units.find((u) => openingId && u.opening_id === openingId);
+  // A Details link carries the intent through the asynchronous unit lookup.
+  // Consume it once so Cancel/save and later refreshes do not reopen the form.
+  useEffect(() => {
+    if (params.get("details") !== "1" || !selectedUnit || !work.user || roleLoading) return;
+    if (canEditUnit(selectedUnit, work.user, lead)) setEditing(selectedUnit);
+    const next = new URLSearchParams(params);
+    next.delete("details");
+    setParams(next, { replace: true });
+  }, [params, selectedUnit, work.user, lead, roleLoading, setParams]);
   const job = projects.data?.find((p) => p.id === jobId);
   const mapType = opening.data?.window_types;
   const mapDefaults = opening.data
@@ -425,26 +438,28 @@ export function CurrentWork() {
             </section>
           )}
           {editing && (
-            <UnitEditor
-              // F1 (crew redesign K1.8, 2026-09-23): keyed on the OPENING only.
-              // `jobId` used to be in this key, and it comes from
-              // `shift?.project_id`, which resolves asynchronously — so the
-              // clock settling mid-entry remounted the editor and threw away
-              // everything typed. The editor now takes the late job as a prop
-              // (UnitEditor fills a blank Job field itself). The form resets
-              // only on Cancel or Save, never on a clock refresh.
-              key={editing === "new" ? `new-${openingId ?? "blank"}` : editing.id}
-              unit={editing === "new" ? undefined : editing}
-              jobId={opening.data?.project_id ?? jobId}
-              openingId={editing === "new" ? opening.data?.id : undefined}
-              label={editing === "new" ? opening.data?.opening_code : undefined}
-              types={work.types}
-              existingUnits={work.units}
-              defaults={editing === "new" ? mapDefaults : undefined}
-              busy={blocked}
-              onSave={saveUnit}
-              onCancel={() => setEditing(null)}
-            />
+            <div ref={editorRef} className="cw-editor-anchor">
+              <UnitEditor
+                // F1 (crew redesign K1.8, 2026-09-23): keyed on the OPENING only.
+                // `jobId` used to be in this key, and it comes from
+                // `shift?.project_id`, which resolves asynchronously — so the
+                // clock settling mid-entry remounted the editor and threw away
+                // everything typed. The editor now takes the late job as a prop
+                // (UnitEditor fills a blank Job field itself). The form resets
+                // only on Cancel or Save, never on a clock refresh.
+                key={editing === "new" ? `new-${openingId ?? "blank"}` : editing.id}
+                unit={editing === "new" ? undefined : editing}
+                jobId={opening.data?.project_id ?? jobId}
+                openingId={editing === "new" ? opening.data?.id : undefined}
+                label={editing === "new" ? opening.data?.opening_code : undefined}
+                types={work.types}
+                existingUnits={work.units}
+                defaults={editing === "new" ? mapDefaults : undefined}
+                busy={blocked}
+                onSave={saveUnit}
+                onCancel={() => setEditing(null)}
+              />
+            </div>
           )}
           {idle && (
             <section

@@ -196,8 +196,16 @@ test("a new unit can be assigned to another job without starting time on the wro
   await expect(page).toHaveURL(/\/current-work\?/);
   await expect(page.getByRole("heading", { name: "Selected: E2E-BLACK22" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Work on this unit" })).toHaveCount(0);
+  // Details opens the matching editor immediately, including after a reload.
+  const editor = page.getByRole("region", { name: "Unit details" });
+  await expect(editor).toBeVisible();
+  await expect.poll(async () => (await editor.boundingBox())!.y).toBeLessThan(250);
+  expect(world.workCommands.some((c) => c.p_action === "start")).toBe(false);
+  await page.screenshot({ path: "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Unit-Details-Entry-2026-10-01/DIRECT-DETAILS-PHONE.png" });
+  await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(editor).toHaveCount(0);
   await page.getByRole("button", { name: "Edit details" }).click();
-  await expect(page.getByRole("region", { name: "Unit details" })).toBeVisible();
+  await expect(editor).toBeVisible();
   await expect(page.getByRole("region", { name: "Unit details" }).getByLabel("Unit number / name")).toHaveValue("E2E-BLACK22");
   await page.getByRole("button", { name: "Open this job’s clock" }).click();
   await expect(page.locator(".clock-sheet")).toContainText("Switch project");

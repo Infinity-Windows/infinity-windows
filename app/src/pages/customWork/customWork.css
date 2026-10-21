@@ -390,3 +390,6 @@
   margin: 0.5rem 0 0.75rem;
 }
 
+
+/* Keep the revealed editor below the fixed clock/navigation header. */
+.cw-editor-anchor { scroll-margin-top: 7rem; }
