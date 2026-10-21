@@ -38,6 +38,7 @@ import { assignmentChanged, crewmateNamesOn, formatUpdatedAt } from "../../lib/w
 import { DirectionsButton } from "../../components/maps/DirectionsButton";
 import { SCHEDULE_WINDOW_DAYS } from "./WorkScreen";
 import "./work.css";
+import "./schedule.css";
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -96,7 +97,7 @@ export function Schedule() {
   const unreachable = noData && (active.isError || (!online && active.isPending));
 
   return (
-    <div className="page work-screen" data-testid="schedule-screen">
+    <div className={`page work-screen${view === "crew" ? " schedule-crew-view" : ""}`} data-testid="schedule-screen">
       <p className="ws-top">
         <strong>{t("nav.schedule")}</strong>
         {lead && (

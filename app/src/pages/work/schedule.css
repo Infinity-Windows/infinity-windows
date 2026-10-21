@@ -1,0 +1,26 @@
+/* Phone crew overview: compact typography and natural text wrapping, while
+ * retaining the shared 16px reading floor and 48px tap targets. Scoped to the
+ * Crew view so My Schedule, Work cards and desktop keep their existing layout.
+ */
+@media (max-width: 859px) {
+  .schedule-crew-view { gap: 4px; }
+  .schedule-crew-view .ws-top strong { font-size: 18px; }
+  .schedule-crew-view .ws-card { padding: 6px 10px; gap: 2px; }
+  .schedule-crew-view .ws-h2 { font-size: 16px; gap: 4px; }
+  .schedule-crew-view .ws-h2 svg { width: 16px; height: 16px; }
+  .schedule-crew-view .ws-today-entry { padding-top: 4px; gap: 2px; }
+  .schedule-crew-view .ws-today-title { font-size: 16px; line-height: 1.2; }
+  .schedule-crew-view .ws-today-start,
+  .schedule-crew-view .ws-meta { line-height: 1.25; }
+
+  /* Flex wrapping treats the names as a single anonymous item and can push
+   * the people icon onto its own line. Inline text wraps beside the icon. */
+  .schedule-crew-view .ws-inline { display: block; margin-right: 0; }
+  .schedule-crew-view .ws-inline > .ws-inline { display: inline; margin-right: 8px; }
+  .schedule-crew-view .ws-inline svg,
+  .schedule-crew-view .ws-today-start svg {
+    display: inline-block;
+    vertical-align: -3px;
+    margin-right: 4px;
+  }
+}
