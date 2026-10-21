@@ -7,6 +7,7 @@
 // the records rather than a blank form.
 
 import { act } from "react";
+import {rememberSignedIn} from "../../lib/signedIn";
 import { createRoot, type Root } from "react-dom/client";
 import { IsRestoringProvider, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -55,7 +56,15 @@ vi.mock("react-router-dom", async (orig) => ({
 }));
 
 vi.mock("../../lib/clockContext", () => ({
-  useClock: () => ({ shift, profileId: ME, loading: clockLoading, isOpen: false, openClock: () => {}, closeClock: () => {}, refresh: () => {} }),
+  useClock: () => ({
+    shift, profileId: ME, loading: clockLoading, isOpen: false,
+    verification: clockLoading
+      ? { status: "checking", recoveryRequired: true, checking: true }
+      : shift?.id.startsWith("pending:")
+        ? { status: "saved", recoveryRequired: false, checking: false }
+        : { status: "verified", recoveryRequired: false, checking: false },
+    openClock: () => {}, closeClock: () => {}, refresh: () => {},
+  }),
   openClockGlobally: vi.fn(),
 }));
 vi.mock("../../lib/install/api", () => ({
@@ -81,7 +90,10 @@ vi.mock("../../lib/useToolboxGate", () => ({
   useTodayTalk: () => ({ data: talk, isSuccess: true }),
   useToolboxToday: () => ({ data: signed, isSuccess: true, pending: pendingSign, refused: refusedSign }),
 }));
-vi.mock("../../lib/signedIn", () => ({ signedInUserId: () => signedInId }));
+vi.mock("../../lib/signedIn", async (orig) => ({
+  ...(await orig<typeof import("../../lib/signedIn")>()),
+  signedInUserId: () => signedInId,
+}));
 vi.mock("../../lib/supabase", () => ({
   supabase: {
     auth: {
@@ -219,6 +231,7 @@ let root: Root | null = null;
 let host: HTMLDivElement | null = null;
 
 beforeEach(() => {
+  rememberSignedIn({user:{id:ME}});
   shift = null;
   clockLoading = false;
   restoring = false;
@@ -549,18 +562,18 @@ describe("Start day and a clock that is not known yet (Codex review of #642)", (
   type Punch = { clientId: string; tappedAt: string };
   const punchOf = (call: number): Punch => clockIn.mock.calls[call][5] as Punch;
 
-  it("cold reload with a shift on the server: 'Recovering your clock', no Start day, then the shift itself", async () => {
+  it("cold reload with a shift on the server: checking notice, no Start day, then the shift itself", async () => {
     clockLoading = true; // the open-shift read has not answered yet
     signed = { id: "c1" };
     const el = await mount();
-    expect(byTestId(el, "ws-clock-recovering")!.textContent).toContain("Recovering your clock");
+    expect(byTestId(el, "clock-read-notice")!.textContent).toContain("Checking your clock");
     expect(startDay(el)).toBeNull();
     expect(el.textContent).not.toContain("More clock options");
     // The read answers with the shift the server already holds.
     clockLoading = false;
     shift = openShift();
     await rerender();
-    expect(byTestId(el, "ws-clock-recovering")).toBeNull();
+    expect(byTestId(el, "clock-read-notice")).toBeNull();
     expect(byTestId(el, "ws-clock")!.textContent).toContain("Clocked in 7:02");
     expect(startDay(el)).toBeNull();
     expect(clockIn).not.toHaveBeenCalled();
@@ -570,7 +583,7 @@ describe("Start day and a clock that is not known yet (Codex review of #642)", (
   it("cold reload with a clock-in queued on this phone: recovering, then clocked in from the queue — never a second Start day", async () => {
     clockLoading = true; // this phone's own queue has not been read yet (#644)
     const el = await mount();
-    expect(byTestId(el, "ws-clock-recovering")).not.toBeNull();
+    expect(byTestId(el, "clock-read-notice")?.textContent).toContain("Checking your clock");
     expect(startDay(el)).toBeNull();
     // The queue is read: the clock-in tapped with no signal is the shift.
     clockLoading = false;

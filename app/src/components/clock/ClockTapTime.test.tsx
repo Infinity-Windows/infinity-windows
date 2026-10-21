@@ -20,7 +20,9 @@
 // both. Nothing between the tap and the RPC is mocked: the real clockIn, the
 // real location wait, the real offline queue and its real sender.
 
-import { act, type ReactNode } from "react";
+import { act, useState, type ReactNode } from "react";
+import { clockReadFor } from "../../lib/clockRead";
+import type { ClockReadState } from "../../lib/clockReadState";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -174,6 +176,7 @@ function client(opts: { signedAt?: string | null } = {}): QueryClient {
   });
   qc.setQueryData(["myProfile"], { id: "me", role: "installer", display_name: "Dana" });
   qc.setQueryData(["openShift", "me"], null);
+  clockReadFor(qc,"me").confirm(null);
   qc.setQueryData(["projects"], [P1]);
   for (const scope of ["all", "p1"]) qc.setQueryData(["clockCostCodes", scope], [CC, CC2]);
   qc.setQueryData(["recentJobs", "me"], [RECENT]);
@@ -225,7 +228,7 @@ async function tap(el: HTMLElement, selector: string) {
   });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   server.shifts.clear();
   server.calls.length = 0;
@@ -240,6 +243,9 @@ beforeEach(() => {
     data: { session: ME as unknown as Session },
     error: null,
   } as Awaited<ReturnType<typeof supabase.auth.getSession>>);
+  // Clock-in requires the durable queue to have been read, as it has in the running app.
+  const { recoverAndDrain } = await import("../../lib/offline/outbox");
+  await recoverAndDrain();
   // happy-dom has no geolocation; this phone has one, and it is slow. The
   // permission reads "prompt", so the block's advisory "near the job?" check
   // asks for nothing on its own.
@@ -527,4 +533,70 @@ describe("a clock-in behind today's talk signed with no signal", () => {
       window.removeEventListener("infinity:open-clock", onOpen);
     }
   });
+});
+
+
+describe("clock verification at the sheet", () => {
+  const verified: ClockReadState = { status: "verified", recoveryRequired: false, checking: false };
+  const unavailable: ClockReadState = { status: "unavailable", recoveryRequired: true, checking: false };
+
+  it("replaces an unverified old shift's finish form with a retry and keeps the sheet closable", async () => {
+    const retry = vi.fn(), close = vi.fn();
+    const oldShift = {
+      id: "old", profile_id: "me", status: "open", clock_out_at: null,
+      clock_in_at: iso(T0 - 39 * 86400_000), break_seconds: 0, break_started_at: null,
+    } as TimeShift;
+    const el = render(<ClockSheet profileId="me" shift={oldShift} verification={unavailable}
+      onRecheck={retry} onClose={close} onChanged={() => {}} />);
+    expect(el.textContent).toContain("Cannot check your clock");
+    expect(el.textContent).not.toContain("39 days");
+    expect(el.querySelector('input[type="datetime-local"]')).toBeNull();
+    expect(el.querySelector(".clock-btn.out")).toBeNull();
+    const buttons = [...el.querySelectorAll<HTMLButtonElement>("button")];
+    await act(async () => buttons.find(b => b.textContent === "Check again")!.click());
+    expect(retry).toHaveBeenCalledOnce();
+    await act(async () => el.querySelector<HTMLAnchorElement>('a[href="/diagnostics"]')!.click());
+    expect(close).toHaveBeenCalledOnce();
+    expect(clockInCalls()).toHaveLength(0);
+    expect(server.calls.some(c => c.fn === "finish_shift")).toBe(false);
+  });
+
+  it("does not send a Start whose location wait outlives clock verification", async () => {
+    fixAfterMs = 9_000;
+    let change!: (value: ClockReadState) => void;
+    function Phone() {
+      const [verification, setVerification] = useState(verified);
+      change = setVerification;
+      return <ClockSheet profileId="me" shift={null} verification={verification}
+        onRecheck={() => {}} onClose={() => {}} onChanged={() => {}} />;
+    }
+    const el = render(<Phone />);
+    await tap(el, ".clock-btn.primary.big");
+    await act(async () => change(unavailable));
+    await pass(9_000);
+    expect(clockInCalls()).toHaveLength(0);
+    const { listAll } = await import("../../lib/offline/outbox");
+    expect(await listAll()).toHaveLength(0);
+  });
+
+  it("does not send a Start after signing out and back into the same account during location", async () => {
+    fixAfterMs = 9_000;
+    const el = render(<ClockSheet profileId="me" shift={null} verification={verified}
+      onRecheck={() => {}} onClose={() => {}} onChanged={() => {}} />);
+    await tap(el, ".clock-btn.primary.big");
+    rememberSignedIn(null);
+    rememberSignedIn(ME);
+    await pass(9_000);
+    expect(clockInCalls()).toHaveLength(0);
+  });
+});
+
+
+it("labels a saved off-clock screen without preventing a deliberate offline Start", () => {
+  const saved: ClockReadState = { status: "saved", recoveryRequired: false, checking: false };
+  const el = render(<ClockSheet profileId="me" shift={null} verification={saved}
+    onRecheck={() => {}} onClose={() => {}} onChanged={() => {}} />);
+  expect(el.textContent).toContain("Last saved: off the clock. Changes will sync when connected.");
+  expect(el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")?.disabled).toBe(false);
+  expect(clockInCalls()).toHaveLength(0);
 });

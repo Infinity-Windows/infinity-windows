@@ -176,7 +176,9 @@ export function Layout() {
   // says what it actually needs, so a runaway shift reads as a job to do rather
   // than a number to trust.
   const clockGuard = shift ? shiftGuard(shift, clockNow) : null;
-  const clockLabel = !shift
+  const clockLabel = clock.verification?.recoveryRequired
+    ? t("clockBadge.check")
+    : clock.verification?.status === "saved" ? t("clockBadge.saved") : !shift
     ? "Clock"
     : clockGuard!.workedSeconds == null
       ? "Finish time?"

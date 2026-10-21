@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useIsRestoring } from "@tanstack/react-query";
 import { useFieldT as useT, type TKey } from "./fieldCatalog";
 import { openClockGlobally, useClock } from "../../lib/clockContext";
+import { ClockReadNotice } from "../clock/ClockReadNotice";
 import { queryClient } from "../../lib/queryClient";
 import { oneTapFits, runOneTap, type OneTapDeps, type OneTapOutcome } from "../../lib/clockOneTap";
 import type { ClockBreakType, ClockButton } from "../../../../supabase/functions/_shared/clockButtons";
@@ -27,7 +28,7 @@ export function ClockButtons({ buttons, deps }: { buttons: ClockButton[]; deps?:
   const t = useT();
   const clock = useClock();
   const restoring = useIsRestoring();
-  const clockKnown = Boolean(clock.profileId) && !clock.loading && !restoring;
+  const clockKnown = Boolean(clock.profileId) && !clock.loading && !restoring && !clock.verification?.recoveryRequired;
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<OneTapOutcome | null>(null);
   if (!buttons.length) return null;
@@ -62,6 +63,13 @@ export function ClockButtons({ buttons, deps }: { buttons: ClockButton[]; deps?:
         <p role="status" className="muted">{t("field.button.checking")}</p>
       </section>
     );
+  }
+
+  if (clock.verification?.status === "saved" && !clock.shift) {
+    return <section className="field-card field-buttons" aria-label={t("field.button.title")}>
+      <ClockReadNotice state={clock.verification} onRetry={clock.recheck} savedOffClock />
+      <button type="button" onClick={() => openClockGlobally()}>{t("field.openClock")}</button>
+    </section>;
   }
 
   return (

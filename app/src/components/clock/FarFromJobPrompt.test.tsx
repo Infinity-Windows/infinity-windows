@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { rememberSignedIn } from "../../lib/signedIn";
 //
 // The far-from-job prompt asks one question of the one phone in the company
 // most likely to have no signal: somebody who has just driven away from a job.
@@ -96,6 +97,7 @@ describe("the far-from-job switch survives no signal", () => {
     seen.filter((x) => x.id > sinceId).map((x) => `${x.kind}:${x.message}`);
 
   beforeEach(() => {
+    rememberSignedIn({user:{id:"me"}});
     clockIn.mockReset();
     getTravelCostCode.mockClear();
     enqueueClockIn.mockClear();

@@ -21,6 +21,7 @@ import type { ScheduleConflictKey } from "./scheduleConflictCatalog";
 import type { ValuesKey } from "./valuesCatalog";
 import type { WorkDataKey } from "./workDataCatalog";
 import type { JobLocationKey } from "./jobLocationCatalog";
+import type { ClockReadKey } from "./clockReadCatalog";
 
 /**
  * Keys whose Spanish still needs a bilingual crew member to verify it — the
@@ -5640,6 +5641,8 @@ export const CATALOG = {
   "clockBadge.in": { en: "Clocked in {time}", es: "Entrada {time}" },
   "clockBadge.break": { en: "On break", es: "En descanso" },
   "clockBadge.finish": { en: "Finish time?", es: "¿Hora de salida?" },
+  "clockBadge.check": { en: "Check clock", es: "Verificar reloj" },
+  "clockBadge.saved": { en: "Saved clock", es: "Reloj guardado" },
   "clockBadge.a11y": {
     en: "Clocked in at {time} — open break or clock out",
     es: "Entrada a las {time}: abrir descanso o salida",
@@ -5656,7 +5659,7 @@ export const CATALOG = {
  * keys are part of this type through a type-only import, which costs the
  * entry chunk nothing, while its strings ride in the route's own chunk.
  */
-export type TKey = keyof typeof CATALOG | WorkKey | DesignKey | ScheduleConflictKey | ValuesKey | WorkDataKey | JobLocationKey;
+export type TKey = keyof typeof CATALOG | WorkKey | DesignKey | ScheduleConflictKey | ValuesKey | WorkDataKey | JobLocationKey | ClockReadKey;
 
 /**
  * Add a lazily loaded phrasebook to the live catalog. Called at module load

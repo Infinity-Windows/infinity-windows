@@ -51,6 +51,7 @@ import {
 } from "../../lib/timeclock";
 import { toastError, toastSuccess } from "../../lib/toast";
 import { useT } from "../../lib/i18n";
+import { signInMark, stillSignedInAs } from "../../lib/signedIn";
 
 /** localStorage, but a private window or a locked-down browser can throw. */
 function readHold(shiftId: string): number | null {
@@ -73,9 +74,11 @@ function writeHold(shiftId: string, untilMs: number): void {
 
 export function FarFromJobPrompt({
   shift,
+  enabled = true,
   onChanged,
 }: {
   shift: TimeShift | null;
+  enabled?: boolean;
   onChanged: () => void;
 }) {
   const t = useT();
@@ -93,7 +96,9 @@ export function FarFromJobPrompt({
   // below is a direct clock_in, and sent ahead of a queued one it would be the
   // shift that clock-in has to close. The question can wait for signal; the
   // person's location is stamped by the foreground check either way.
-  const onClock = isOnTheClock(shift) && !isPendingShiftRef(shiftId);
+  const onClock = enabled && isOnTheClock(shift) && !isPendingShiftRef(shiftId);
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
 
   /**
    * The cost-code library, warmed while the person is on the clock.
@@ -130,11 +135,15 @@ export function FarFromJobPrompt({
 
   const check = useCallback(async () => {
     const shift = shiftRef.current;
-    if (!shift || !shiftId || !projectId || !isOnTheClock(shift)) return;
+    if (!enabledRef.current || !shift || !shiftId || !projectId || !isOnTheClock(shift)) return;
+    const mark = signInMark();
+    const current = () => enabledRef.current && shiftRef.current?.id === shiftId &&
+      stillSignedInAs(mark, shift.profile_id);
     if (runningRef.current) return;
     runningRef.current = true;
     try {
       const fix = await captureGeoIfGranted();
+      if (!current()) return;
       fixRef.current = fix;
       // The stamp goes in either way: "they had the app open at 4:12" is true
       // and useful even when the phone would not say where. The accuracy goes
@@ -155,6 +164,7 @@ export function FarFromJobPrompt({
         // No reference point, no opinion. Silence is the safe answer.
         return;
       }
+      if (!current()) return;
       const ask = shouldAskAboutTravel({
         shift,
         myFix: fix,
@@ -200,6 +210,11 @@ export function FarFromJobPrompt({
   // fail exactly when it matters and leave the clock charging the job.
   const switchToTravel = useMutation<{ queued: boolean }>({
     mutationFn: async () => {
+      const mark = signInMark();
+      const original = shiftRef.current;
+      const allowed = () => enabledRef.current && Boolean(original && shiftRef.current?.id === original.id &&
+        stillSignedInAs(mark, original.profile_id));
+      if (!allowed()) throw new Error(t("clockBadge.check"));
       // One id for this tap, live try and queued retry alike (K0.2), stamped
       // at the tap: before the Travel lookup and the location wait, either of
       // which can take seconds that are not when the person tapped.
@@ -215,6 +230,7 @@ export function FarFromJobPrompt({
       // resolves to {} rather than null when it has nothing, so the fallback
       // tests the coordinates, not the object.
       const fresh = await captureGeoSoft();
+      if (!allowed()) throw new Error(t("clockBadge.check"));
       const geo: GeoFix =
         fresh.lat != null ? fresh : (fixRef.current ?? {});
       const current = shift!;
@@ -232,6 +248,7 @@ export function FarFromJobPrompt({
         // isNetworkError already answers "is the browser offline?" first, so
         // this is the same test ClockSheet's punches make.
         if (!isNetworkError(e)) throw e;
+        if (!allowed()) throw new Error(t("clockBadge.check"));
         const entryId = await enqueueClockIn({
           projectId: current.project_id,
           costCodeId: travel.id,

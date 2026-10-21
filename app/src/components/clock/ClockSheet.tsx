@@ -80,6 +80,10 @@ import { useFocusTrap } from "../../lib/useFocusTrap";
 import { effectiveClockInMode } from "../../lib/jobModes";
 import { askClockEntryMode } from "../../lib/askClockHandoff";
 
+import {ClockReadNotice} from "./ClockReadNotice";
+import type {ClockReadState} from "../../lib/clockReadState";
+import {signInMark,stillSignedInAs} from "../../lib/signedIn";
+
 const BREAK_ICONS: Record<BreakType, LucideIcon> = {
   lunch: UtensilsCrossed,
   rest: Coffee,
@@ -107,11 +111,15 @@ export function ClockSheet({
   pending = null,
   refused = [],
   initialPick = null,
+  verification,
+  onRecheck,
   onClose,
   onChanged,
 }: {
   profileId: string | null;
   shift: TimeShift | null;
+  verification?: ClockReadState;
+  onRecheck?: () => void;
   /**
    * The punch still on this phone and the ones the phone gave up on (K0.1),
    * from the clock provider. Drawn as one status line under the hero, so a
@@ -149,6 +157,26 @@ export function ClockSheet({
   useFocusTrap(sheetRef, true, onClose);
   const entryMode = askClockEntryMode(shift, initialPick);
   const [mode, setMode] = useState<Mode>(entryMode);
+  const liveClock = useRef({ profileId, shiftId: shift?.id ?? null, recovery: !!verification?.recoveryRequired });
+  liveClock.current = { profileId, shiftId: shift?.id ?? null, recovery: !!verification?.recoveryRequired };
+  // A handler can outlive its button while location or a request is pending.
+  const clockIntent = () => {
+    const mark = signInMark(), original = { ...liveClock.current };
+    const check = () => {
+      const current = liveClock.current;
+      if (current.recovery || current.profileId !== original.profileId || current.shiftId !== original.shiftId ||
+        (verification !== undefined && (!original.profileId || !stillSignedInAs(mark, original.profileId)))) {
+        throw new Error(t("clockBadge.check"));
+      }
+    };
+    check();
+    return check;
+  };
+  const previousRecovery = useRef(!!verification?.recoveryRequired);
+  useEffect(() => {
+    if (previousRecovery.current && !verification?.recoveryRequired) setMode(askClockEntryMode(shift, initialPick));
+    previousRecovery.current = !!verification?.recoveryRequired;
+  }, [verification?.recoveryRequired, shift, initialPick]);
   const appliedEntryRef = useRef<string | null>(null);
   const [pickProjectId, setPickProjectId] = useState<string>(initialPick?.projectId ?? "");
   const [pickCostCodeId, setPickCostCodeId] = useState<string>(initialPick?.costCodeId ?? "");
@@ -361,14 +389,12 @@ export function ClockSheet({
   };
 
   const pausePhase = useMutation({
-    mutationFn: (ph: { opening_id: string; kind: "flashing" }) =>
-      pauseOpeningPhase(ph.opening_id, ph.kind),
+    mutationFn: (ph: { opening_id: string; kind: "flashing" }) => { clockIntent(); return pauseOpeningPhase(ph.opening_id, ph.kind); },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["myActivePhases"] }),
     onError: (e) => toastError(e),
   });
   const resumePhase = useMutation({
-    mutationFn: (ph: { opening_id: string; kind: "flashing" }) =>
-      resumeOpeningPhase(ph.opening_id, ph.kind),
+    mutationFn: (ph: { opening_id: string; kind: "flashing" }) => { clockIntent(); return resumeOpeningPhase(ph.opening_id, ph.kind); },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["myActivePhases"] }),
     onError: (e) => toastError(e),
   });
@@ -384,6 +410,7 @@ export function ClockSheet({
   // mutations are offlineFirst, lib/queryClient.ts.)
   const doStart = useMutation<PunchResult>({
     mutationFn: async () => {
+      const checkIntent = clockIntent();
       const projectId = pickProjectId || null;
       const costCodeId = pickCostCodeId || null;
       const noteText = note.trim() || null;
@@ -423,6 +450,7 @@ export function ClockSheet({
         initialPick?.punch && initialPick.projectId === projectId ? initialPick.punch : null;
       const punch = carried ? carriedPunch(carried, toolboxDone.data?.signed_at) : mintPunch();
       const geo = await captureGeoSoft();
+      checkIntent();
       const behindSignature = signatureOnPhone();
       if (!behindSignature) {
         try {
@@ -434,6 +462,7 @@ export function ClockSheet({
           let startFailed = false;
           if (pickedOpening && toolboxOk) {
             try {
+              checkIntent();
               await startOpeningWork(pickedOpening.id);
               startedOpening = pickedOpening.id;
             } catch {
@@ -443,6 +472,7 @@ export function ClockSheet({
           return { queued: false, startedOpening, startFailed };
         } catch (e) {
           if (!shouldQueue(e)) throw e;
+          checkIntent();
         }
       }
       const entryId = await enqueueClockIn({
@@ -500,8 +530,10 @@ export function ClockSheet({
   // behind that clock-in, the way a queued clock-out does.
   const doSwitch = useMutation<PunchResult>({
     mutationFn: async () => {
+      const checkIntent = clockIntent();
       const punch = mintPunch();
       const geo = await captureGeoSoft();
+      checkIntent();
       const projectId = pickProjectId || null;
       const costCodeId = pickCostCodeId || null;
       const noteText = note.trim() || null;
@@ -512,6 +544,7 @@ export function ClockSheet({
           return { queued: false };
         } catch (e) {
           if (!shouldQueue(e)) throw e;
+          checkIntent();
         }
       }
       const entryId = await enqueueClockIn({
@@ -538,8 +571,10 @@ export function ClockSheet({
 
   const doPhaseSwitch = useMutation<PunchResult, Error, string>({
     mutationFn: async (costCodeId: string) => {
+      const checkIntent = clockIntent();
       const punch = mintPunch();
       const geo = await captureGeoSoft();
+      checkIntent();
       const projectId = shift?.project_id ?? null;
       if (!shiftIsPending() && !signatureOnPhone()) {
         try {
@@ -547,6 +582,7 @@ export function ClockSheet({
           return { queued: false };
         } catch (e) {
           if (!shouldQueue(e)) throw e;
+          checkIntent();
         }
       }
       const entryId = await enqueueClockIn({
@@ -570,6 +606,7 @@ export function ClockSheet({
 
   const doBreakStart = useMutation<PunchResult, Error, BreakType>({
     mutationFn: async (type: BreakType) => {
+      const checkIntent = clockIntent();
       const punch = mintPunch();
       if (!shiftIsPending()) {
         try {
@@ -577,6 +614,7 @@ export function ClockSheet({
           return { queued: false };
         } catch (e) {
           if (!shouldQueue(e)) throw e;
+          checkIntent();
         }
       }
       await enqueueBreakStart(shift!.id, type, punch);
@@ -607,6 +645,7 @@ export function ClockSheet({
 
   const doBreakEnd = useMutation<PunchResult>({
     mutationFn: async () => {
+      const checkIntent = clockIntent();
       const punch = mintPunch();
       if (!shiftIsPending()) {
         try {
@@ -614,6 +653,7 @@ export function ClockSheet({
           return { queued: false };
         } catch (e) {
           if (!shouldQueue(e)) throw e;
+          checkIntent();
         }
       }
       await enqueueBreakStop(shift!.id, punch);
@@ -657,12 +697,14 @@ export function ClockSheet({
 
   const doClockOut = useMutation<PunchResult>({
     mutationFn: async () => {
+      const checkIntent = clockIntent();
       // A break still running ends at the tap too, with the punch — not after
       // the location wait, which would count those seconds as break.
       const tapMs = Date.now();
       const punch = mintPunch(null, tapMs);
       const breakSeconds = currentBreakSeconds(shift!, tapMs);
       const geo = await captureGeoSoft();
+      checkIntent();
       if (!shiftIsPending()) {
         try {
           await clockOut(
@@ -673,6 +715,7 @@ export function ClockSheet({
           return { queued: false };
         } catch (e) {
           if (!shouldQueue(e)) throw e;
+          checkIntent();
         }
       }
       await enqueueClockOut({
@@ -714,6 +757,7 @@ export function ClockSheet({
    */
   const doFinish = useMutation({
     mutationFn: async () => {
+      clockIntent();
       const check = checkFinishTime(shift!, localInputToIso(finishAt), Date.now());
       if (!check.ok) throw new Error(check.error ?? t("clock.error.badFinishTime"));
       return finishShiftAt(shift!.id, localInputToIso(finishAt)!, {
@@ -819,13 +863,15 @@ export function ClockSheet({
       >
         <div className="clock-sheet-grip" aria-hidden />
         <div className="clock-sheet-head">
-          <h2 className="clock-sheet-title">{title}</h2>
+          <h2 className="clock-sheet-title">{verification?.recoveryRequired ? t("clockBadge.check") : title}</h2>
           <button type="button" className="clock-sheet-x" onClick={onClose} aria-label={t("clock.a11y.close")}>
             <X size={18} />
           </button>
         </div>
         {initialPick?.returnToAsk && <Link className="clock-return-ask" to="/ask" onClick={onClose}>{t("clock.returnToAsk")}</Link>}
 
+        {verification?.recoveryRequired ? <div className="clock-sheet-body"><ClockReadNotice state={verification} onRetry={onRecheck??(()=>{})} onNavigate={onClose}/></div> : <>
+        {verification?.status==="saved"&&<ClockReadNotice state={verification} onRetry={onRecheck??(()=>{})} savedOffClock={!shift}/>}
         {/* ---- ON THE CLOCK ---- */}
         {mode === "main" && shift && (
           <div className="clock-sheet-body">
@@ -1410,6 +1456,7 @@ export function ClockSheet({
             }
           </div>
         )}
+        </>}
       </div>
     </div>
   );
