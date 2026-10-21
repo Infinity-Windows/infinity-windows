@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { Link, useParams } from "react-router-dom";
 import { listProjects, listWindowTypes } from "../../lib/api";
 import {
+  assertNoCrossDocumentMarkCollision,
   assignOpeningToInstaller,
   downloadPlanset,
   elevationAppearancesFromDoc,
@@ -495,6 +496,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       let drafts;
       let repeatViewCallouts = 0;
       let elevationViews = 0;
+      let buildingElevationDoc: PDFDocumentProxy | null = null;
       if (buildingPdf) {
         setExtractNote("Reading mark callouts on the building plan…");
         const buildingDoc = await loadPdf(await downloadPlanset(buildingPdf));
@@ -508,13 +510,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             await extractAllText(buildingDoc),
           );
           repeatViewCallouts = split.repeatViewCallouts.length;
-          elevationViews = (
-            await saveElevationViews(
-              projectId,
-              buildingPdf.id,
-              await elevationAppearancesFromDoc(buildingDoc),
-            )
-          ).saved;
+          buildingElevationDoc = buildingDoc;
           drafts = calloutsToDraftOpenings(
             split.planCallouts,
             rows,
@@ -528,17 +524,36 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         drafts = rowsToDraftOpenings(rows, types.data ?? []);
       }
 
-      drafts = await ensureTypesFromSpecs(drafts);
-      await linkSpecsToOpenings(projectId, drafts);
       // The guard at the top of this mutation promises at least one document.
       const plansetId = draftSourcePlansetId({
         specsPlansetId: specsPdf?.id ?? null,
         buildingPlansetId: buildingPdf?.id ?? null,
         fromBuildingCallouts,
       })!;
+      // Resolve both source documents before changing catalog types, links or
+      // elevation references. A second material CAD set may reuse mark #1.
+      if (specsPdf && plansetId !== specsPdf.id) {
+        await assertNoCrossDocumentMarkCollision(
+          projectId,
+          specsPdf.id,
+          rowsToDraftOpenings(rows, types.data ?? []),
+        );
+      }
+      await assertNoCrossDocumentMarkCollision(projectId, plansetId, drafts);
       const result = await saveDraftOpenings(projectId, plansetId, drafts, {
         specsAuthoritative: ["vision", "deterministic", "ai"].includes(source),
       });
+      drafts = await ensureTypesFromSpecs(drafts, { projectId, plansetId });
+      await linkSpecsToOpenings(projectId, drafts, { plansetId });
+      if (buildingElevationDoc && buildingPdf) {
+        elevationViews = (
+          await saveElevationViews(
+            projectId,
+            buildingPdf.id,
+            await elevationAppearancesFromDoc(buildingElevationDoc),
+          )
+        ).saved;
+      }
       return {
         result,
         source,
