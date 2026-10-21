@@ -1,0 +1,46 @@
+{
+  "bindings.mjs": {
+    "beforeSha256": "b78551badd97078f8a9c7a4355dfa66a389bb8ff4a9ba8b539b5cf581dd8a2c2",
+    "afterSha256": "ab34ceab26e1d8c0a534fdad9abb42c1fc9a7cfa344a2c546169a55bb9a083f3"
+  },
+  "bind-execution.mjs": {
+    "beforeSha256": "e5ea61c8058f8a526cc5557ce19c0667fd2bb5381f2d092aa10429f9d2360550",
+    "afterSha256": "d9d374a42117b9890cf116d3fd6df74c949a87a4a186a9cdeaafc2ab4f4af1c3"
+  },
+  "resolution-probe.mjs": {
+    "beforeSha256": "19afa14e2fc6ff35bb0359ec2cc5c5783e197dbd52c775991e1a04ec347d95a2",
+    "afterSha256": "440c27424640af5dc3f5d0a4d4b14b0721d66dc5d90ca1435243cf4c33da1533"
+  },
+  "driver.mjs": {
+    "beforeSha256": "2ad9a918bfb0af491674d3eafcd5ab6ac984576855b8265eb49f921b6f66c605",
+    "afterSha256": "6c8281220dd9da4bb13b0e766ec32ab580864f7d515615a76003875ed1d252cb"
+  },
+  "transport.py": {
+    "beforeSha256": "26117309bc53bd27f90ef6030c944e42e557a7d2ae7ed3c1621bcc4a8150e7ec",
+    "afterSha256": "a4aa914948e6bf524100279b4cb6532e0bdf8dac17818d6157223bdb8b70b596"
+  },
+  "staging.test.mjs": {
+    "beforeSha256": "ff85f8dd53355dcec876552ce862489f2dd23cf4b069a5e7cba638b02ce4e783",
+    "afterSha256": "8fb01a151e2787df29abb48ba3eaaf0bd4cf1839f8d47320ef37dff9f9e9c0d3"
+  },
+  "test_transport.py": {
+    "beforeSha256": "da94c6caa7bf62c5a6446e957ae64a8fb69d04af8beccce19d5f4d95864455dc",
+    "afterSha256": "38e9515e7e9108b9e838312872a10cb5a4d6282486d4fcd625cdc4930ba5da43"
+  },
+  "test_reconstruct.py": {
+    "beforeSha256": "0718d359ac2f842011e64c8e4bc0a9103a296f003356554ae9de41731341df67",
+    "afterSha256": "d46258219791f2106f88982f822ad2feab641cc3d8debbd654984003a5a5185e"
+  },
+  "validate-checkpoint.py": {
+    "beforeSha256": "eaaf1b3502ee5c419440a16b723714ff1e13fae94afda27c668cafac428d047e",
+    "afterSha256": "dd1a0618f4c297adb1f87090a5129c6bbda60db6fdaf3fcbc9f1b70b4bee3244"
+  },
+  "PACKAGE-RECIPE.md": {
+    "beforeSha256": "cb4270562881b3656f18601be2d206fb84a27ec3ce43e28df4e19ec0fe0d1586",
+    "afterSha256": "dd916c601fdf78395cdbfcef16e599031174e830f38a8a452ea0ecce1261419c"
+  },
+  "PROPOSED-WORKFLOW.yml.txt": {
+    "beforeSha256": "853dcc5850bbbab37188a1ae4d4405c1a4c47d36b86ae7dcee63ec628625f8d9",
+    "afterSha256": "afd51d44081aa70c759a9c1fbee0a5f7b2a640f796b32cca0ce381708d0ba093"
+  }
+}

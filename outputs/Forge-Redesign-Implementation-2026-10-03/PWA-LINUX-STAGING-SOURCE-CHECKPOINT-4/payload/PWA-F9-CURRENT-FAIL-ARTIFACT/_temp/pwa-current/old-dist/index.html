@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#f6f1ea" />
+    <script>
+      // Theme before first paint (owner pick 11): System / Light / Dark.
+      // Kept inline so the page never flashes the wrong world.
+      try {
+        var t = localStorage.getItem("infinity.theme");
+        if (t === "light" || t === "dark") {
+          document.documentElement.dataset.theme = t;
+        }
+        var dark =
+          t === "dark" ||
+          (t !== "light" &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", dark ? "#1a1512" : "#f6f1ea");
+      } catch (e) {}
+    </script>
+    <script>
+      // The module entry can be cancelled during a service-worker takeover,
+      // before React or its error handler can run. The load event means the
+      // browser has finished (or failed) the entry's static imports. If React
+      // has not started then, recover promptly rather than leave the crew on
+      // an empty screen for eight more seconds. Queued work lives in IndexedDB.
+      window.addEventListener("load", function () {
+        window.setTimeout(function () {
+          var root = document.getElementById("root");
+          if (!root || document.documentElement.dataset.forgeBootStarted === "1" ||
+              root.childElementCount > 0 || root.textContent.trim()) return;
+          var entry = document.querySelector('script[type="module"][src]');
+          var key = "wops-empty-boot-retry:" + (entry ? entry.getAttribute("src") : "unknown");
+          var now = Date.now();
+          var last = 0;
+          try {
+            last = Number(sessionStorage.getItem(key) || 0);
+            if (now - last > 60000) {
+              // Keep the reason across this reload: the module entry never ran,
+              // so the normal in-memory diagnostics ring does not exist yet.
+              var resources = performance.getEntriesByType("resource")
+                .filter(function (item) { return /\.(js|css)(\?|$)/.test(item.name); })
+                .slice(-8)
+                .map(function (item) {
+                  try { return new URL(item.name).pathname.split("/").pop(); }
+                  catch (e) { return "unknown"; }
+                });
+              sessionStorage.setItem("wops-empty-boot-diagnostic", JSON.stringify({
+                at: now,
+                entry: entry ? entry.getAttribute("src").split("/").pop() : "unknown",
+                resources: resources
+              }));
+              sessionStorage.setItem(key, String(now));
+              window.location.reload();
+              return;
+            }
+          } catch (e) {
+            // Storage can be unavailable in private browsing. Offer a retry.
+          }
+          var message = document.createElement("p");
+          message.textContent = "Forge couldn't finish opening.";
+          var retry = document.createElement("button");
+          retry.type = "button";
+          retry.textContent = "Try again";
+          retry.onclick = function () { window.location.reload(); };
+          root.append(message, retry);
+        }, 500);
+      });
+    </script>
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Forge Windows" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <!--
+      The manifest link is missing here on purpose. The manifest is generated
+      per base path (`/` locally, `/infinity-windows/` on GitHub Pages) and its
+      link tag is injected by webManifestPlugin in vite.config.ts, so the link
+      and the file it points at can never disagree. The icon hrefs above are
+      real files in public/, which Vite rewrites for the base by itself.
+    -->
+    <title>Forge Windows</title>
+    <script type="module" crossorigin src="/assets/index-BRHybHhN.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-aKtaBQYM.js">
+    <link rel="modulepreload" crossorigin href="/assets/react-lCSYwAWP.js">
+    <link rel="modulepreload" crossorigin href="/assets/react-dom-D7MqSW7Z.js">
+    <link rel="modulepreload" crossorigin href="/assets/jsx-runtime-DKdBMi_L.js">
+    <link rel="modulepreload" crossorigin href="/assets/useQuery-BBUeMcK7.js">
+    <link rel="modulepreload" crossorigin href="/assets/useMutation-B_cR4lHn.js">
+    <link rel="modulepreload" crossorigin href="/assets/preload-helper-Czpn1I53.js">
+    <link rel="modulepreload" crossorigin href="/assets/supabase-3FQM7AGJ.js">
+    <link rel="modulepreload" crossorigin href="/assets/schemaErrors-Bp9O369g.js">
+    <link rel="modulepreload" crossorigin href="/assets/api-CZzdHor7.js">
+    <link rel="modulepreload" crossorigin href="/assets/chunk-BV7QT456-BwK42zvx.js">
+    <link rel="modulepreload" crossorigin href="/assets/voiceAudio-Agsd8mcZ.js">
+    <link rel="modulepreload" crossorigin href="/assets/transcribe-MwvW1ahn.js">
+    <link rel="modulepreload" crossorigin href="/assets/markDrawing-BysXPLn0.js">
+    <link rel="modulepreload" crossorigin href="/assets/cropCache-BHuhMvUF.js">
+    <link rel="modulepreload" crossorigin href="/assets/outbox-core-_9SsRUE5.js">
+    <link rel="modulepreload" crossorigin href="/assets/api-Bt4WKCtc.js">
+    <link rel="modulepreload" crossorigin href="/assets/errors-J-eRcOqd.js">
+    <link rel="modulepreload" crossorigin href="/assets/toast-DIVs0c3Q.js">
+    <link rel="modulepreload" crossorigin href="/assets/translate-BSQAfpdy.js">
+    <link rel="modulepreload" crossorigin href="/assets/context-D0vddlkW.js">
+    <link rel="modulepreload" crossorigin href="/assets/i18n-CegaLi1Q.js">
+    <link rel="modulepreload" crossorigin href="/assets/createLucideIcon-By_DvWg7.js">
+    <link rel="modulepreload" crossorigin href="/assets/package-BtCGNOYJ.js">
+    <link rel="modulepreload" crossorigin href="/assets/chevron-right-yVwZ6Fwp.js">
+    <link rel="modulepreload" crossorigin href="/assets/coffee-BdLD_wD_.js">
+    <link rel="modulepreload" crossorigin href="/assets/square-BdJiX94E.js">
+    <link rel="modulepreload" crossorigin href="/assets/triangle-alert-Cjk0nxVE.js">
+    <link rel="modulepreload" crossorigin href="/assets/x-DGgWLQjd.js">
+    <link rel="modulepreload" crossorigin href="/assets/safeSurface-ONJNpZIv.js">
+    <link rel="modulepreload" crossorigin href="/assets/useFocusTrap-BbNDJIoa.js">
+    <link rel="modulepreload" crossorigin href="/assets/notifyLocal-Dx_R2mQ5.js">
+    <link rel="modulepreload" crossorigin href="/assets/timeMath-DjxDEeX6.js">
+    <link rel="modulepreload" crossorigin href="/assets/pushServer-DkDtRlMp.js">
+    <link rel="modulepreload" crossorigin href="/assets/timeclock-IhnO4SFF.js">
+    <link rel="modulepreload" crossorigin href="/assets/signedIn-HG9-xf4w.js">
+    <link rel="modulepreload" crossorigin href="/assets/sessions-CZlthkzz.js">
+    <link rel="modulepreload" crossorigin href="/assets/estimate-CkT9gikD.js">
+    <link rel="modulepreload" crossorigin href="/assets/dailyLogDay-D5Ilzy-Q.js">
+    <link rel="modulepreload" crossorigin href="/assets/toolboxSign-Anv9upvI.js">
+    <link rel="modulepreload" crossorigin href="/assets/outbox-C4llJjGi.js">
+    <link rel="modulepreload" crossorigin href="/assets/lazyOptional-B7did8_s.js">
+    <link rel="modulepreload" crossorigin href="/assets/VoiceControl-C0XZas-J.js">
+    <link rel="modulepreload" crossorigin href="/assets/VoiceTextarea-BStu8JSg.js">
+    <link rel="modulepreload" crossorigin href="/assets/model-DfKhyeSF.js">
+    <link rel="modulepreload" crossorigin href="/assets/api-BkfONZjm.js">
+    <link rel="modulepreload" crossorigin href="/assets/geo-DJ2WANbC.js">
+    <link rel="modulepreload" crossorigin href="/assets/es-Cm_jPPYH.js">
+    <link rel="modulepreload" crossorigin href="/assets/pdfText-HR6KQDHR.js">
+    <link rel="modulepreload" crossorigin href="/assets/toolbox-CM6nFEM7.js">
+    <link rel="modulepreload" crossorigin href="/assets/ops-CrsipvpJ.js">
+    <link rel="modulepreload" crossorigin href="/assets/ToolboxSignStatus-DQWGMJiu.js">
+    <link rel="modulepreload" crossorigin href="/assets/useWeakSignal-C3LSTzf6.js">
+    <link rel="modulepreload" crossorigin href="/assets/useOpenShiftView-BL3hxjnY.js">
+    <link rel="modulepreload" crossorigin href="/assets/phases-C0bECPCn.js">
+    <link rel="modulepreload" crossorigin href="/assets/costCodes-q4ye2ZbX.js">
+    <link rel="modulepreload" crossorigin href="/assets/shiftGuard-DARfriq6.js">
+    <link rel="modulepreload" crossorigin href="/assets/fieldTools-BQPH94Uj.js">
+    <link rel="modulepreload" crossorigin href="/assets/clockContext-BoE4-8T6.js">
+    <link rel="modulepreload" crossorigin href="/assets/bell-CVKf4c9b.js">
+    <link rel="modulepreload" crossorigin href="/assets/shield-check-CtvKJsWx.js">
+    <link rel="modulepreload" crossorigin href="/assets/users-CP0tYleD.js">
+    <link rel="modulepreload" crossorigin href="/assets/camera-CrwIfM1g.js">
+    <link rel="modulepreload" crossorigin href="/assets/check-BAe6IdEf.js">
+    <link rel="modulepreload" crossorigin href="/assets/circle-check-DRRrnWf6.js">
+    <link rel="modulepreload" crossorigin href="/assets/copy-BpPRTcrv.js">
+    <link rel="modulepreload" crossorigin href="/assets/file-text-1IB-ySHt.js">
+    <link rel="modulepreload" crossorigin href="/assets/PhotoUploadStatus-fE6xRAMd.js">
+    <link rel="modulepreload" crossorigin href="/assets/stampPhoto-BYUTO8nb.js">
+    <link rel="modulepreload" crossorigin href="/assets/link-2-D35zGD7E.js">
+    <link rel="modulepreload" crossorigin href="/assets/map-pin-DI-iPj8M.js">
+    <link rel="modulepreload" crossorigin href="/assets/DirectionsButton-DMUIQskn.js">
+    <link rel="modulepreload" crossorigin href="/assets/refresh-cw-KOasl8aG.js">
+    <link rel="modulepreload" crossorigin href="/assets/States-TaiUAM1m.js">
+    <link rel="modulepreload" crossorigin href="/assets/trash-2-BIMpHjpJ.js">
+    <link rel="modulepreload" crossorigin href="/assets/video-CLoHFXk4.js">
+    <link rel="modulepreload" crossorigin href="/assets/buildInfo-Dfl9OLEp.js">
+    <link rel="modulepreload" crossorigin href="/assets/useEffectiveRole-1mTg2ZfW.js">
+    <link rel="modulepreload" crossorigin href="/assets/Sheet-0xAusFcB.js">
+    <link rel="modulepreload" crossorigin href="/assets/fit-tYci9AYd.js">
+    <link rel="modulepreload" crossorigin href="/assets/undoToast-mRF29aSq.js">
+    <link rel="modulepreload" crossorigin href="/assets/usePhotoPicker-DW2pv0z1.js">
+    <link rel="modulepreload" crossorigin href="/assets/unsavedWork-CRc0DvjE.js">
+    <link rel="modulepreload" crossorigin href="/assets/useUnsavedWork-tRd4Mxo1.js">
+    <link rel="modulepreload" crossorigin href="/assets/photos-LHAjXewz.js">
+    <link rel="modulepreload" crossorigin href="/assets/receipts-CnnP8No4.js">
+    <link rel="modulepreload" crossorigin href="/assets/PhotoCaptureSheet-CaGOrMvR.js">
+    <link rel="modulepreload" crossorigin href="/assets/qr-B8Kmwdh0.js">
+    <link rel="modulepreload" crossorigin href="/assets/sound-DeL7WUzf.js">
+    <link rel="modulepreload" crossorigin href="/assets/Scanner-Cv3UiAw6.js">
+    <link rel="modulepreload" crossorigin href="/assets/storage-B4OsPGrL.js">
+    <link rel="modulepreload" crossorigin href="/assets/areas-CqD_tw4s.js">
+    <link rel="modulepreload" crossorigin href="/assets/containment-DdHSjsG1.js">
+    <link rel="modulepreload" crossorigin href="/assets/materialsScope-DwaRgxAE.js">
+    <link rel="modulepreload" crossorigin href="/assets/offlineWrites-C024HmdB.js">
+    <link rel="modulepreload" crossorigin href="/assets/api-R-ASqUDh.js">
+    <link rel="modulepreload" crossorigin href="/assets/installTimer-BNEhXO8F.js">
+    <link rel="modulepreload" crossorigin href="/assets/askNavigation-I_O8UqmG.js">
+    <link rel="modulepreload" crossorigin href="/assets/dispatch-CcmyZdyO.js">
+    <link rel="modulepreload" crossorigin href="/assets/nextOpening-bopHBcFf.js">
+    <link rel="modulepreload" crossorigin href="/assets/VoiceInput-JeYnVaMy.js">
+    <link rel="modulepreload" crossorigin href="/assets/display-BuHlXQHE.js">
+    <link rel="modulepreload" crossorigin href="/assets/glossary-omQ5NNX2.js">
+    <link rel="modulepreload" crossorigin href="/assets/issues-CwypRV_F.js">
+    <link rel="modulepreload" crossorigin href="/assets/adapter-CxeKq_s0.js">
+    <link rel="modulepreload" crossorigin href="/assets/warehouseCards-ChrMEs1W.js">
+    <link rel="modulepreload" crossorigin href="/assets/BackChip-Do9LBa15.js">
+    <link rel="modulepreload" crossorigin href="/assets/timeReportFilters-BCt7YU8Q.js">
+    <link rel="modulepreload" crossorigin href="/assets/billTo-eg4WqaHQ.js">
+    <link rel="modulepreload" crossorigin href="/assets/JobMultiSelect-Cd4-eVES.js">
+    <link rel="modulepreload" crossorigin href="/assets/timeEntryExport-Bb1Juh-w.js">
+    <link rel="modulepreload" crossorigin href="/assets/TimeEntryExportDialog-CRjsmQn8.js">
+    <link rel="modulepreload" crossorigin href="/assets/drawingCrops-D4ai2KmY.js">
+    <link rel="modulepreload" crossorigin href="/assets/purgeLogin-DORioQt8.js">
+    <link rel="stylesheet" crossorigin href="/assets/dictation-Bqu5nDxh.css">
+    <link rel="stylesheet" crossorigin href="/assets/timeOff-BPcYhMcP.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-DnY83HAa.css">
+    <link rel="manifest" href="/manifest.webmanifest">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

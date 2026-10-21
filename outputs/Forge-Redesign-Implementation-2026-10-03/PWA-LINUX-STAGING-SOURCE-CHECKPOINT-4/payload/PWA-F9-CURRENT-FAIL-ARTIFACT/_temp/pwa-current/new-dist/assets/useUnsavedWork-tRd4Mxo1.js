@@ -1,0 +1,1 @@
+import{i as e}from"./rolldown-runtime-aKtaBQYM.js";import{t}from"./react-lCSYwAWP.js";import{t as n}from"./unsavedWork-CRc0DvjE.js";var r=e(t(),1);function i(e){(0,r.useEffect)(()=>{if(e)return n()},[e])}export{i as t};

@@ -1,0 +1,16 @@
+{
+  "enrollmentTests": {
+    "pass": 45,
+    "fail": 0
+  },
+  "helperTests": {
+    "pass": 43,
+    "fail": 0
+  },
+  "typecheck": "PASS",
+  "syntax": "PASS",
+  "preservation": "PASS",
+  "runtime": "UNEXECUTED",
+  "peerReviewOfThisPackage": "PENDING",
+  "dependencyExecutionStaging": "HELD_NOT_ENROLLED"
+}

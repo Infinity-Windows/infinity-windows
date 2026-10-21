@@ -1,0 +1,54 @@
+{
+  "originals": {
+    "old": {
+      "files": 330,
+      "bytes": 9859766,
+      "compactSha256": "231841e43bc8f3a6ef189c9976ff17f0156ba951cad82fdc6151bd946214c6c1"
+    },
+    "new": {
+      "files": 330,
+      "bytes": 9860445,
+      "compactSha256": "e821fb290fc6bb5a4a72fe892d5b52fd23719c3744af57e60995380377620e73"
+    }
+  },
+  "derivativeInputs": {
+    "off": {
+      "manifest": "outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/DERIVED-off-MANIFEST.json",
+      "manifestSha256": "7f7649924b430d0f92611167c457fb7b3221dd439797390749294b1b8422f71f",
+      "manifestBytes": 70944,
+      "worker": "outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/derived-pairs/off/new-dist/sw.js",
+      "workerSha256": "02fe2120103fc753276fd9fcabece712e9d40bd6c7a7406e05691fbdcb65d482",
+      "workerBytes": 45030
+    },
+    "baseline": {
+      "manifest": "outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/DERIVED-baseline-MANIFEST.json",
+      "manifestSha256": "3552f90b21e672cf039dbf8941e2bdfdb8916fb69e3bb9aba85319f87d62f5e5",
+      "manifestBytes": 70944,
+      "worker": "outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/derived-pairs/baseline/new-dist/sw.js",
+      "workerSha256": "45e16118ba470d4a006b41855c1f8918637a6bfdafb2c2fa58c256de31ff0ea2",
+      "workerBytes": 48245
+    },
+    "blob": {
+      "manifest": "outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/DERIVED-blob-MANIFEST.json",
+      "manifestSha256": "98d2a41de79bc58b54509bf4bbd0c1493685ad183df8e29cc32deefeac828c6f",
+      "manifestBytes": 70944,
+      "worker": "outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/derived-pairs/blob/new-dist/sw.js",
+      "workerSha256": "50dff85554ab38cbbbb8f218c9a8a42c7ee26ea3f3e370681f0b91426aac0914",
+      "workerBytes": 48241
+    },
+    "stream": {
+      "manifest": "outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/DERIVED-stream-MANIFEST.json",
+      "manifestSha256": "18b7a7d735ce483a6114ab7209be56b405740a62533bf9b3edaa4f8d89619a5d",
+      "manifestBytes": 70944,
+      "worker": "outputs/Forge-Redesign-Implementation-2026-10-03/PWA-F9-WORKER-PARITY-REHEARSAL-1/derived-pairs/stream/new-dist/sw.js",
+      "workerSha256": "594431901fce6129124c61e633f8d10664c2c4c710d3e63cd23ab44e9a40aa49",
+      "workerBytes": 48243
+    }
+  },
+  "sourcePackage": {
+    "files": 33,
+    "manifestSha256": "f9a6acc93ca66e3d9a329567fc62a0c42db4406fc1fc5d1ce11ace6daa96741c"
+  },
+  "minimalBundlePayloadBytes": 20193746,
+  "noPackagingPerformed": true
+}

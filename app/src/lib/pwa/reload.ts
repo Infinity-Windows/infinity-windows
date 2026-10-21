@@ -8,5 +8,6 @@ export function reloadPage(reason: "controllerchange" | "takeover-fallback" = "c
   } catch {
     // Private browsing can block storage. Updating must still work.
   }
+  console.info("FORGE-PWA-PAGE-RELOAD", JSON.stringify({at:Date.now(),reason}));
   window.location.reload();
 }

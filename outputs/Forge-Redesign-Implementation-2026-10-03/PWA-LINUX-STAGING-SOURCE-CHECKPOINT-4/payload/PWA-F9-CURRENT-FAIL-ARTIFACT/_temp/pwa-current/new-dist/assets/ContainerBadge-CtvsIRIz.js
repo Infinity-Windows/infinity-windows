@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-DKdBMi_L.js";import{_ as t}from"./storage-B4OsPGrL.js";var n=e();function r({name:e,serial:r}){let i=e.trim().slice(0,2).toUpperCase()||`?`;return(0,n.jsx)(`span`,{className:`container-badge`,style:{"--badge-hue":t(r)},"aria-hidden":`true`,children:i})}export{r as t};

@@ -1,0 +1,42 @@
+{
+  "app/playwright.pwa.config.ts": {
+    "gitObject": "dfe8720d57a6a45a005551255d3f72a44f935edc",
+    "sha256": "4cad162379bb81de77c9bb0ba5aa33fae85b983e87807cf6d4d2b0b39d513e71",
+    "commit": "a703caf274d6e7627cfc2c688ed7c351a55be465"
+  },
+  "app/e2e/upgrade-path.pwa.ts": {
+    "gitObject": "ff7220197c7e374bdfb5a8dcb02a10cb3dcdf502",
+    "sha256": "46055937677d5711c79812185283432630b742c213e80c19c88a103edd63c448",
+    "commit": "a703caf274d6e7627cfc2c688ed7c351a55be465"
+  },
+  "app/e2e/support/pwa.ts": {
+    "gitObject": "91e82a41a7241c5a9fd1d2e20c5b4a600e858715",
+    "sha256": "963f970f8579cccc0f844281717e450e88591c7748dc7f7ec7c215709b6d0dbe",
+    "commit": "a703caf274d6e7627cfc2c688ed7c351a55be465"
+  },
+  "app/e2e/support/pwaSlowReloadEvidence.ts": {
+    "gitObject": "b141bbbf4ab5a2bb8fa10904043867bcea2452f6",
+    "sha256": "305fbe62664842153c45ca9a4bc23f83bdafaa869488207400cd1154573dc5eb",
+    "commit": "a703caf274d6e7627cfc2c688ed7c351a55be465"
+  },
+  "app/e2e/support/pwaEngineTrace.ts": {
+    "gitObject": "4e42a3d7fb5060ddc6d4460682986aa68ebb8a3b",
+    "sha256": "e274d7ebdcc834af03e635ff917206aee79eb0b572dad60323d3ab8012c95ac9",
+    "commit": "a703caf274d6e7627cfc2c688ed7c351a55be465"
+  },
+  "app/e2e/support/pwaHarness.ts": {
+    "gitObject": "f71e565c2d5528c224104b1cb88079ee6504294e",
+    "sha256": "8ea02b1a64110cff38d561daeeeaf60c7ca101bbfb7984e8ca49d97a26eb7449",
+    "commit": "a703caf274d6e7627cfc2c688ed7c351a55be465"
+  },
+  "app/package.json": {
+    "gitObject": "030acdac758cd2a081e32dfc3f3494808a24ea96",
+    "sha256": "ca24a5be8471785a53bf8fa458b1abf503d96f115a200024842a17037e5bc8df",
+    "commit": "a703caf274d6e7627cfc2c688ed7c351a55be465"
+  },
+  "app/package-lock.json": {
+    "gitObject": "1b2b13cfc437a7bcc44da8a7393be30647b003d6",
+    "sha256": "b73730093a563941c1ead405d43537467a171733d27a14ca358467c41765b663",
+    "commit": "a703caf274d6e7627cfc2c688ed7c351a55be465"
+  }
+}

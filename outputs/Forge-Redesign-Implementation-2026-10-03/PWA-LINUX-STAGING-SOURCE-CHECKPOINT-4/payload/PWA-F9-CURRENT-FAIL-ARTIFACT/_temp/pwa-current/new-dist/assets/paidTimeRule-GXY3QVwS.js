@@ -1,0 +1,1 @@
+function e(e,t){let n=e?.paid_time_from_start_day_on??null;return n?n.slice(0,10)<=t:!1}function t(e,t){let n=e?.paid_time_from_start_day_on??null;return n?n.slice(0,10)<=t?`on`:`scheduled`:`off`}function n(e){let t=(e??``).trim();return/^\d{4}-\d{2}-\d{2}$/.test(t)?t:null}export{e as n,t as r,n as t};

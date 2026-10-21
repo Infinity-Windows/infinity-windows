@@ -1,0 +1,9 @@
+{
+  "archiveSha256": "4a4da653a872ddc8dbf3ec1d75e2f5e2b1b2133dd9f641f0af4d3c8c694508af",
+  "manifestSha256": "d0a8a7fee0c0d88e770d39371b7037210bde52cae7a9461f21507bc32c0ad5c0",
+  "archiveBytes": 21585920,
+  "regularFiles": 754,
+  "payloadBytes": 21006386,
+  "format": "USTAR sorted files only; uid/gid/mtime zero; mode0444",
+  "published": false
+}

@@ -1,0 +1,280 @@
+TAP version 13
+# Subtest: grep matches actual joined titlePath, including empty root/project prefixes
+ok 1 - grep matches actual joined titlePath, including empty root/project prefixes
+  ---
+  duration_ms: 0.68875
+  type: 'test'
+  ...
+# Subtest: grep refuses other files, title suffixes, other cases and bare title
+ok 2 - grep refuses other files, title suffixes, other cases and bare title
+  ---
+  duration_ms: 0.1565
+  type: 'test'
+  ...
+# Subtest: list preflight refuses zero/two cases, different title/file and report errors
+ok 3 - list preflight refuses zero/two cases, different title/file and report errors
+  ---
+  duration_ms: 0.285084
+  type: 'test'
+  ...
+# Subtest: output shape enforces sibling/run basename/index and rejects protected overlap
+ok 4 - output shape enforces sibling/run basename/index and rejects protected overlap
+  ---
+  duration_ms: 2.101916
+  type: 'test'
+  ...
+# Subtest: output path rejects existing symlink to protected archive
+ok 5 - output path rejects existing symlink to protected archive
+  ---
+  duration_ms: 0.743042
+  type: 'test'
+  ...
+# Subtest: exclusive harness and runner locks cannot be reused
+ok 6 - exclusive harness and runner locks cannot be reused
+  ---
+  duration_ms: 0.526792
+  type: 'test'
+  ...
+# Subtest: manifest helper independently refuses changed bytes and wrong worker pin
+ok 7 - manifest helper independently refuses changed bytes and wrong worker pin
+  ---
+  duration_ms: 1.558167
+  type: 'test'
+  ...
+# Subtest: shell quoting pins execPath including spaces and shell metacharacters
+ok 8 - shell quoting pins execPath including spaces and shell metacharacters
+  ---
+  duration_ms: 0.06325
+  type: 'test'
+  ...
+# Subtest: observation failure in finally preserves original assertion and reaches following detach
+ok 9 - observation failure in finally preserves original assertion and reaches following detach
+  ---
+  duration_ms: 0.491625
+  type: 'test'
+  ...
+# Subtest: complete fixture keeps original failing test outcome separate; no mechanism claim
+ok 10 - complete fixture keeps original failing test outcome separate; no mechanism claim
+  ---
+  duration_ms: 0.562209
+  type: 'test'
+  ...
+# Subtest: missing original-before invalidates arm
+ok 11 - missing original-before invalidates arm
+  ---
+  duration_ms: 0.143833
+  type: 'test'
+  ...
+# Subtest: missing original-after invalidates arm
+ok 12 - missing original-after invalidates arm
+  ---
+  duration_ms: 0.112291
+  type: 'test'
+  ...
+# Subtest: missing derived-before invalidates arm
+ok 13 - missing derived-before invalidates arm
+  ---
+  duration_ms: 0.193916
+  type: 'test'
+  ...
+# Subtest: missing derived-after invalidates arm
+ok 14 - missing derived-after invalidates arm
+  ---
+  duration_ms: 0.058209
+  type: 'test'
+  ...
+# Subtest: missing harness-exit invalidates arm
+ok 15 - missing harness-exit invalidates arm
+  ---
+  duration_ms: 0.034375
+  type: 'test'
+  ...
+# Subtest: incomplete/loss flag true invalidates without altering original outcome
+ok 16 - incomplete/loss flag true invalidates without altering original outcome
+  ---
+  duration_ms: 0.045458
+  type: 'test'
+  ...
+# Subtest: incomplete/loss flag undefined invalidates without altering original outcome
+ok 17 - incomplete/loss flag undefined invalidates without altering original outcome
+  ---
+  duration_ms: 0.0285
+  type: 'test'
+  ...
+# Subtest: trace truncation, ARM-INVALID, wrong category, console fallback and SIGKILL refuse
+ok 18 - trace truncation, ARM-INVALID, wrong category, console fallback and SIGKILL refuse
+  ---
+  duration_ms: 0.1515
+  type: 'test'
+  ...
+# Subtest: future runner really invokes validator after test; config graceful timeout and pinned Node
+ok 19 - future runner really invokes validator after test; config graceful timeout and pinned Node
+  ---
+  duration_ms: 0.364292
+  type: 'test'
+  ...
+# Subtest: exact complete browser and saved category order; extras never expand list
+ok 20 - exact complete browser and saved category order; extras never expand list
+  ---
+  duration_ms: 1.28925
+  type: 'test'
+  ...
+# Subtest: browser mismatch refuses protocolVersion
+ok 21 - browser mismatch refuses protocolVersion
+  ---
+  duration_ms: 0.205625
+  type: 'test'
+  ...
+# Subtest: browser mismatch refuses product
+ok 22 - browser mismatch refuses product
+  ---
+  duration_ms: 0.046375
+  type: 'test'
+  ...
+# Subtest: browser mismatch refuses revision
+ok 23 - browser mismatch refuses revision
+  ---
+  duration_ms: 0.04125
+  type: 'test'
+  ...
+# Subtest: browser mismatch refuses userAgent
+ok 24 - browser mismatch refuses userAgent
+  ---
+  duration_ms: 0.05625
+  type: 'test'
+  ...
+# Subtest: browser mismatch refuses jsVersion
+ok 25 - browser mismatch refuses jsVersion
+  ---
+  duration_ms: 0.043084
+  type: 'test'
+  ...
+# Subtest: missing trace category refuses
+ok 26 - missing trace category refuses
+  ---
+  duration_ms: 0.11075
+  type: 'test'
+  ...
+# Subtest: fixed arm 1
+ok 27 - fixed arm 1
+  ---
+  duration_ms: 0.10275
+  type: 'test'
+  ...
+# Subtest: fixed arm 2
+ok 28 - fixed arm 2
+  ---
+  duration_ms: 0.334792
+  type: 'test'
+  ...
+# Subtest: fixed arm 3
+ok 29 - fixed arm 3
+  ---
+  duration_ms: 0.327584
+  type: 'test'
+  ...
+# Subtest: fixed arm 4
+ok 30 - fixed arm 4
+  ---
+  duration_ms: 0.0985
+  type: 'test'
+  ...
+# Subtest: off cannot replace baseline
+ok 31 - off cannot replace baseline
+  ---
+  duration_ms: 0.05325
+  type: 'test'
+  ...
+# Subtest: activation treatment stays off
+ok 32 - activation treatment stays off
+  ---
+  duration_ms: 0.0455
+  type: 'test'
+  ...
+# Subtest: archive reuse stays on
+ok 33 - archive reuse stays on
+  ---
+  duration_ms: 0.041333
+  type: 'test'
+  ...
+# Subtest: drop prevents launch
+ok 34 - drop prevents launch
+  ---
+  duration_ms: 0.042042
+  type: 'test'
+  ...
+# Subtest: disabled worker console prevents launch
+ok 35 - disabled worker console prevents launch
+  ---
+  duration_ms: 0.045875
+  type: 'test'
+  ...
+# Subtest: fresh/digest pairs within SAME public Worker object only
+ok 36 - fresh/digest pairs within SAME public Worker object only
+  ---
+  duration_ms: 1.233459
+  type: 'test'
+  ...
+# Subtest: same URL different Worker cannot cross-pair
+ok 37 - same URL different Worker cannot cross-pair
+  ---
+  duration_ms: 0.104541
+  type: 'test'
+  ...
+# Subtest: wrong mode invalidates record
+ok 38 - wrong mode invalidates record
+  ---
+  duration_ms: 0.056458
+  type: 'test'
+  ...
+# Subtest: wrong digest invalidates parity
+ok 39 - wrong digest invalidates parity
+  ---
+  duration_ms: 0.067958
+  type: 'test'
+  ...
+# Subtest: post-clone fallback stays INVALID
+ok 40 - post-clone fallback stays INVALID
+  ---
+  duration_ms: 0.094375
+  type: 'test'
+  ...
+# Subtest: missing worker identity is UNKNOWN gap
+ok 41 - missing worker identity is UNKNOWN gap
+  ---
+  duration_ms: 0.113208
+  type: 'test'
+  ...
+# Subtest: nonstatic records are refused without body extraction
+ok 42 - nonstatic records are refused without body extraction
+  ---
+  duration_ms: 0.063
+  type: 'test'
+  ...
+# Subtest: missing digest remains an observation gap
+ok 43 - missing digest remains an observation gap
+  ---
+  duration_ms: 0.055833
+  type: 'test'
+  ...
+# Subtest: read-only derivative verifier detects changed/missing/additional/symlink files
+ok 44 - read-only derivative verifier detects changed/missing/additional/symlink files
+  ---
+  duration_ms: 155.798875
+  type: 'test'
+  ...
+# Subtest: unknown hashed URL cannot pair undefined digests into a false pass
+ok 45 - unknown hashed URL cannot pair undefined digests into a false pass
+  ---
+  duration_ms: 0.218791
+  type: 'test'
+  ...
+1..45
+# tests 45
+# suites 0
+# pass 45
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 230.603208

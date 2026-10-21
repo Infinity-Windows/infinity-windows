@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-DKdBMi_L.js";import{u as t}from"./chunk-BV7QT456-BwK42zvx.js";import{Gr as n}from"./index-BRHybHhN.js";var r=e();function i(){let e=t();return(0,r.jsx)(n,{onClose:()=>e(`/warehouse`)})}export{i as Scan};

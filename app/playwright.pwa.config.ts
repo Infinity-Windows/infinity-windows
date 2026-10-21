@@ -41,6 +41,7 @@ export default defineConfig({
   testDir: "./e2e",
   testMatch: /\.pwa\.ts$/,
   outputDir: "./e2e/test-results",
+  preserveOutput: "always",
   fullyParallel: false,
   workers: 1,
   // A worker install precaches ~8 MB, and the loop spec waits out
@@ -52,7 +53,7 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}`,
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
-    trace: "retain-on-failure",
+    trace: process.env.IW_PWA_CAUSAL_TRACE==='1' ? 'on' : 'retain-on-failure',
     video: "off",
     serviceWorkers: "allow",
   },

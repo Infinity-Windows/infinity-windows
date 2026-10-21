@@ -23,6 +23,8 @@
 // fixed in PwaBanners.tsx; see the notes on each.
 
 import { expect, test, type Page, type Worker } from "@playwright/test";
+import { prepareSlowReloadEvidence } from "./support/pwaSlowReloadEvidence";
+import { preparePwaEngineTrace } from "./support/pwaEngineTrace";
 import {
   cutTheNetwork,
   expireBrowserCache,
@@ -80,6 +82,31 @@ test("a phone on the previous build opens the app after a deploy, then switches 
   request,
 }) => {
   const bootErrors: string[] = [];
+  const passiveReturningTrace = process.env.IW_PWA_RETURNING_PHONE_TRACE === '1';
+  const returningCdp = passiveReturningTrace ? await context.newCDPSession(page) : null;
+  const returningEngine = returningCdp ? await preparePwaEngineTrace(page, returningCdp, test.info()) : null;
+  const returningNetwork: unknown[] = [];
+  if (returningCdp) {
+    await returningCdp.send('Network.enable');
+    returningCdp.on('Network.requestWillBeSent', event => returningNetwork.push({
+      event: 'request', at: Date.now(), timestamp: event.timestamp, requestId: event.requestId,
+      loaderId: event.loaderId, url: event.request.url, type: event.type,
+      initiator: { type: event.initiator.type, url: event.initiator.url, line: event.initiator.lineNumber,
+        stack: event.initiator.stack?.callFrames.slice(0, 5) },
+    }));
+    returningCdp.on('Network.responseReceived', event => returningNetwork.push({
+      event: 'response', at: Date.now(), timestamp: event.timestamp, requestId: event.requestId,
+      status: event.response.status, fromServiceWorker: event.response.fromServiceWorker,
+    }));
+    returningCdp.on('Network.loadingFinished', event => returningNetwork.push({
+      event: 'finished', at: Date.now(), timestamp: event.timestamp, requestId: event.requestId,
+    }));
+    returningCdp.on('Network.loadingFailed', event => returningNetwork.push({
+      event: 'failed', at: Date.now(), timestamp: event.timestamp, requestId: event.requestId,
+      error: event.errorText, canceled: event.canceled, type: event.type,
+    }));
+  }
+  try {
   await page.addInitScript(() => {
     (window as Window & { __emptyBootRecoveryAtNavigation?: string | null }).__emptyBootRecoveryAtNavigation =
       sessionStorage.getItem("wops-empty-boot-diagnostic");
@@ -142,6 +169,7 @@ test("a phone on the previous build opens the app after a deploy, then switches 
   await page.goto("about:blank");
   await serveBuild(request, "new");
   await expireBrowserCache(page, context);
+  await returningEngine?.start();
 
   // Today: the phone opens the app. The old worker answers with the old
   // shell, and the old shell has to be able to start.
@@ -235,6 +263,18 @@ test("a phone on the previous build opens the app after a deploy, then switches 
   await expect(signInButton(page)).toBeVisible();
   expect(offlineFailed, "files the new build needed offline that its worker did not have").toEqual([]);
   expect(await runningEntry(page)).toBe(builds.new.entry);
+  } finally {
+    if (passiveReturningTrace) {
+      const browserTimeline = await page.evaluate(() =>
+        JSON.parse(sessionStorage.getItem('wops-e2e-upgrade-timeline') || '[]'),
+      ).catch(error => ({ readError: String(error) }));
+      await test.info().attach('returning-phone-causal', {
+        body: Buffer.from(JSON.stringify({ browserTimeline, network: returningNetwork, bootErrors }, null, 2)),
+        contentType: 'application/json',
+      });
+    }
+    try { await returningEngine?.finish(); } finally { await returningCdp?.detach(); }
+  }
 });
 
 test("a phone whose very first session sees a deploy switches over, instead of offering Refresh for ever", async ({
@@ -275,7 +315,9 @@ test("an in-flight self reload is not cancelled when the new worker's shell look
   page,
   context,
   request,
-}) => {
+}, testInfo) => {
+  const capture=process.env.IW_PWA_SLOW_SHELL_TRACE==="1"?await prepareSlowReloadEvidence(page,testInfo):null;
+  try {
   const { builds } = await harnessState(request);
   await serveBuild(request, "old");
   await page.goto("/");
@@ -303,6 +345,7 @@ test("an in-flight self reload is not cancelled when the new worker's shell look
     });
   });
 
+  await capture?.start();
   await serveBuild(request, "new");
   const { navigations } = countNavigations(page);
   await nudgeUpdateCheck(page);
@@ -311,6 +354,7 @@ test("an in-flight self reload is not cancelled when the new worker's shell look
   await expect(signInButton(page)).toBeVisible();
   expect(await worker.evaluate(() => (self as unknown as { __slowShellLookups: number }).__slowShellLookups)).toBeGreaterThan(0);
   expect(navigations(), "the worker cancelled an in-flight self reload").toHaveLength(1);
+  } finally {await capture?.finish();}
 });
 
 test("a second tab on the same URL can reload without suppressing the asking tab", async ({
@@ -356,6 +400,81 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
   // worker and never attaches its reload. The app itself sees the second
   // worker waiting, asks it to take over, it does, and the page stays on the
   // old shell: Refresh, ten seconds, Refresh, ten seconds.
+  const causal: unknown[] = [];
+  const network: unknown[] = [];
+  const activationGateTreatment=process.env.IW_PWA_ACTIVATION_GATE_COMPARE==='1' && test.info().repeatEachIndex%2===1;
+  const cdp=await page.context().newCDPSession(page);
+  await cdp.send('Network.enable');
+  const engineTrace=process.env.IW_PWA_ENGINE_TRACE==='1'
+    ? await preparePwaEngineTrace(page,cdp,test.info()) : null;
+  const tracked=new Set<string>();
+  cdp.on('Network.requestWillBeSent',event=>{
+    if(event.type==='Document' || /\.(?:js|css)(?:\?|$)/.test(event.request.url)){
+      tracked.add(event.requestId);
+      network.push({event:'request',at:Date.now(),timestamp:event.timestamp,requestId:event.requestId,loaderId:event.loaderId,url:event.request.url,type:event.type,
+        initiator:{type:event.initiator.type,url:event.initiator.url,line:event.initiator.lineNumber,stack:event.initiator.stack?.callFrames.slice(0,3)}});
+    }
+  });
+  cdp.on('Network.responseReceived',event=>{if(tracked.has(event.requestId))network.push({event:'response',at:Date.now(),requestId:event.requestId,
+    timestamp:event.timestamp,status:event.response.status,mimeType:event.response.mimeType,fromServiceWorker:event.response.fromServiceWorker,fromDiskCache:event.response.fromDiskCache,fromPrefetchCache:event.response.fromPrefetchCache});});
+  cdp.on('Network.loadingFinished',event=>{if(tracked.has(event.requestId))network.push({event:'finished',at:Date.now(),timestamp:event.timestamp,requestId:event.requestId,encodedDataLength:event.encodedDataLength});});
+  cdp.on('Network.loadingFailed',event=>{if(tracked.has(event.requestId))network.push({event:'failed',at:Date.now(),requestId:event.requestId,
+    timestamp:event.timestamp,type:event.type,error:event.errorText,canceled:event.canceled,blockedReason:event.blockedReason});});
+  page.on('pageerror',error=>causal.push({event:'pageerror',at:Date.now(),message:error.message,stack:error.stack}));
+  page.context().on("console", message => {
+    if (message.text().startsWith("FORGE-PWA-")) causal.push({event:"console",at:Date.now(),text:message.text(),location:message.location()});
+  });
+  page.on("request", req => { if(req.isNavigationRequest())causal.push({event:"navigation-request",at:Date.now(),url:req.url()}); });
+  await page.addInitScript((gateTreatment:boolean) => {
+    const key="wops-e2e-half-download-causal";
+    const note=(event:string,detail:unknown=null)=>{
+      const old=JSON.parse(sessionStorage.getItem(key)||"[]") as unknown[];
+      old.push({event,at:Date.now(),detail});sessionStorage.setItem(key,JSON.stringify(old.slice(-100)));
+    };
+    note("document-start", {empty:sessionStorage.getItem("wops-empty-boot-diagnostic"),reload:sessionStorage.getItem("wops-update-reload-diagnostic")});
+    window.addEventListener("load",()=>note("load",{boot:document.documentElement.dataset.forgeBootStarted,rootChildren:document.getElementById("root")?.childElementCount}));
+    window.addEventListener("beforeunload",()=>note("beforeunload",{boot:document.documentElement.dataset.forgeBootStarted,empty:sessionStorage.getItem("wops-empty-boot-diagnostic"),reload:sessionStorage.getItem("wops-update-reload-diagnostic")}));
+    // Diagnostic event-delivery treatment only; archived app and worker bytes
+    // remain unchanged. Arm only for the successful second update below.
+    const gateWindow=window as unknown as {__pwaActivationGateArmed?:boolean};
+    let forwarding=false;
+    navigator.serviceWorker.addEventListener('controllerchange',event=>{
+      if(!gateTreatment || !gateWindow.__pwaActivationGateArmed || forwarding)return;
+      gateWindow.__pwaActivationGateArmed=false;
+      const controller=navigator.serviceWorker.controller;
+      note('gate-native',{url:controller?.scriptURL,state:controller?.state,trusted:event.isTrusted});
+      if(!controller || controller.state!=='activating'){note('gate-invalid',{reason:'controller_not_activating'});return;}
+      event.stopImmediatePropagation();
+      const deadline=setTimeout(()=>{note('gate-invalid',{reason:'activation_timeout',state:controller.state});},8000);
+      const changed=()=>{
+        if(controller.state==='redundant'){clearTimeout(deadline);controller.removeEventListener('statechange',changed);note('gate-invalid',{reason:'controller_redundant'});return;}
+        if(controller.state!=='activated')return;
+        clearTimeout(deadline);controller.removeEventListener('statechange',changed);
+        if(navigator.serviceWorker.controller!==controller){note('gate-invalid',{reason:'controller_replaced'});return;}
+        note('gate-forward',{url:controller.scriptURL,state:controller.state});
+        forwarding=true;navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));forwarding=false;
+      };
+      controller.addEventListener('statechange',changed);changed();
+    },true);
+    navigator.serviceWorker.addEventListener("controllerchange",()=>{
+      const controller=navigator.serviceWorker.controller;
+      note("controllerchange",{url:controller?.scriptURL,state:controller?.state});
+      controller?.addEventListener('statechange',()=>note('controller-state',{url:controller.scriptURL,state:controller.state}));
+    });
+    const post=ServiceWorker.prototype.postMessage;
+    ServiceWorker.prototype.postMessage=function(message:unknown,options?:Transferable[]|StructuredSerializeOptions){note("post-message",{url:this.scriptURL,type:(message as {type?:unknown})?.type});return Reflect.apply(post,this,[message,options]);};
+    window.addEventListener("error",(e:Event)=>{
+      const target=e.target;
+      const url=target instanceof HTMLScriptElement?target.src:target instanceof HTMLLinkElement?target.href:null;
+      const entries=url?performance.getEntriesByName(url).map(entry=>{
+        const r=entry as PerformanceResourceTiming & {responseStatus?:number};
+        return {name:r.name,start:r.startTime,duration:r.duration,initiator:r.initiatorType,status:r.responseStatus,transferSize:r.transferSize,decodedBodySize:r.decodedBodySize};
+      }):[];
+      note("window-error",e instanceof ErrorEvent?{message:e.message}:{url,tag:target instanceof Element?target.tagName:null,rel:target instanceof HTMLLinkElement?target.rel:null,entries});
+    },true);
+    window.addEventListener("unhandledrejection",e=>note("unhandled-rejection",String(e.reason)));
+  },activationGateTreatment);
+  try {
   const { builds } = await harnessState(request);
   await serveBuild(request, "old");
   await page.goto("/");
@@ -385,6 +504,7 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
 
   // The deploy is half there: the new build, minus one chunk its worker
   // precaches. The download fails and the worker is thrown away.
+  await engineTrace?.start();
   await serveBuild(request, "new", [builds.new.entry]);
   await nudgeUpdateCheck(page);
   await expect.poll(states, { timeout: 60_000, message: "the half-deployed worker never failed to install" }).toContain(
@@ -395,6 +515,7 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
   // The deploy finishes. The next check downloads the whole thing, and the
   // app switches to it — on the sign-in screen, by itself.
   await serveBuild(request, "new");
+  if(activationGateTreatment)await page.evaluate(()=>{(window as unknown as {__pwaActivationGateArmed:boolean}).__pwaActivationGateArmed=true;});
   const { loads } = countLoads(page);
   const { navigations } = countNavigations(page);
   await nudgeUpdateCheck(page);
@@ -406,5 +527,21 @@ test("a download that broke halfway does not leave Refresh doing nothing afterwa
     })
     .toBe(builds.new.entry);
   await expectSettledOn(page, builds.new.entry, loads);
+  if(activationGateTreatment){
+    const gate=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('wops-e2e-half-download-causal')||'[]') as {event:string;at:number;detail:{state?:string}}[]);
+    expect(gate.filter(e=>e.event==='gate-invalid'),'invalid treatment is not a passing activation gate').toHaveLength(0);
+    expect(gate.filter(e=>e.event==='gate-native')).toHaveLength(1);
+    const forward=gate.filter(e=>e.event==='gate-forward');expect(forward).toHaveLength(1);expect(forward[0].detail.state).toBe('activated');
+    const unload=gate.find(e=>e.event==='beforeunload' && e.at>=forward[0].at);
+    expect(unload,'forwarded old-page handler must reload before worker fallback').toBeDefined();
+    expect(unload!.at-forward[0].at).toBeLessThan(3000);
+  }
   expect(navigations(), "the switch was more than one navigation: two racing reloads can leave the new build blank").toHaveLength(1);
+  } finally {
+    let documentTimeline: unknown = null;
+    try { documentTimeline=await page.evaluate(()=>JSON.parse(sessionStorage.getItem("wops-e2e-half-download-causal")||"[]")); } catch { /* navigation may still be active */ }
+    await test.info().attach("half-download-causal",{body:Buffer.from(JSON.stringify({repeatIndex:test.info().repeatEachIndex,activationGateTreatment,htmlPreloadTreatment:process.env.IW_PWA_NO_HTML_MODULEPRELOAD==='1',causal,documentTimeline,network},null,2)),contentType:"application/json"});
+    await engineTrace?.finish();
+    await cdp.detach();
+  }
 });

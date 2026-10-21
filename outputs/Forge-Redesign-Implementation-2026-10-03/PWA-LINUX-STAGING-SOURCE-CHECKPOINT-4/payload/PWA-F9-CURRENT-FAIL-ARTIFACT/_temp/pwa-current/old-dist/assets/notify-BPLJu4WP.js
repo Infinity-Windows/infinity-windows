@@ -1,0 +1,1 @@
+function e(e){return{title:`Travel details ready`,body:`Your trip "${e}" is published. Tap to see flights, lodging, and more.`}}function t(e){return{title:`Travel details updated`,body:`"${e}" changed. Tap to check your latest flights and plans.`}}export{e as n,t};

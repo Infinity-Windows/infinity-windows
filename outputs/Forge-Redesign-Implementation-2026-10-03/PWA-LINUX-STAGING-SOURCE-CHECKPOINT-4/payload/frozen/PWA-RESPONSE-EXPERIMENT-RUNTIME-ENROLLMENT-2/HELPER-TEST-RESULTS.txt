@@ -1,0 +1,268 @@
+TAP version 13
+# Subtest: default off has no hook, invalid mode refuses setup
+ok 1 - default off has no hook, invalid mode refuses setup
+  ---
+  duration_ms: 0.861959
+  type: 'test'
+  ...
+# Subtest: blob preserves exact bytes/status/statusText/headers and original readability
+ok 2 - blob preserves exact bytes/status/statusText/headers and original readability
+  ---
+  duration_ms: 24.452166
+  type: 'test'
+  ...
+# Subtest: blob accepts absent content-length without inventing one
+ok 3 - blob accepts absent content-length without inventing one
+  ---
+  duration_ms: 2.098666
+  type: 'test'
+  ...
+# Subtest: stream preserves exact bytes/status/statusText/headers and original readability
+ok 4 - stream preserves exact bytes/status/statusText/headers and original readability
+  ---
+  duration_ms: 2.745875
+  type: 'test'
+  ...
+# Subtest: stream accepts absent content-length without inventing one
+ok 5 - stream accepts absent content-length without inventing one
+  ---
+  duration_ms: 1.852375
+  type: 'test'
+  ...
+# Subtest: baseline returns identity without cloning or body reading
+ok 6 - baseline returns identity without cloning or body reading
+  ---
+  duration_ms: 0.541667
+  type: 'test'
+  ...
+# Subtest: skip cache miss returns ORIGINAL, never cache miss
+ok 7 - skip cache miss returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.157167
+  type: 'test'
+  ...
+# Subtest: skip wrong cache returns ORIGINAL, never cache miss
+ok 8 - skip wrong cache returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.176667
+  type: 'test'
+  ...
+# Subtest: skip install returns ORIGINAL, never cache miss
+ok 9 - skip install returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.364166
+  type: 'test'
+  ...
+# Subtest: skip API destination returns ORIGINAL, never cache miss
+ok 10 - skip API destination returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.376208
+  type: 'test'
+  ...
+# Subtest: skip fragment returns ORIGINAL, never cache miss
+ok 11 - skip fragment returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.185916
+  type: 'test'
+  ...
+# Subtest: skip revisioned key returns ORIGINAL, never cache miss
+ok 12 - skip revisioned key returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.104458
+  type: 'test'
+  ...
+# Subtest: skip POST returns ORIGINAL, never cache miss
+ok 13 - skip POST returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.074666
+  type: 'test'
+  ...
+# Subtest: skip range returns ORIGINAL, never cache miss
+ok 14 - skip range returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.06925
+  type: 'test'
+  ...
+# Subtest: skip other origin returns ORIGINAL, never cache miss
+ok 15 - skip other origin returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.277583
+  type: 'test'
+  ...
+# Subtest: skip unknown query alias returns ORIGINAL, never cache miss
+ok 16 - skip unknown query alias returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.109125
+  type: 'test'
+  ...
+# Subtest: skip wrong effective key returns ORIGINAL, never cache miss
+ok 17 - skip wrong effective key returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.087625
+  type: 'test'
+  ...
+# Subtest: skip not enrolled returns ORIGINAL, never cache miss
+ok 18 - skip not enrolled returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.078292
+  type: 'test'
+  ...
+# Subtest: skip foreign cached url returns ORIGINAL, never cache miss
+ok 19 - skip foreign cached url returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.115458
+  type: 'test'
+  ...
+# Subtest: skip cached redirect alias returns ORIGINAL, never cache miss
+ok 20 - skip cached redirect alias returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.076917
+  type: 'test'
+  ...
+# Subtest: skip redirected returns ORIGINAL, never cache miss
+ok 21 - skip redirected returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.08175
+  type: 'test'
+  ...
+# Subtest: skip opaque returns ORIGINAL, never cache miss
+ok 22 - skip opaque returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.078041
+  type: 'test'
+  ...
+# Subtest: skip partial status returns ORIGINAL, never cache miss
+ok 23 - skip partial status returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.074375
+  type: 'test'
+  ...
+# Subtest: skip wrong MIME returns ORIGINAL, never cache miss
+ok 24 - skip wrong MIME returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.199292
+  type: 'test'
+  ...
+# Subtest: skip encoded returns ORIGINAL, never cache miss
+ok 25 - skip encoded returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.092583
+  type: 'test'
+  ...
+# Subtest: skip identity encoding unproved returns ORIGINAL, never cache miss
+ok 26 - skip identity encoding unproved returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.078542
+  type: 'test'
+  ...
+# Subtest: skip content range returns ORIGINAL, never cache miss
+ok 27 - skip content range returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.095125
+  type: 'test'
+  ...
+# Subtest: skip bad length syntax returns ORIGINAL, never cache miss
+ok 28 - skip bad length syntax returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.091333
+  type: 'test'
+  ...
+# Subtest: skip inconsistent length returns ORIGINAL, never cache miss
+ok 29 - skip inconsistent length returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.29875
+  type: 'test'
+  ...
+# Subtest: skip clone failure returns ORIGINAL, never cache miss
+ok 30 - skip clone failure returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.123375
+  type: 'test'
+  ...
+# Subtest: skip used body returns ORIGINAL, never cache miss
+ok 31 - skip used body returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.112167
+  type: 'test'
+  ...
+# Subtest: skip locked body returns ORIGINAL, never cache miss
+ok 32 - skip locked body returns ORIGINAL, never cache miss
+  ---
+  duration_ms: 0.069875
+  type: 'test'
+  ...
+# Subtest: revision-key cached URL is refused in the first arm
+ok 33 - revision-key cached URL is refused in the first arm
+  ---
+  duration_ms: 0.092666
+  type: 'test'
+  ...
+# Subtest: observer failure cannot turn cache hit into a failure
+ok 34 - observer failure cannot turn cache hit into a failure
+  ---
+  duration_ms: 6.704458
+  type: 'test'
+  ...
+# Subtest: post-clone length fallback is INVALID mechanism evidence, despite object identity
+ok 35 - post-clone length fallback is INVALID mechanism evidence, despite object identity
+  ---
+  duration_ms: 1.34375
+  type: 'test'
+  ...
+# Subtest: clone/read failure is conservatively INVALID mechanism evidence
+ok 36 - clone/read failure is conservatively INVALID mechanism evidence
+  ---
+  duration_ms: 0.634625
+  type: 'test'
+  ...
+# Subtest: missing event lifetime refuses BEFORE clone
+ok 37 - missing event lifetime refuses BEFORE clone
+  ---
+  duration_ms: 0.165416
+  type: 'test'
+  ...
+# Subtest: rejected event lifetime refuses BEFORE clone
+ok 38 - rejected event lifetime refuses BEFORE clone
+  ---
+  duration_ms: 0.124083
+  type: 'test'
+  ...
+# Subtest: original event owns lifetime BEFORE any cloning
+ok 39 - original event owns lifetime BEFORE any cloning
+  ---
+  duration_ms: 2.378625
+  type: 'test'
+  ...
+# Subtest: unrevisioned key alone cannot enroll an arbitrary script
+ok 40 - unrevisioned key alone cannot enroll an arbitrary script
+  ---
+  duration_ms: 0.130125
+  type: 'test'
+  ...
+# Subtest: body read failure after a real clone is INVALID, original remains readable
+ok 41 - body read failure after a real clone is INVALID, original remains readable
+  ---
+  duration_ms: 0.421666
+  type: 'test'
+  ...
+# Subtest: digest failure after helper return invalidates parity without replacing the response
+ok 42 - digest failure after helper return invalidates parity without replacing the response
+  ---
+  duration_ms: 1.259291
+  type: 'test'
+  ...
+# Subtest: all four A703 failing URLs are exact unrevisioned hashed F9 manifest assets
+ok 43 - all four A703 failing URLs are exact unrevisioned hashed F9 manifest assets
+  ---
+  duration_ms: 0.743458
+  type: 'test'
+  ...
+1..43
+# tests 43
+# suites 0
+# pass 43
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 161.770292

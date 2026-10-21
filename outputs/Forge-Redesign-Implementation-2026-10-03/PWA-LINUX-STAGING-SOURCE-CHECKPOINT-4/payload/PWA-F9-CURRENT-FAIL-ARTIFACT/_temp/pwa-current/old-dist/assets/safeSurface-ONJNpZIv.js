@@ -1,0 +1,1 @@
+var e=0,t=0,n=new Set;function r(){for(let e of n)try{e()}catch{}}function i(e){e(1),r();let t=!1;return()=>{t||(t=!0,e(-1),r())}}function a(){return i(t=>{e+=t})}function o(){return i(e=>{t+=e})}function s(){return e>0&&t===0}function c(e){return n.add(e),()=>{n.delete(e)}}export{c as i,a as n,s as r,o as t};

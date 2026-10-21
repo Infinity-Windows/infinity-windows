@@ -1,0 +1,1 @@
+import{a as e,o as t}from"./supabase-3FQM7AGJ.js";async function n(n){if(!t)return!1;try{let{error:t}=await e.functions.invoke(`send-push`,{body:n});return!t}catch{return!1}}export{n as t};

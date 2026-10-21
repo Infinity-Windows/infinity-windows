@@ -162,6 +162,7 @@ export function createTakeoverReload(
       if (accepted) return false; // first valid ask wins for this worker
       const id = source?.id ?? null;
       if (!id) return false; // nothing to own
+      console.info("FORGE-PWA-TAKEOVER", JSON.stringify({event:"ask",at:now(),id}));
       accepted = true;
       asker = id;
       navigated = false;
@@ -170,6 +171,7 @@ export function createTakeoverReload(
       return true;
     },
     navigationSeen(clientId) {
+      console.info("FORGE-PWA-TAKEOVER", JSON.stringify({event:"navigation-seen",at:now(),clientId,asker,pending}));
       if (!pending) return;
       if (clientId == null || clientId === "" || clientId === asker) navigated = true;
     },
@@ -178,7 +180,9 @@ export function createTakeoverReload(
       const id = asker;
       try {
         await options.activated();
+        console.info("FORGE-PWA-TAKEOVER", JSON.stringify({event:"activated",at:now(),id,deadline}));
         await sleep(graceMs);
+        console.info("FORGE-PWA-TAKEOVER", JSON.stringify({event:"grace-ended",at:now(),id,deadline,navigated}));
         // The page is reloading itself, or someone navigated anyway: a
         // navigation now would only cancel it.
         if (navigated) return false;
@@ -193,6 +197,7 @@ export function createTakeoverReload(
         // the deadline too. Both are checked again right before acting.
         if (navigated || now() >= deadline) return false;
         if (!client?.navigate) return false;
+        console.info("FORGE-PWA-TAKEOVER", JSON.stringify({event:"worker-navigate",at:now(),id,deadline,navigated,url:client.url}));
         await client.navigate(client.url);
         return true;
       } catch {

@@ -1,0 +1,15 @@
+{
+  "configuration": "/Users/emmatimpson/Documents/ChatGPT/Forge Windows and Doors App/outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-2/payload/PWA-RESPONSE-EXPERIMENT-RUNTIME-ENROLLMENT-2/app/playwright.pwa.config.ts",
+  "configurationSha256": "e1418c2680f3050ca96dc64e1e29e21d1cb5cc1cef1cee7a989587d5ac141ef2",
+  "observedOverrides": {
+    "channel": false,
+    "headless": false,
+    "executablePath": false
+  },
+  "pinnedCoreBundle": {
+    "sha256": "3258d1cf334c6afc95f22aa9c292436cb976b391e0437f1359c83b84f0cb9d66",
+    "registryExport": "require(exactAbsolutePinnedCoreBundle).registry.registry",
+    "selection": "findExecutable(\"chromium-headless-shell\").executablePath(\"javascript\")"
+  },
+  "interpretation": "Default headless/no channel predicted from declared configuration. Future helper must mechanically verify launch protocol/CLI/environment, exact staged package source/hash, actual selected executable without launching; Browser.getVersion perarm remains authoritative. No helper/import/runtime occurred."
+}

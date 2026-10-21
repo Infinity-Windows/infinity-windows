@@ -1,0 +1,154 @@
+--- a703/app/playwright.pwa.config.ts
++++ enrollment-2/app/playwright.pwa.config.ts
+@@ -1,4 +1,11 @@
+ import { defineConfig } from "@playwright/test";
++import { readFileSync } from "node:fs";
++import { dirname, resolve } from "node:path";
++import { fileURLToPath } from "node:url";
++import { assertRunEnvironment, CASE_GREP, shellQuote } from "../experiment-gates.mjs";
++const enrollmentRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
++const runtimePins = JSON.parse(readFileSync(resolve(enrollmentRoot, "RUNTIME-PINS.json"), "utf8"));
++const arm = assertRunEnvironment(process.env, runtimePins);
+ 
+ /**
+  * The INSTALLED app: a production build with its service worker, offline and
+@@ -40,7 +47,11 @@
+ export default defineConfig({
+   testDir: "./e2e",
+   testMatch: /\.pwa\.ts$/,
+-  outputDir: "./e2e/test-results",
++  outputDir: resolve(arm.runDir, "evidence"),
++  grep: CASE_GREP,
++  retries: 0,
++  repeatEach: 1,
++  maxFailures: 1,
+   preserveOutput: "always",
+   fullyParallel: false,
+   workers: 1,
+@@ -58,15 +69,17 @@
+     serviceWorkers: "allow",
+   },
+   webServer: {
+-    command: "node --experimental-strip-types e2e/support/pwaHarness.ts",
++    command: `${shellQuote(process.execPath)} ${shellQuote(resolve(enrollmentRoot, "start-verified-harness.mjs"))}`,
++    gracefulShutdown: { signal: "SIGTERM", timeout: 60_000 },
++    cwd: enrollmentRoot,
+     url: `http://localhost:${PORT}/`,
+     // Never reuse by default: a production build does not hot-reload, so a
+     // server left running is a build of older code. IW_PWA_REUSE=1 keeps the
+     // last run's two builds AND a harness already listening, for iterating
+     // on a spec without two rebuilds each time.
+-    reuseExistingServer: process.env.IW_PWA_REUSE === "1",
++    reuseExistingServer: false, // Archive reuse does NOT imply server reuse in this copied config.
+     // Two production builds before the first request is answered.
+-    timeout: 300_000,
++    timeout: 60_000, // No app build: verification plus server startup only.
+     stdout: "ignore",
+     stderr: "pipe",
+   },
+--- a703/app/e2e/support/pwaEngineTrace.ts
++++ enrollment-2/app/e2e/support/pwaEngineTrace.ts
+@@ -1,3 +1,6 @@
++import { readFileSync } from "node:fs";
++import { assertBrowserAndCategories, readPinnedManifest, observationOnly } from "../../../experiment-gates.mjs";
++import { createWorkerConsoleRecorder } from "../../../worker-console-records.mjs";
+ import { open, writeFile } from "node:fs/promises";
+ import type { CDPSession, Page, TestInfo } from "@playwright/test";
+ 
+@@ -8,9 +11,15 @@
+   const session = await browser.newBrowserCDPSession();
+   const version = await session.send("Browser.getVersion");
+   const inventory = await session.send("Tracing.getCategories");
+-  const selected = inventory.categories.filter(category =>
+-    /service.?worker|cache.?storage|loading|resource|netlog/i.test(category) ||
+-    ["devtools.timeline", "disabled-by-default-devtools.timeline", "blink.user_timing", "toplevel"].includes(category));
++  const pins = JSON.parse(readFileSync(new URL("../../../RUNTIME-PINS.json", import.meta.url), "utf8"));
++  await info.attach("runtime-browser-identity", { body: Buffer.from(JSON.stringify({ version, expected: pins.browser, availableCategories: inventory.categories })), contentType: "application/json" });
++  const selected = assertBrowserAndCategories(version, inventory.categories, pins);
++  const mode = process.env.IW_PWA_RESPONSE_MODE;
++  if (!mode || !["baseline", "blob", "stream"].includes(mode)) throw new Error("Missing reviewed response arm");
++  const pair = readPinnedManifest(new URL(`../../../../PWA-F9-WORKER-PARITY-REHEARSAL-1/DERIVED-${mode}-MANIFEST.json`, import.meta.url), pins.variants[mode]);
++  const recorder = createWorkerConsoleRecorder({ mode, fileHashes: pair.new.sha256 });
++  const receiveConsole = (message: import("@playwright/test").ConsoleMessage) => recorder.receive(message);
++  page.context().on("console", receiveConsole); // Before old-worker registration; adds NO attachment or pause.
+   const lifecycle: unknown[] = [];
+   pageSession.on("ServiceWorker.workerVersionUpdated", event => lifecycle.push({ event: "versions", at: Date.now(), ...event }));
+   pageSession.on("ServiceWorker.workerRegistrationUpdated", event => lifecycle.push({ event: "registrations", at: Date.now(), ...event }));
+@@ -27,7 +36,9 @@
+     },
+     async finish() {
+       const receipt: Record<string, unknown> = { version, inventory, selected, started, lifecycle,
+-        scope };
++        scope, responseExperimentMode: mode, baselineIsInstrumentedControl: true };
++      const errors: string[] = [];
++      await observationOnly(async () => {
+       if (started) {
+         let timer: ReturnType<typeof setTimeout> | undefined;
+         try {
+@@ -52,15 +63,31 @@
+             }
+           } finally { await file.close(); await session.send("IO.close", { handle: end.stream }); }
+           receipt.bytes = bytes;
+-          receipt.complete = !end.dataLossOccurred;
++          receipt.complete = end.dataLossOccurred === false; // Missing loss flag is not a valid capture.
+           await info.attach("browser-engine-trace", { path, contentType: "application/json" });
+         } catch (error) { receipt.error = String(error); receipt.complete = false; }
+         finally { if (timer) clearTimeout(timer); }
+       } else receipt.complete = false;
+-      const receiptPath = info.outputPath("browser-engine-receipt.json");
+-      await writeFile(receiptPath, JSON.stringify(receipt, null, 2));
+-      await info.attach("browser-engine-receipt", { path: receiptPath, contentType: "application/json" });
+-      await session.detach();
++      page.context().off("console", receiveConsole);
++      const consolePath = info.outputPath("worker-console-records.json");
++      await writeFile(consolePath, JSON.stringify(recorder.finish(), null, 2));
++      await info.attach("worker-console-records", { path: consolePath, contentType: "application/json" });
++      }, async error => { receipt.complete = false; errors.push(String(error)); });
++      // Always try detach; finish never throws through the unchanged spec's finally.
++      await observationOnly(async () => { await session.detach(); }, async error => { receipt.complete = false; errors.push('detach: '+String(error)); });
++      receipt.observationErrors = errors;
++      await observationOnly(async () => {
++        const receiptPath = info.outputPath("browser-engine-receipt.json");
++        await writeFile(receiptPath, JSON.stringify(receipt, null, 2));
++        await info.attach("browser-engine-receipt", { path: receiptPath, contentType: "application/json" });
++      }, async error => { receipt.complete = false; errors.push('receipt: '+String(error)); });
++      if (!receipt.complete || errors.length) {
++        await observationOnly(async () => {
++          const invalidPath = info.outputPath("ARM-INVALID.json");
++          await writeFile(invalidPath, JSON.stringify({ valid: false, reason: "Incomplete or failed observation; original test outcome preserved", receipt, errors }, null, 2));
++          await info.attach("ARM-INVALID", { path: invalidPath, contentType: "application/json" });
++        }, async () => {}); // Missing evidence is independently invalidated after teardown.
++      }
+     },
+   };
+ }
+--- a703/app/e2e/support/pwaHarness.ts
++++ enrollment-2/app/e2e/support/pwaHarness.ts
+@@ -117,10 +117,9 @@
+ function buildOld(): Build {
+   const src = join(cache, "old-src");
+   const dir = join(cache, "old-dist");
+-  if (REUSE && existsSync(join(dir, "index.html"))) {
+-    log(`reusing the old build in ${dir}`);
+-    return describeBuild("old", dir);
+-  }
++  if (!REUSE) throw new Error("Response experiment requires archived-only reuse");
++  if (!existsSync(join(dir, "index.html"))) throw new Error("Missing verified old archive; rebuild forbidden");
++  return describeBuild("old", dir); // No fallthrough to build, even on a later read error.
+   let sha: string;
+   try {
+     sha = git("rev-parse", "--short=7", OLD_REF);
+@@ -146,10 +145,9 @@
+ /** This working tree, built as a deploy would build it. */
+ function buildNew(): Build {
+   const dir = join(cache, "new-dist");
+-  if (REUSE && existsSync(join(dir, "index.html"))) {
+-    log(`reusing the new build in ${dir}`);
+-    return describeBuild("new", dir);
+-  }
++  if (!REUSE) throw new Error("Response experiment requires archived-only reuse");
++  if (!existsSync(join(dir, "index.html"))) throw new Error("Missing verified new archive; rebuild forbidden");
++  return describeBuild("new", dir); // No fallthrough to build, even on a later read error.
+   let sha = "unknown";
+   try {
+     sha = git("rev-parse", "--short=7", "HEAD") + (git("status", "--porcelain") === "" ? "" : "-dirty");

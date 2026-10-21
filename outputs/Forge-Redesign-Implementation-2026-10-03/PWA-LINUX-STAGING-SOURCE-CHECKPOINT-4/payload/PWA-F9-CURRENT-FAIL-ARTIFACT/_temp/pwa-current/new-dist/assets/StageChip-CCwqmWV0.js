@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-DKdBMi_L.js";var t=e();function n({stage:e,children:n}){return(0,t.jsx)(`span`,{className:`stage-chip`,"data-stage":e,children:n})}export{n as t};

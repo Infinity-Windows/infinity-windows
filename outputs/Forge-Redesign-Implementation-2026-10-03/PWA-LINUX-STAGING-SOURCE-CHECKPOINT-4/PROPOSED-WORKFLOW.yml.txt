@@ -1,0 +1,131 @@
+# SOURCE ONLY. Store outside .github/workflows until exact root/peer approval and publication.
+name: PWA exact archived Linux rehearsal
+on:
+  workflow_dispatch:
+    inputs:
+      sourceCommit:
+        description: Exact40 reviewed publication commit containing checkpoint3
+        required: true
+        type: string
+      reviewedManifest:
+        description: Exact64 independently reviewed checkpoint3 MANIFEST SHA256
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  archived-four-arms:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    env:
+      SOURCE_COMMIT: ${{ inputs.sourceCommit }}
+      REVIEWED_MANIFEST: ${{ inputs.reviewedManifest }}
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout exact supplied source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.sourceCommit }}
+          persist-credentials: false
+      - name: Root verification and bounded cloud setup
+        id: setup
+        timeout-minutes: 31
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export PYTHONDONTWRITEBYTECODE=1
+          timeout --signal=TERM --kill-after=5s 1795s bash <<'PWA_SETUP'
+          set -Eeuo pipefail
+          python3 -I -B - <<'PWA_BOOTSTRAP'
+          """Trusted workflow-inline bootstrap. Stdlib only; no package imports before root verification."""
+          import os,sys,json,re,hashlib,stat,time,subprocess
+          from pathlib import Path
+          PACKAGE_REL='outputs/Forge-Redesign-Implementation-2026-10-03/PWA-LINUX-STAGING-SOURCE-CHECKPOINT-3'
+          def require(ok,msg):
+           if not ok:raise ValueError(msg)
+          def digest(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+          def canonical(p):
+           p=Path(os.path.abspath(p))
+           for a in [*reversed(p.parents),p]:
+            if a.exists() or a.is_symlink():require(not a.is_symlink(),'symlink ancestor')
+           return p
+          def no_duplicates(pairs):
+           d={}
+           for k,v in pairs:require(k not in d,'duplicate JSON key');d[k]=v
+           return d
+          def verify_root(root,expected_sha,source_commit,actual_head):
+           require(re.fullmatch('[a-f0-9]{40}',source_commit) is not None,'exact40 sourceCommit required');require(actual_head==source_commit,'checkout HEAD mismatch')
+           require(re.fullmatch('[a-f0-9]{64}',expected_sha) is not None,'exact64 reviewedManifest required');root=canonical(root);m=root/'MANIFEST.json'
+           require(m.is_file() and not m.is_symlink() and m.stat().st_nlink==1,'manifest type');require(digest(m)==expected_sha,'root manifest pin mismatch')
+           expected=json.loads(m.read_text(),object_pairs_hook=no_duplicates)['files'];wanted=dict(expected);wanted['MANIFEST.json']={'bytes':m.stat().st_size,'sha256':expected_sha}
+           actual={};dirs=set();fold=set()
+           for base,sub,files in os.walk(root,followlinks=False):
+            for name in sub+files:
+             p=Path(base)/name;key=p.relative_to(root).as_posix();require(re.fullmatch('[A-Za-z0-9_.@/-]+',key) is not None,'unsafe root name');s=p.lstat();require(not stat.S_ISLNK(s.st_mode),'root symlink');require(key.casefold() not in fold,'root case collision');fold.add(key.casefold())
+             if stat.S_ISDIR(s.st_mode):dirs.add(key)
+             else:require(stat.S_ISREG(s.st_mode) and s.st_nlink==1,'root nonregular/hardlink');actual[key]={'bytes':s.st_size,'sha256':digest(p)}
+           require(actual==wanted,'root extra/missing/hash mismatch');wantdirs={str(p) for name in wanted for p in Path(name).parents if str(p)!='.'};require(dirs==wantdirs,'extra empty root directory')
+           return {'sourceCommit':source_commit,'rootManifestSha256':expected_sha,'root':str(root),'verifiedFiles':len(actual)}
+          def plan_paths(runner_temp,checkout,unique):
+           require(re.fullmatch('[0-9]+-[0-9]+',unique) is not None,'invalid run identity');temp=canonical(Path(runner_temp).resolve());checkout=canonical(checkout)
+           require(temp!=checkout and temp not in checkout.parents and checkout not in temp.parents,'checkout/temp overlap')
+           paths={k:temp/('pwa-response-'+unique+suffix) for k,suffix in [('scratch',''),('control','-control'),('toolchain','-toolchain'),('browsers','-browsers')]}
+           for p in paths.values():require(not p.exists() and not p.is_symlink(),'reused scratch/control/toolchain/browser root')
+           return paths
+          
+          def main():
+           started=time.monotonic();workspace=Path(os.environ['GITHUB_WORKSPACE']).resolve();unique=os.environ['GITHUB_RUN_ID']+'-'+os.environ['GITHUB_RUN_ATTEMPT'];paths=plan_paths(os.environ['RUNNER_TEMP'],workspace,unique);paths['control'].mkdir()
+           receipt={'requestedSourceCommit':os.environ.get('SOURCE_COMMIT','')[:80],'requestedManifestSha256':os.environ.get('REVIEWED_MANIFEST','')[:80],'startedMonotonic':started,'startedAt':time.time(),'unique':unique,'paths':{k:str(v) for k,v in paths.items()},'complete':False}
+           target=paths['control']/'BOOTSTRAP.json'
+           try:
+            # git is read-only here; no checkout/branch/mutation command.
+            head=subprocess.check_output(['git','-C',str(workspace),'rev-parse','HEAD'],text=True).strip()
+            verified=verify_root(workspace/PACKAGE_REL,os.environ['REVIEWED_MANIFEST'],os.environ['SOURCE_COMMIT'],head)
+            receipt.update(verified);receipt['complete']=True;receipt['pythonPath']=str(Path(sys.executable).resolve());receipt['pythonVersion']=sys.version;receipt['elapsedMs']=(time.monotonic()-started)*1000
+            with Path(os.environ['GITHUB_ENV']).open('a') as f:
+             for key,value in {'PWA_PACKAGE':str(workspace/PACKAGE_REL),'PWA_CONTROL':str(paths['control']),'PWA_SCRATCH':str(paths['scratch']),'PWA_UNIQUE':unique,'PWA_PYTHON':receipt['pythonPath']}.items():require('\n' not in value,'environment newline');f.write(key+'='+value+'\n')
+            with Path(os.environ['GITHUB_OUTPUT']).open('a') as f:f.write('root_verified=true\n')
+           except BaseException as error:receipt['error']=str(error);raise
+           finally:target.write_text(json.dumps(receipt,indent=2)+'\n')
+          if __name__=='__main__':main()
+          PWA_BOOTSTRAP
+          # Read trusted bootstrap output using stdlib; no shell evaluation of receipt contents.
+          python3 -I -B - <<'PWA_DISPATCH'
+          import os,json,subprocess,pathlib
+          temp=pathlib.Path(os.environ['RUNNER_TEMP']).resolve()
+          unique=os.environ['GITHUB_RUN_ID']+'-'+os.environ['GITHUB_RUN_ATTEMPT']
+          control=temp/('pwa-response-'+unique+'-control')
+          b=json.loads((control/'BOOTSTRAP.json').read_text())
+          assert b['complete'] is True
+          env=dict(os.environ);env['PWA_CONTROL']=str(control)
+          subprocess.run([b['pythonPath'],'-I','-B',str(pathlib.Path(b['root'])/'orchestrate.py'),'setup'],env=env,check=True)
+          PWA_DISPATCH
+          PWA_SETUP
+      - name: One bounded four-arm block
+        id: block
+        timeout-minutes: 26
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          "$PWA_PYTHON" -I -B "$PWA_PACKAGE/orchestrate.py" block
+      - name: Fail closed on missing outer receipt; never recover from late files
+        if: ${{ always() && steps.setup.outputs.root_verified == 'true' }}
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          "$PWA_PYTHON" -I -B "$PWA_PACKAGE/orchestrate.py" finalize
+      - name: Always upload existing setup and experiment evidence
+        if: ${{ always() }}
+        timeout-minutes: 10
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pwa-response-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/pwa-response-${{ github.run_id }}-${{ github.run_attempt }}/
+            ${{ runner.temp }}/pwa-response-${{ github.run_id }}-${{ github.run_attempt }}-control/
+            !${{ runner.temp }}/pwa-response-${{ github.run_id }}-${{ github.run_attempt }}/**/node_modules/**
+          if-no-files-found: warn
+          overwrite: false
+          include-hidden-files: true

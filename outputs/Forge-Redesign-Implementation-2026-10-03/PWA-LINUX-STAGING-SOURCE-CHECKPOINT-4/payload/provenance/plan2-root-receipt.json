@@ -1,0 +1,24 @@
+{
+  "createdAt": "2026-10-05T18:02:49.511677+00:00",
+  "manifestSha256": "f357924e78db8c24cdca106c35720725d4934edacc24e631cad48e07faff8541",
+  "entriesVerified": 9,
+  "allListedHashesMatch": true,
+  "rootRead": [
+    "PROPOSAL.md",
+    "HANDOFF.md",
+    "CHANGE-ALLOWLIST.json",
+    "COMMITTED-DEPENDENCY-PINS.json"
+  ],
+  "findingsReconciled": [
+    "actual runtime hash provenance and lock exactness",
+    "non-import file layout loads",
+    "python3 version/path and Node flag receipt",
+    "OFF transport pins",
+    "scan cwd+TypeScript tool provenance",
+    "44Mac path occurrences exact evidence versus execution scope"
+  ],
+  "scope": "Plan2 corrections accepted for separately reviewed source implementation only",
+  "implementationExists": false,
+  "runtimeApprovedByThisReceipt": false,
+  "originalArchivesUnchanged": true
+}

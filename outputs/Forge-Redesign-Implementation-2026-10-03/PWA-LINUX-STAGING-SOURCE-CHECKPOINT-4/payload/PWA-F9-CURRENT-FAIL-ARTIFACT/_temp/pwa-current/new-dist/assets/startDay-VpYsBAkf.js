@@ -1,0 +1,1 @@
+function e(e){return e.talkExists!==!0||e.signedToday!==!1?`clock-in`:e.ruleActive?`clock-in-then-sign`:`sign-then-clock-in`}function t(e){return e.talkExists===!0&&e.signedToday===!1}function n(e){return typeof e==`string`&&e.startsWith(`pending:`)}export{e as n,t as r,n as t};

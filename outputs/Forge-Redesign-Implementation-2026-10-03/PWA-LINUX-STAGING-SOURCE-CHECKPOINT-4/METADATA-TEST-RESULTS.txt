@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: mechanical default protocol selects headless shell with fake source and no imports
+ok 1 - mechanical default protocol selects headless shell with fake source and no imports
+  ---
+  duration_ms: 1.367875
+  type: 'test'
+  ...
+# Subtest: channel/headed/remote/spec launch/CLI and fixture changes all refuse before registry use
+ok 2 - channel/headed/remote/spec launch/CLI and fixture changes all refuse before registry use
+  ---
+  duration_ms: 0.953541
+  type: 'test'
+  ...
+# Subtest: PWDEBUG, npm aliases, remote and context reuse variables refuse; owned PWA env is inert
+ok 3 - PWDEBUG, npm aliases, remote and context reuse variables refuse; owned PWA env is inert
+  ---
+  duration_ms: 0.405
+  type: 'test'
+  ...
+# Subtest: fake registry resolves exact headless descriptor and records selected executable hash
+ok 4 - fake registry resolves exact headless descriptor and records selected executable hash
+  ---
+  duration_ms: 0.843833
+  type: 'test'
+  ...
+# Subtest: wrong full-browser selection, symlink, missing executable and wrong registry revision refuse
+ok 5 - wrong full-browser selection, symlink, missing executable and wrong registry revision refuse
+  ---
+  duration_ms: 1.775167
+  type: 'test'
+  ...
+# Subtest: realistic runner environment passes and records inert Selenium metadata
+ok 6 - realistic runner environment passes and records inert Selenium metadata
+  ---
+  duration_ms: 0.077584
+  type: 'test'
+  ...
+# Subtest: launch-affecting test/debug prefixes and npm aliases still refuse
+ok 7 - launch-affecting test/debug prefixes and npm aliases still refuse
+  ---
+  duration_ms: 0.236583
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 64.068875

@@ -1,0 +1,370 @@
+TAP version 13
+# Subtest: actual adapter preserves parent fact and independent child SIGTERM fact after successful attestation
+ok 1 - actual adapter preserves parent fact and independent child SIGTERM fact after successful attestation
+  ---
+  duration_ms: 6.535959
+  type: 'test'
+  ...
+# Subtest: actual after-attestation failure cannot produce a harness-exit receipt
+ok 2 - actual after-attestation failure cannot produce a harness-exit receipt
+  ---
+  duration_ms: 0.535042
+  type: 'test'
+  ...
+# Subtest: normal child exit is not invented as interruption
+ok 3 - normal child exit is not invented as interruption
+  ---
+  duration_ms: 0.369
+  type: 'test'
+  ...
+# Subtest: grep matches actual joined titlePath, including empty root/project prefixes
+ok 4 - grep matches actual joined titlePath, including empty root/project prefixes
+  ---
+  duration_ms: 0.764833
+  type: 'test'
+  ...
+# Subtest: grep refuses other files, title suffixes, other cases and bare title
+ok 5 - grep refuses other files, title suffixes, other cases and bare title
+  ---
+  duration_ms: 0.170875
+  type: 'test'
+  ...
+# Subtest: list preflight refuses zero/two cases, different title/file and report errors
+ok 6 - list preflight refuses zero/two cases, different title/file and report errors
+  ---
+  duration_ms: 0.314334
+  type: 'test'
+  ...
+# Subtest: output shape enforces sibling/run basename/index and rejects protected overlap
+ok 7 - output shape enforces sibling/run basename/index and rejects protected overlap
+  ---
+  duration_ms: 4.786209
+  type: 'test'
+  ...
+# Subtest: output path rejects existing symlink to protected archive
+ok 8 - output path rejects existing symlink to protected archive
+  ---
+  duration_ms: 2.681916
+  type: 'test'
+  ...
+# Subtest: exclusive harness and runner locks cannot be reused
+ok 9 - exclusive harness and runner locks cannot be reused
+  ---
+  duration_ms: 1.340667
+  type: 'test'
+  ...
+# Subtest: manifest helper independently refuses changed bytes and wrong worker pin
+ok 10 - manifest helper independently refuses changed bytes and wrong worker pin
+  ---
+  duration_ms: 1.540208
+  type: 'test'
+  ...
+# Subtest: shell quoting pins execPath including spaces and shell metacharacters
+ok 11 - shell quoting pins execPath including spaces and shell metacharacters
+  ---
+  duration_ms: 0.07125
+  type: 'test'
+  ...
+# Subtest: observation failure in finally preserves original assertion and reaches following detach
+ok 12 - observation failure in finally preserves original assertion and reaches following detach
+  ---
+  duration_ms: 0.51325
+  type: 'test'
+  ...
+# Subtest: complete fixture keeps original failing test outcome separate; no mechanism claim
+ok 13 - complete fixture keeps original failing test outcome separate; no mechanism claim
+  ---
+  duration_ms: 0.579125
+  type: 'test'
+  ...
+# Subtest: missing original-before invalidates arm
+ok 14 - missing original-before invalidates arm
+  ---
+  duration_ms: 0.419875
+  type: 'test'
+  ...
+# Subtest: missing original-after invalidates arm
+ok 15 - missing original-after invalidates arm
+  ---
+  duration_ms: 0.186583
+  type: 'test'
+  ...
+# Subtest: missing derived-before invalidates arm
+ok 16 - missing derived-before invalidates arm
+  ---
+  duration_ms: 0.570208
+  type: 'test'
+  ...
+# Subtest: missing derived-after invalidates arm
+ok 17 - missing derived-after invalidates arm
+  ---
+  duration_ms: 0.0825
+  type: 'test'
+  ...
+# Subtest: missing harness-exit invalidates arm
+ok 18 - missing harness-exit invalidates arm
+  ---
+  duration_ms: 0.046542
+  type: 'test'
+  ...
+# Subtest: incomplete/loss flag true invalidates without altering original outcome
+ok 19 - incomplete/loss flag true invalidates without altering original outcome
+  ---
+  duration_ms: 0.064292
+  type: 'test'
+  ...
+# Subtest: incomplete/loss flag undefined invalidates without altering original outcome
+ok 20 - incomplete/loss flag undefined invalidates without altering original outcome
+  ---
+  duration_ms: 0.037667
+  type: 'test'
+  ...
+# Subtest: trace truncation, ARM-INVALID, wrong category, console fallback and SIGKILL refuse
+ok 21 - trace truncation, ARM-INVALID, wrong category, console fallback and SIGKILL refuse
+  ---
+  duration_ms: 0.204625
+  type: 'test'
+  ...
+# Subtest: future runner really invokes validator after test; config graceful timeout and pinned Node
+ok 22 - future runner really invokes validator after test; config graceful timeout and pinned Node
+  ---
+  duration_ms: 1.081875
+  type: 'test'
+  ...
+# Subtest: exact complete browser and saved category order; extras never expand list
+ok 23 - exact complete browser and saved category order; extras never expand list
+  ---
+  duration_ms: 0.922083
+  type: 'test'
+  ...
+# Subtest: browser mismatch refuses protocolVersion
+ok 24 - browser mismatch refuses protocolVersion
+  ---
+  duration_ms: 0.205209
+  type: 'test'
+  ...
+# Subtest: browser mismatch refuses product
+ok 25 - browser mismatch refuses product
+  ---
+  duration_ms: 0.049708
+  type: 'test'
+  ...
+# Subtest: browser mismatch refuses revision
+ok 26 - browser mismatch refuses revision
+  ---
+  duration_ms: 0.185167
+  type: 'test'
+  ...
+# Subtest: browser mismatch refuses userAgent
+ok 27 - browser mismatch refuses userAgent
+  ---
+  duration_ms: 0.142292
+  type: 'test'
+  ...
+# Subtest: browser mismatch refuses jsVersion
+ok 28 - browser mismatch refuses jsVersion
+  ---
+  duration_ms: 0.161375
+  type: 'test'
+  ...
+# Subtest: missing trace category refuses
+ok 29 - missing trace category refuses
+  ---
+  duration_ms: 0.148459
+  type: 'test'
+  ...
+# Subtest: fixed arm 1
+ok 30 - fixed arm 1
+  ---
+  duration_ms: 0.145292
+  type: 'test'
+  ...
+# Subtest: fixed arm 2
+ok 31 - fixed arm 2
+  ---
+  duration_ms: 0.346166
+  type: 'test'
+  ...
+# Subtest: fixed arm 3
+ok 32 - fixed arm 3
+  ---
+  duration_ms: 0.340916
+  type: 'test'
+  ...
+# Subtest: fixed arm 4
+ok 33 - fixed arm 4
+  ---
+  duration_ms: 0.102667
+  type: 'test'
+  ...
+# Subtest: off cannot replace baseline
+ok 34 - off cannot replace baseline
+  ---
+  duration_ms: 0.055083
+  type: 'test'
+  ...
+# Subtest: activation treatment stays off
+ok 35 - activation treatment stays off
+  ---
+  duration_ms: 0.046333
+  type: 'test'
+  ...
+# Subtest: archive reuse stays on
+ok 36 - archive reuse stays on
+  ---
+  duration_ms: 0.041917
+  type: 'test'
+  ...
+# Subtest: drop prevents launch
+ok 37 - drop prevents launch
+  ---
+  duration_ms: 0.043042
+  type: 'test'
+  ...
+# Subtest: disabled worker console prevents launch
+ok 38 - disabled worker console prevents launch
+  ---
+  duration_ms: 0.046958
+  type: 'test'
+  ...
+# Subtest: fresh/digest pairs within SAME public Worker object only
+ok 39 - fresh/digest pairs within SAME public Worker object only
+  ---
+  duration_ms: 0.341125
+  type: 'test'
+  ...
+# Subtest: same URL different Worker cannot cross-pair
+ok 40 - same URL different Worker cannot cross-pair
+  ---
+  duration_ms: 0.112208
+  type: 'test'
+  ...
+# Subtest: wrong mode invalidates record
+ok 41 - wrong mode invalidates record
+  ---
+  duration_ms: 0.057541
+  type: 'test'
+  ...
+# Subtest: wrong digest invalidates parity
+ok 42 - wrong digest invalidates parity
+  ---
+  duration_ms: 0.067792
+  type: 'test'
+  ...
+# Subtest: post-clone fallback stays INVALID
+ok 43 - post-clone fallback stays INVALID
+  ---
+  duration_ms: 0.097542
+  type: 'test'
+  ...
+# Subtest: missing worker identity is UNKNOWN gap
+ok 44 - missing worker identity is UNKNOWN gap
+  ---
+  duration_ms: 0.114875
+  type: 'test'
+  ...
+# Subtest: nonstatic records are refused without body extraction
+ok 45 - nonstatic records are refused without body extraction
+  ---
+  duration_ms: 0.06475
+  type: 'test'
+  ...
+# Subtest: missing digest remains an observation gap
+ok 46 - missing digest remains an observation gap
+  ---
+  duration_ms: 0.057625
+  type: 'test'
+  ...
+# Subtest: read-only derivative verifier detects changed/missing/additional/symlink files
+ok 47 - read-only derivative verifier detects changed/missing/additional/symlink files
+  ---
+  duration_ms: 303.616042
+  type: 'test'
+  ...
+# Subtest: unknown hashed URL cannot pair undefined digests into a false pass
+ok 48 - unknown hashed URL cannot pair undefined digests into a false pass
+  ---
+  duration_ms: 0.283917
+  type: 'test'
+  ...
+# Subtest: Linux bindings preserve all non-path values and seven source hashes
+ok 49 - Linux bindings preserve all non-path values and seven source hashes
+  ---
+  duration_ms: 2.789333
+  type: 'test'
+  ...
+# Subtest: root/unique/environment refusal before dependency resolution
+ok 50 - root/unique/environment refusal before dependency resolution
+  ---
+  duration_ms: 2.029041
+  type: 'test'
+  ...
+# Subtest: complete assertion failure continues; setup, timeout, overflow, missing and invalid capture stop
+ok 51 - complete assertion failure continues; setup, timeout, overflow, missing and invalid capture stop
+  ---
+  duration_ms: 0.523916
+  type: 'test'
+  ...
+# Subtest: four fixed fresh arm invocations continue after assertion failure and persist separate outcomes
+ok 52 - four fixed fresh arm invocations continue after assertion failure and persist separate outcomes
+  ---
+  duration_ms: 5.114375
+  type: 'test'
+  ...
+# Subtest: incomplete evidence aborts further arms and always saves terminal reason
+ok 53 - incomplete evidence aborts further arms and always saves terminal reason
+  ---
+  duration_ms: 1.658625
+  type: 'test'
+  ...
+# Subtest: deadline includes startup/preflight from process origin and refuses late first arm
+ok 54 - deadline includes startup/preflight from process origin and refuses late first arm
+  ---
+  duration_ms: 0.153708
+  type: 'test'
+  ...
+# Subtest: four apparently complete arms cannot pass after validation exceeds process deadline
+ok 55 - four apparently complete arms cannot pass after validation exceeds process deadline
+  ---
+  duration_ms: 1.860916
+  type: 'test'
+  ...
+# Subtest: watchdog during validation latches truthful final receipt and refuses later success/finally writes
+ok 56 - watchdog during validation latches truthful final receipt and refuses later success/finally writes
+  ---
+  duration_ms: 1.188458
+  type: 'test'
+  ...
+# Subtest: watchdog before block prevents every arm and completed receipt remains immutable
+ok 57 - watchdog before block prevents every arm and completed receipt remains immutable
+  ---
+  duration_ms: 0.433416
+  type: 'test'
+  ...
+# Subtest: environment receipt explicitly records preserve-symlinks variable as unset
+ok 58 - environment receipt explicitly records preserve-symlinks variable as unset
+  ---
+  duration_ms: 0.374709
+  type: 'test'
+  ...
+# Subtest: fake child launch and signal refusal without importing config/browser
+ok 59 - fake child launch and signal refusal without importing config/browser
+  ---
+  duration_ms: 39.081708
+  type: 'test'
+  ...
+# Subtest: real self-SIGTERM during fake validation writes watchdog receipt which finally cannot replace
+ok 60 - real self-SIGTERM during fake validation writes watchdog receipt which finally cannot replace
+  ---
+  duration_ms: 75.352125
+  type: 'test'
+  ...
+1..60
+# tests 60
+# suites 0
+# pass 60
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 460.444625

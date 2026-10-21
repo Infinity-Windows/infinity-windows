@@ -1,0 +1,1 @@
+var e=`old-9404fb3`,t=`2026-10-05T00:43:30.655Z`;function n(e=`/`){return`${e.endsWith(`/`)?e:`${e}/`}version.json`}export{t as n,n as r,e as t};
