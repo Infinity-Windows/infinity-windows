@@ -23,6 +23,11 @@ html:root[data-design="new"] {
   --primary-foreground: #101418;
   --ink: #101418;
   --ring: #f47731;
+  --font-body: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: var(--font-body);
+  --danger: #ff6b72;
+  --steel-button: linear-gradient(180deg, #ff8845, #ec6828);
+  --steel-button-shadow: inset 0 1px rgba(255,255,255,.25), 0 4px 16px rgba(236,103,40,.12);
 }
 html[data-design="new"] body { background: var(--bg); color: var(--text); }
 html[data-design="new"] .app-rail { background: #12171b; }
@@ -36,6 +41,7 @@ html[data-design="new"] .app-rail { background: #12171b; }
 .steel-menu {
   display: grid; place-items: center; flex: none; width: 44px; height: 44px;
   border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--text);
+  padding: 0; margin: 0; align-self: center; line-height: 1;
 }
 .steel-header-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); }
 .steel-mobile-brand { display: none; }
@@ -53,7 +59,42 @@ html[data-design="new"] .steel-work-heading > .ws-btn { flex: none; width: auto;
 html[data-design="new"] .work-screen .ws-card { padding: 12px 14px; border-radius: 14px; background: var(--card); gap: 8px; }
 html[data-design="new"] .work-screen :is(.ws-h2, .ws-unit-title) { font-family: var(--font-body, sans-serif); }
 html[data-design="new"] .work-screen .ws-btn { min-height: 44px; border-radius: 9px; }
-html[data-design="new"] .work-screen .ws-btn--primary { background: var(--accent); color: #101418; border-color: var(--accent); }
+html[data-design="new"] :is(.work-screen .ws-btn--primary, .rail-capture, .capture-fab) {
+  background: var(--steel-button); color: #101418; border: 1px solid #ff955d;
+  box-shadow: var(--steel-button-shadow);
+}
+html[data-design="new"] :is(.work-screen .ws-btn--primary, .rail-capture, .capture-fab):hover:not(:disabled) {
+  background: linear-gradient(180deg, #ff985e, #f47731);
+}
+html[data-design="new"] :is(.work-screen .ws-btn--primary, .rail-capture, .capture-fab):active:not(:disabled) {
+  box-shadow: inset 0 2px 4px rgba(0,0,0,.22); background: #ec6828;
+}
+/* Danger is a semantic action, independent of the brand's ember accent. */
+html[data-design="new"] :is(.ws-btn--danger, .button-like.danger, .button-like.destructive, .record-btn.recording) {
+  background: #bb303d; border-color: #ff858b; color: #fff;
+}
+html[data-design="new"] :is(.danger-outline, .menu-signout) {
+  color: var(--danger); border-color: var(--danger);
+}
+html[data-design="new"] .menu-item { font-family: var(--font-body); font-size: 14px; font-weight: 600; min-height: 47px; }
+html[data-design="new"] .tab-label { font-family: var(--font-body); font-size: 10px; font-weight: 650; letter-spacing: 0; text-transform: none; }
+html[data-design="new"] .menu-item.active {
+  background: linear-gradient(90deg, rgba(229,236,239,.18), rgba(145,161,171,.07)); color: #fff;
+}
+/* The menu is a left drawer, not the generic bottom-sheet presentation.
+   Keep the existing focus trap, dismissal and permission-aware contents. */
+html[data-design="new"] .menu-drawer-backdrop { inset: 0; }
+html[data-design="new"] .menu-drawer {
+  inset: 0 auto 0 0; width: min(320px, 88vw); height: 100dvh; max-height: none;
+  border: 0; border-right: 1px solid var(--border); border-radius: 0;
+  padding-top: env(safe-area-inset-top); background: #12171b;
+  box-shadow: 16px 0 40px rgba(0,0,0,.3); animation: steel-drawer-in .2s ease both;
+}
+html[data-design="new"] .menu-drawer-grip { display: none; }
+html[data-design="new"] .menu-drawer-head { min-height: 60px; padding: 8px 12px; }
+html[data-design="new"] .menu-drawer-close { width: 44px; height: 44px; }
+html[data-design="new"] .menu-drawer-body { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+@keyframes steel-drawer-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 html[data-design="new"] .ws-saved-unit { padding: 12px 0; border-bottom: 1px solid var(--border); }
 /* Task order stays clock -> job -> unit at every width. Tablet columns start
    below that context so a wider screen never changes what the next action is. */
@@ -78,4 +119,5 @@ html[data-design="new"][data-display-layout="phone"] .steel-menu { display: grid
 html[data-design="new"][data-display-layout="desktop"] .steel-menu { display: none; }
 @media (prefers-reduced-motion: reduce) {
   html[data-design="new"] .work-screen * { scroll-behavior: auto; }
+  html[data-design="new"] .menu-drawer { animation: none; }
 }

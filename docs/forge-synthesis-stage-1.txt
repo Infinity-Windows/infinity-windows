@@ -32,3 +32,7 @@ Keep actual app and sample reference visibly distinct. Local wrappers/runtimes a
 DECISIONS STILL OPEN
 Navigation consolidation, final activity selection interaction, unit/spec/package schema, data reconciliation, role-specific acceptance, and release timing. No merge or deployment performed.
 
+
+STYLE CORRECTIONS — October 21, 2026
+Compared original Steel index.html CSS with synthesis. Restored reference sans-serif stack for body/display text, 14px/600 menu rows and 10px bottom labels. Added ember gradient, light border and inset highlight/shadow to primary Work/Capture actions, with pressed state. Kept danger red independent from orange branding. Centered menu icon with explicit zero padding/margin. New-design menu now anchors to the left at full viewport height, retains focus trap/Escape dismissal and existing menu content; reduced-motion mode disables entrance animation. Classic drawer unchanged.
+Browser checks:390px and320px Work appearance,768px tablet reflow;left drawer measured left0/top0/width320/height844 at390viewport;Escape restored focus to opener. At320px document scroll width equals client width305px (15px scrollbar), no horizontal overflow. Business writes not exercised. CSS-only change; no schema or data changes. User wants Data and Summary reviewed one at a time next, initially for ideas.
