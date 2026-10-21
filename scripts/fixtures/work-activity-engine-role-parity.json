@@ -1,0 +1,1184 @@
+{
+  "roles": [
+    {
+      "name": "anon",
+      "inherit": true,
+      "canLogin": false,
+      "bypassRls": false,
+      "superuser": false,
+      "createRole": false,
+      "replication": false,
+      "createDatabase": false,
+      "connectionLimit": -1
+    },
+    {
+      "name": "authenticated",
+      "inherit": true,
+      "canLogin": false,
+      "bypassRls": false,
+      "superuser": false,
+      "createRole": false,
+      "replication": false,
+      "createDatabase": false,
+      "connectionLimit": -1
+    },
+    {
+      "name": "authenticator",
+      "inherit": false,
+      "canLogin": true,
+      "bypassRls": false,
+      "superuser": false,
+      "createRole": false,
+      "replication": false,
+      "createDatabase": false,
+      "connectionLimit": -1
+    },
+    {
+      "name": "pg_create_subscription",
+      "inherit": true,
+      "canLogin": false,
+      "bypassRls": false,
+      "superuser": false,
+      "createRole": false,
+      "replication": false,
+      "createDatabase": false,
+      "connectionLimit": -1
+    },
+    {
+      "name": "pg_monitor",
+      "inherit": true,
+      "canLogin": false,
+      "bypassRls": false,
+      "superuser": false,
+      "createRole": false,
+      "replication": false,
+      "createDatabase": false,
+      "connectionLimit": -1
+    },
+    {
+      "name": "pg_read_all_data",
+      "inherit": true,
+      "canLogin": false,
+      "bypassRls": false,
+      "superuser": false,
+      "createRole": false,
+      "replication": false,
+      "createDatabase": false,
+      "connectionLimit": -1
+    },
+    {
+      "name": "pg_read_all_settings",
+      "inherit": true,
+      "canLogin": false,
+      "bypassRls": false,
+      "superuser": false,
+      "createRole": false,
+      "replication": false,
+      "createDatabase": false,
+      "connectionLimit": -1
+    },
+    {
+      "name": "pg_read_all_stats",
+      "inherit": true,
+      "canLogin": false,
+      "bypassRls": false,
+      "superuser": false,
+      "createRole": false,
+      "replication": false,
+      "createDatabase": false,
+      "connectionLimit": -1
+    },
+    {
+      "name": "pg_signal_backend",
+      "inherit": true,
+      "canLogin": false,
+      "bypassRls": false,
+      "superuser": false,
+      "createRole": false,
+      "replication": false,
+      "createDatabase": false,
+      "connectionLimit": -1
+    },
+    {
+      "name": "pg_stat_scan_tables",
+      "inherit": true,
+      "canLogin": false,
+      "bypassRls": false,
+      "superuser": false,
+      "createRole": false,
+      "replication": false,
+      "createDatabase": false,
+      "connectionLimit": -1
+    },
+    {
+      "name": "postgres",
+      "inherit": true,
+      "canLogin": true,
+      "bypassRls": true,
+      "superuser": false,
+      "createRole": true,
+      "replication": true,
+      "createDatabase": true,
+      "connectionLimit": -1
+    },
+    {
+      "name": "service_role",
+      "inherit": true,
+      "canLogin": false,
+      "bypassRls": true,
+      "superuser": false,
+      "createRole": false,
+      "replication": false,
+      "createDatabase": false,
+      "connectionLimit": -1
+    },
+    {
+      "name": "supabase_admin",
+      "inherit": true,
+      "canLogin": true,
+      "bypassRls": true,
+      "superuser": true,
+      "createRole": true,
+      "replication": true,
+      "createDatabase": true,
+      "connectionLimit": -1
+    },
+    {
+      "name": "supabase_auth_admin",
+      "inherit": false,
+      "canLogin": true,
+      "bypassRls": false,
+      "superuser": false,
+      "createRole": true,
+      "replication": false,
+      "createDatabase": false,
+      "connectionLimit": -1
+    },
+    {
+      "name": "supabase_privileged_role",
+      "inherit": true,
+      "canLogin": false,
+      "bypassRls": false,
+      "superuser": false,
+      "createRole": false,
+      "replication": false,
+      "createDatabase": false,
+      "connectionLimit": -1
+    }
+  ],
+  "database": {
+    "acl": [
+      "=Tc/postgres",
+      "postgres=CTc/postgres",
+      "supabase_etl_admin=C/postgres",
+      "supabase_storage_admin=C/postgres",
+      "dashboard_user=CTc/postgres"
+    ],
+    "owner": "postgres"
+  },
+  "settings": [
+    {
+      "role": "supabase_admin",
+      "scope": "all_databases",
+      "safeValues": [
+        "search_path=\"$user\", public, auth, extensions"
+      ],
+      "withheldKeys": [
+        "log_statement"
+      ],
+      "settingsSha256": "25eabf64e726cf9260af8f0981bb986f1ff6124b67c97a1d627faea6a644d2b4"
+    },
+    {
+      "role": "postgres",
+      "scope": "all_databases",
+      "safeValues": [
+        "search_path=\"\\$user\", public, extensions"
+      ],
+      "withheldKeys": [],
+      "settingsSha256": "bd9af0e5b32b81a5480f0ed93c746345b7e97b2f7b7fe393ec5b6abc2d203357"
+    },
+    {
+      "role": "anon",
+      "scope": "all_databases",
+      "safeValues": [
+        "statement_timeout=3s"
+      ],
+      "withheldKeys": [],
+      "settingsSha256": "4d584bc6edba2806ee8608df15e4e2af3e0157911cb0ea59d72e837e3133857f"
+    },
+    {
+      "role": "authenticated",
+      "scope": "all_databases",
+      "safeValues": [
+        "statement_timeout=8s"
+      ],
+      "withheldKeys": [],
+      "settingsSha256": "8bde1accc48d17a8c329d2f1ebeb694dbf1942e7fd1b160f32fe8c19b370c80e"
+    },
+    {
+      "role": "authenticator",
+      "scope": "all_databases",
+      "safeValues": [
+        "statement_timeout=8s",
+        "lock_timeout=8s"
+      ],
+      "withheldKeys": [
+        "session_preload_libraries"
+      ],
+      "settingsSha256": "fb34b91dae2b9ba6ef2f5375f90f0c8b4fa58c429a301a9eb05719752824b0c3"
+    },
+    {
+      "role": "supabase_auth_admin",
+      "scope": "all_databases",
+      "safeValues": [
+        "search_path=auth",
+        "idle_in_transaction_session_timeout=60000"
+      ],
+      "withheldKeys": [
+        "log_statement"
+      ],
+      "settingsSha256": "671c56984610d66de22d16285483cfd5ce51c2aad844fda7a71f4054a0f3d8f4"
+    },
+    {
+      "role": null,
+      "scope": "current_database",
+      "safeValues": [],
+      "withheldKeys": [
+        "app.settings.jwt_exp"
+      ],
+      "settingsSha256": "03769cf922b140a7f0b602b607f4bf05d85d125c7135698b55770853185b3b20"
+    }
+  ],
+  "rolePaths": [
+    {
+      "set": true,
+      "actor": "anon",
+      "usage": true,
+      "member": true,
+      "target": "anon"
+    },
+    {
+      "set": false,
+      "actor": "anon",
+      "usage": false,
+      "member": false,
+      "target": "authenticated"
+    },
+    {
+      "set": false,
+      "actor": "anon",
+      "usage": false,
+      "member": false,
+      "target": "authenticator"
+    },
+    {
+      "set": false,
+      "actor": "anon",
+      "usage": false,
+      "member": false,
+      "target": "pg_create_subscription"
+    },
+    {
+      "set": false,
+      "actor": "anon",
+      "usage": false,
+      "member": false,
+      "target": "pg_monitor"
+    },
+    {
+      "set": false,
+      "actor": "anon",
+      "usage": false,
+      "member": false,
+      "target": "pg_read_all_data"
+    },
+    {
+      "set": false,
+      "actor": "anon",
+      "usage": false,
+      "member": false,
+      "target": "pg_read_all_settings"
+    },
+    {
+      "set": false,
+      "actor": "anon",
+      "usage": false,
+      "member": false,
+      "target": "pg_read_all_stats"
+    },
+    {
+      "set": false,
+      "actor": "anon",
+      "usage": false,
+      "member": false,
+      "target": "pg_signal_backend"
+    },
+    {
+      "set": false,
+      "actor": "anon",
+      "usage": false,
+      "member": false,
+      "target": "pg_stat_scan_tables"
+    },
+    {
+      "set": false,
+      "actor": "anon",
+      "usage": false,
+      "member": false,
+      "target": "postgres"
+    },
+    {
+      "set": false,
+      "actor": "anon",
+      "usage": false,
+      "member": false,
+      "target": "service_role"
+    },
+    {
+      "set": false,
+      "actor": "anon",
+      "usage": false,
+      "member": false,
+      "target": "supabase_admin"
+    },
+    {
+      "set": false,
+      "actor": "anon",
+      "usage": false,
+      "member": false,
+      "target": "supabase_auth_admin"
+    },
+    {
+      "set": false,
+      "actor": "anon",
+      "usage": false,
+      "member": false,
+      "target": "supabase_privileged_role"
+    },
+    {
+      "set": false,
+      "actor": "authenticated",
+      "usage": false,
+      "member": false,
+      "target": "anon"
+    },
+    {
+      "set": true,
+      "actor": "authenticated",
+      "usage": true,
+      "member": true,
+      "target": "authenticated"
+    },
+    {
+      "set": false,
+      "actor": "authenticated",
+      "usage": false,
+      "member": false,
+      "target": "authenticator"
+    },
+    {
+      "set": false,
+      "actor": "authenticated",
+      "usage": false,
+      "member": false,
+      "target": "pg_create_subscription"
+    },
+    {
+      "set": false,
+      "actor": "authenticated",
+      "usage": false,
+      "member": false,
+      "target": "pg_monitor"
+    },
+    {
+      "set": false,
+      "actor": "authenticated",
+      "usage": false,
+      "member": false,
+      "target": "pg_read_all_data"
+    },
+    {
+      "set": false,
+      "actor": "authenticated",
+      "usage": false,
+      "member": false,
+      "target": "pg_read_all_settings"
+    },
+    {
+      "set": false,
+      "actor": "authenticated",
+      "usage": false,
+      "member": false,
+      "target": "pg_read_all_stats"
+    },
+    {
+      "set": false,
+      "actor": "authenticated",
+      "usage": false,
+      "member": false,
+      "target": "pg_signal_backend"
+    },
+    {
+      "set": false,
+      "actor": "authenticated",
+      "usage": false,
+      "member": false,
+      "target": "pg_stat_scan_tables"
+    },
+    {
+      "set": false,
+      "actor": "authenticated",
+      "usage": false,
+      "member": false,
+      "target": "postgres"
+    },
+    {
+      "set": false,
+      "actor": "authenticated",
+      "usage": false,
+      "member": false,
+      "target": "service_role"
+    },
+    {
+      "set": false,
+      "actor": "authenticated",
+      "usage": false,
+      "member": false,
+      "target": "supabase_admin"
+    },
+    {
+      "set": false,
+      "actor": "authenticated",
+      "usage": false,
+      "member": false,
+      "target": "supabase_auth_admin"
+    },
+    {
+      "set": false,
+      "actor": "authenticated",
+      "usage": false,
+      "member": false,
+      "target": "supabase_privileged_role"
+    },
+    {
+      "set": true,
+      "actor": "authenticator",
+      "usage": false,
+      "member": true,
+      "target": "anon"
+    },
+    {
+      "set": true,
+      "actor": "authenticator",
+      "usage": false,
+      "member": true,
+      "target": "authenticated"
+    },
+    {
+      "set": true,
+      "actor": "authenticator",
+      "usage": true,
+      "member": true,
+      "target": "authenticator"
+    },
+    {
+      "set": false,
+      "actor": "authenticator",
+      "usage": false,
+      "member": false,
+      "target": "pg_create_subscription"
+    },
+    {
+      "set": false,
+      "actor": "authenticator",
+      "usage": false,
+      "member": false,
+      "target": "pg_monitor"
+    },
+    {
+      "set": false,
+      "actor": "authenticator",
+      "usage": false,
+      "member": false,
+      "target": "pg_read_all_data"
+    },
+    {
+      "set": false,
+      "actor": "authenticator",
+      "usage": false,
+      "member": false,
+      "target": "pg_read_all_settings"
+    },
+    {
+      "set": false,
+      "actor": "authenticator",
+      "usage": false,
+      "member": false,
+      "target": "pg_read_all_stats"
+    },
+    {
+      "set": false,
+      "actor": "authenticator",
+      "usage": false,
+      "member": false,
+      "target": "pg_signal_backend"
+    },
+    {
+      "set": false,
+      "actor": "authenticator",
+      "usage": false,
+      "member": false,
+      "target": "pg_stat_scan_tables"
+    },
+    {
+      "set": false,
+      "actor": "authenticator",
+      "usage": false,
+      "member": false,
+      "target": "postgres"
+    },
+    {
+      "set": true,
+      "actor": "authenticator",
+      "usage": false,
+      "member": true,
+      "target": "service_role"
+    },
+    {
+      "set": false,
+      "actor": "authenticator",
+      "usage": false,
+      "member": false,
+      "target": "supabase_admin"
+    },
+    {
+      "set": false,
+      "actor": "authenticator",
+      "usage": false,
+      "member": false,
+      "target": "supabase_auth_admin"
+    },
+    {
+      "set": false,
+      "actor": "authenticator",
+      "usage": false,
+      "member": false,
+      "target": "supabase_privileged_role"
+    },
+    {
+      "set": true,
+      "actor": "postgres",
+      "usage": true,
+      "member": true,
+      "target": "anon"
+    },
+    {
+      "set": true,
+      "actor": "postgres",
+      "usage": true,
+      "member": true,
+      "target": "authenticated"
+    },
+    {
+      "set": true,
+      "actor": "postgres",
+      "usage": true,
+      "member": true,
+      "target": "authenticator"
+    },
+    {
+      "set": true,
+      "actor": "postgres",
+      "usage": true,
+      "member": true,
+      "target": "pg_create_subscription"
+    },
+    {
+      "set": true,
+      "actor": "postgres",
+      "usage": true,
+      "member": true,
+      "target": "pg_monitor"
+    },
+    {
+      "set": true,
+      "actor": "postgres",
+      "usage": true,
+      "member": true,
+      "target": "pg_read_all_data"
+    },
+    {
+      "set": true,
+      "actor": "postgres",
+      "usage": true,
+      "member": true,
+      "target": "pg_read_all_settings"
+    },
+    {
+      "set": true,
+      "actor": "postgres",
+      "usage": true,
+      "member": true,
+      "target": "pg_read_all_stats"
+    },
+    {
+      "set": true,
+      "actor": "postgres",
+      "usage": true,
+      "member": true,
+      "target": "pg_signal_backend"
+    },
+    {
+      "set": true,
+      "actor": "postgres",
+      "usage": true,
+      "member": true,
+      "target": "pg_stat_scan_tables"
+    },
+    {
+      "set": true,
+      "actor": "postgres",
+      "usage": true,
+      "member": true,
+      "target": "postgres"
+    },
+    {
+      "set": true,
+      "actor": "postgres",
+      "usage": true,
+      "member": true,
+      "target": "service_role"
+    },
+    {
+      "set": false,
+      "actor": "postgres",
+      "usage": false,
+      "member": false,
+      "target": "supabase_admin"
+    },
+    {
+      "set": false,
+      "actor": "postgres",
+      "usage": false,
+      "member": false,
+      "target": "supabase_auth_admin"
+    },
+    {
+      "set": true,
+      "actor": "postgres",
+      "usage": true,
+      "member": true,
+      "target": "supabase_privileged_role"
+    },
+    {
+      "set": false,
+      "actor": "service_role",
+      "usage": false,
+      "member": false,
+      "target": "anon"
+    },
+    {
+      "set": false,
+      "actor": "service_role",
+      "usage": false,
+      "member": false,
+      "target": "authenticated"
+    },
+    {
+      "set": false,
+      "actor": "service_role",
+      "usage": false,
+      "member": false,
+      "target": "authenticator"
+    },
+    {
+      "set": false,
+      "actor": "service_role",
+      "usage": false,
+      "member": false,
+      "target": "pg_create_subscription"
+    },
+    {
+      "set": false,
+      "actor": "service_role",
+      "usage": false,
+      "member": false,
+      "target": "pg_monitor"
+    },
+    {
+      "set": false,
+      "actor": "service_role",
+      "usage": false,
+      "member": false,
+      "target": "pg_read_all_data"
+    },
+    {
+      "set": false,
+      "actor": "service_role",
+      "usage": false,
+      "member": false,
+      "target": "pg_read_all_settings"
+    },
+    {
+      "set": false,
+      "actor": "service_role",
+      "usage": false,
+      "member": false,
+      "target": "pg_read_all_stats"
+    },
+    {
+      "set": false,
+      "actor": "service_role",
+      "usage": false,
+      "member": false,
+      "target": "pg_signal_backend"
+    },
+    {
+      "set": false,
+      "actor": "service_role",
+      "usage": false,
+      "member": false,
+      "target": "pg_stat_scan_tables"
+    },
+    {
+      "set": false,
+      "actor": "service_role",
+      "usage": false,
+      "member": false,
+      "target": "postgres"
+    },
+    {
+      "set": true,
+      "actor": "service_role",
+      "usage": true,
+      "member": true,
+      "target": "service_role"
+    },
+    {
+      "set": false,
+      "actor": "service_role",
+      "usage": false,
+      "member": false,
+      "target": "supabase_admin"
+    },
+    {
+      "set": false,
+      "actor": "service_role",
+      "usage": false,
+      "member": false,
+      "target": "supabase_auth_admin"
+    },
+    {
+      "set": false,
+      "actor": "service_role",
+      "usage": false,
+      "member": false,
+      "target": "supabase_privileged_role"
+    },
+    {
+      "set": true,
+      "actor": "supabase_admin",
+      "usage": true,
+      "member": true,
+      "target": "anon"
+    },
+    {
+      "set": true,
+      "actor": "supabase_admin",
+      "usage": true,
+      "member": true,
+      "target": "authenticated"
+    },
+    {
+      "set": true,
+      "actor": "supabase_admin",
+      "usage": true,
+      "member": true,
+      "target": "authenticator"
+    },
+    {
+      "set": true,
+      "actor": "supabase_admin",
+      "usage": true,
+      "member": true,
+      "target": "pg_create_subscription"
+    },
+    {
+      "set": true,
+      "actor": "supabase_admin",
+      "usage": true,
+      "member": true,
+      "target": "pg_monitor"
+    },
+    {
+      "set": true,
+      "actor": "supabase_admin",
+      "usage": true,
+      "member": true,
+      "target": "pg_read_all_data"
+    },
+    {
+      "set": true,
+      "actor": "supabase_admin",
+      "usage": true,
+      "member": true,
+      "target": "pg_read_all_settings"
+    },
+    {
+      "set": true,
+      "actor": "supabase_admin",
+      "usage": true,
+      "member": true,
+      "target": "pg_read_all_stats"
+    },
+    {
+      "set": true,
+      "actor": "supabase_admin",
+      "usage": true,
+      "member": true,
+      "target": "pg_signal_backend"
+    },
+    {
+      "set": true,
+      "actor": "supabase_admin",
+      "usage": true,
+      "member": true,
+      "target": "pg_stat_scan_tables"
+    },
+    {
+      "set": true,
+      "actor": "supabase_admin",
+      "usage": true,
+      "member": true,
+      "target": "postgres"
+    },
+    {
+      "set": true,
+      "actor": "supabase_admin",
+      "usage": true,
+      "member": true,
+      "target": "service_role"
+    },
+    {
+      "set": true,
+      "actor": "supabase_admin",
+      "usage": true,
+      "member": true,
+      "target": "supabase_admin"
+    },
+    {
+      "set": true,
+      "actor": "supabase_admin",
+      "usage": true,
+      "member": true,
+      "target": "supabase_auth_admin"
+    },
+    {
+      "set": true,
+      "actor": "supabase_admin",
+      "usage": true,
+      "member": true,
+      "target": "supabase_privileged_role"
+    },
+    {
+      "set": false,
+      "actor": "supabase_auth_admin",
+      "usage": false,
+      "member": false,
+      "target": "anon"
+    },
+    {
+      "set": false,
+      "actor": "supabase_auth_admin",
+      "usage": false,
+      "member": false,
+      "target": "authenticated"
+    },
+    {
+      "set": false,
+      "actor": "supabase_auth_admin",
+      "usage": false,
+      "member": false,
+      "target": "authenticator"
+    },
+    {
+      "set": false,
+      "actor": "supabase_auth_admin",
+      "usage": false,
+      "member": false,
+      "target": "pg_create_subscription"
+    },
+    {
+      "set": false,
+      "actor": "supabase_auth_admin",
+      "usage": false,
+      "member": false,
+      "target": "pg_monitor"
+    },
+    {
+      "set": false,
+      "actor": "supabase_auth_admin",
+      "usage": false,
+      "member": false,
+      "target": "pg_read_all_data"
+    },
+    {
+      "set": false,
+      "actor": "supabase_auth_admin",
+      "usage": false,
+      "member": false,
+      "target": "pg_read_all_settings"
+    },
+    {
+      "set": false,
+      "actor": "supabase_auth_admin",
+      "usage": false,
+      "member": false,
+      "target": "pg_read_all_stats"
+    },
+    {
+      "set": false,
+      "actor": "supabase_auth_admin",
+      "usage": false,
+      "member": false,
+      "target": "pg_signal_backend"
+    },
+    {
+      "set": false,
+      "actor": "supabase_auth_admin",
+      "usage": false,
+      "member": false,
+      "target": "pg_stat_scan_tables"
+    },
+    {
+      "set": false,
+      "actor": "supabase_auth_admin",
+      "usage": false,
+      "member": false,
+      "target": "postgres"
+    },
+    {
+      "set": false,
+      "actor": "supabase_auth_admin",
+      "usage": false,
+      "member": false,
+      "target": "service_role"
+    },
+    {
+      "set": false,
+      "actor": "supabase_auth_admin",
+      "usage": false,
+      "member": false,
+      "target": "supabase_admin"
+    },
+    {
+      "set": true,
+      "actor": "supabase_auth_admin",
+      "usage": true,
+      "member": true,
+      "target": "supabase_auth_admin"
+    },
+    {
+      "set": false,
+      "actor": "supabase_auth_admin",
+      "usage": false,
+      "member": false,
+      "target": "supabase_privileged_role"
+    }
+  ],
+  "memberships": [
+    {
+      "role": "anon",
+      "member": "authenticator",
+      "grantor": "supabase_admin",
+      "setOption": true,
+      "adminOption": false,
+      "inheritOption": false
+    },
+    {
+      "role": "anon",
+      "member": "postgres",
+      "grantor": "supabase_admin",
+      "setOption": true,
+      "adminOption": true,
+      "inheritOption": true
+    },
+    {
+      "role": "authenticated",
+      "member": "authenticator",
+      "grantor": "supabase_admin",
+      "setOption": true,
+      "adminOption": false,
+      "inheritOption": false
+    },
+    {
+      "role": "authenticated",
+      "member": "postgres",
+      "grantor": "supabase_admin",
+      "setOption": true,
+      "adminOption": true,
+      "inheritOption": true
+    },
+    {
+      "role": "authenticator",
+      "member": "postgres",
+      "grantor": "supabase_admin",
+      "setOption": true,
+      "adminOption": true,
+      "inheritOption": true
+    },
+    {
+      "role": "pg_create_subscription",
+      "member": "postgres",
+      "grantor": "supabase_admin",
+      "setOption": true,
+      "adminOption": true,
+      "inheritOption": true
+    },
+    {
+      "role": "pg_monitor",
+      "member": "postgres",
+      "grantor": "supabase_admin",
+      "setOption": true,
+      "adminOption": true,
+      "inheritOption": true
+    },
+    {
+      "role": "pg_read_all_data",
+      "member": "postgres",
+      "grantor": "supabase_admin",
+      "setOption": true,
+      "adminOption": true,
+      "inheritOption": true
+    },
+    {
+      "role": "pg_read_all_settings",
+      "member": "pg_monitor",
+      "grantor": "supabase_admin",
+      "setOption": true,
+      "adminOption": false,
+      "inheritOption": true
+    },
+    {
+      "role": "pg_read_all_stats",
+      "member": "pg_monitor",
+      "grantor": "supabase_admin",
+      "setOption": true,
+      "adminOption": false,
+      "inheritOption": true
+    },
+    {
+      "role": "pg_signal_backend",
+      "member": "postgres",
+      "grantor": "supabase_admin",
+      "setOption": true,
+      "adminOption": true,
+      "inheritOption": true
+    },
+    {
+      "role": "pg_stat_scan_tables",
+      "member": "pg_monitor",
+      "grantor": "supabase_admin",
+      "setOption": true,
+      "adminOption": false,
+      "inheritOption": true
+    },
+    {
+      "role": "service_role",
+      "member": "authenticator",
+      "grantor": "supabase_admin",
+      "setOption": true,
+      "adminOption": false,
+      "inheritOption": false
+    },
+    {
+      "role": "service_role",
+      "member": "postgres",
+      "grantor": "supabase_admin",
+      "setOption": true,
+      "adminOption": true,
+      "inheritOption": true
+    },
+    {
+      "role": "supabase_privileged_role",
+      "member": "postgres",
+      "grantor": "supabase_admin",
+      "setOption": true,
+      "adminOption": false,
+      "inheritOption": true
+    }
+  ],
+  "capabilities": [
+    {
+      "role": "anon",
+      "authUsage": true,
+      "authCreate": false,
+      "publicUsage": true,
+      "databaseTemp": true,
+      "publicCreate": false,
+      "databaseCreate": false,
+      "databaseConnect": true
+    },
+    {
+      "role": "authenticated",
+      "authUsage": true,
+      "authCreate": false,
+      "publicUsage": true,
+      "databaseTemp": true,
+      "publicCreate": false,
+      "databaseCreate": false,
+      "databaseConnect": true
+    },
+    {
+      "role": "authenticator",
+      "authUsage": false,
+      "authCreate": false,
+      "publicUsage": true,
+      "databaseTemp": true,
+      "publicCreate": false,
+      "databaseCreate": false,
+      "databaseConnect": true
+    },
+    {
+      "role": "postgres",
+      "authUsage": true,
+      "authCreate": false,
+      "publicUsage": true,
+      "databaseTemp": true,
+      "publicCreate": true,
+      "databaseCreate": true,
+      "databaseConnect": true
+    },
+    {
+      "role": "service_role",
+      "authUsage": true,
+      "authCreate": false,
+      "publicUsage": true,
+      "databaseTemp": true,
+      "publicCreate": false,
+      "databaseCreate": false,
+      "databaseConnect": true
+    },
+    {
+      "role": "supabase_admin",
+      "authUsage": true,
+      "authCreate": true,
+      "publicUsage": true,
+      "databaseTemp": true,
+      "publicCreate": true,
+      "databaseCreate": true,
+      "databaseConnect": true
+    },
+    {
+      "role": "supabase_auth_admin",
+      "authUsage": true,
+      "authCreate": true,
+      "publicUsage": true,
+      "databaseTemp": true,
+      "publicCreate": false,
+      "databaseCreate": false,
+      "databaseConnect": true
+    }
+  ],
+  "serverVersionNum": "170006"
+}

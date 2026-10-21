@@ -1,0 +1,4249 @@
+{
+  "formatVersion": 1,
+  "activation": false,
+  "candidateOnly": true,
+  "scope": "Exact preserved entry replacement source; installed full graph/role/race closure remains required.",
+  "publicRelationGateCandidates": [
+    "company_settings",
+    "cost_codes",
+    "custom_work_sessions",
+    "custom_work_units",
+    "flights",
+    "ground_transport",
+    "install_events",
+    "issues",
+    "locations",
+    "lodging",
+    "opening_phases",
+    "package_deliveries",
+    "packages",
+    "procedures",
+    "profiles",
+    "project_messages",
+    "project_openings",
+    "project_plansets",
+    "projects",
+    "qc_checks",
+    "safety_talks",
+    "sandbox_projects",
+    "schedule_assignment_members",
+    "schedule_assignments",
+    "service_cases",
+    "service_time_sessions",
+    "service_visit_units",
+    "service_visits",
+    "storage_containers",
+    "studio_projects",
+    "summon_helpers",
+    "summons",
+    "task_sessions",
+    "time_clock_actions",
+    "time_shifts",
+    "toolbox_completions",
+    "trip_attachments",
+    "trip_contacts",
+    "trip_crew",
+    "trips",
+    "unit_sessions",
+    "vehicle_project_assignments",
+    "vehicles",
+    "window_types",
+    "windows",
+    "work_activity_definitions",
+    "work_capture_menus",
+    "work_job_management_grants",
+    "work_job_menu_selections"
+  ],
+  "entryCount": 212,
+  "selectedSourceGuardCount": 221,
+  "schemaEvidenceSha256": {
+    "ENGINE-CUTOVER-CLOSURE-EVIDENCE.json": "39225b398e6fe6cc25e0268e7269724b65844f2f0ae95feee021fa2b3b2f3ffa",
+    "ENGINE-INSTALLED-AUTHORITY.json": "94f7f74bda0816a6e708b5ecb7f7df855562bd88bd0b1e6143cb52b2baabf34c",
+    "ENGINE-INSTALLED-CONFIG.json": "7d1c3766c8f7976692e0e6f055574406996040c85da14ecd4856380e1bbb4e62",
+    "ENGINE-INSTALLED-SUPPLEMENT.json": "bbbf365fef84b0a346ff41e9f7e30c7e092d730f49cedf92179d1cf1f83d4abf"
+  },
+  "sourceParentsSha256": {
+    "20260715000000_inventory_core.sql": "28b94cb54b6ba6813bcb335c066645adabf40b88a7ae5bcea7965b69d2dbba1b",
+    "20260715200000_lifecycle_unify.sql": "efab510bad39c132e194a30532537fc582fa3f3c3bbef6455b80fd7ae6aee37a",
+    "20260715230000_fit_condition_gate.sql": "c1eafc23700bafdd3ad0e7f2496285e67d1de2863ee1509b6dd361032486182c",
+    "20260715240000_crew_dispatch.sql": "9a0e2ebb0229389155a977136721668203a51f9c87b348231f9f28c9dabde34e",
+    "20260716005000_training_howto.sql": "41fe66da8abadd244ab8a0f4a0a0d5a0a50c35c29c8bd8fdda633ada7f8a74b2",
+    "20260717007000_qc_flywheel.sql": "f962a3b5f1729db0fec4bbdbcc0ef2ea7f712a170c0597ce061f42a15bfafe08",
+    "20260718000000_role_rename.sql": "8f11acc626c9f5812fac967dcc804cb21810d92ef3b45118bf806c28374522b8",
+    "20260718001000_window_short_code.sql": "7ec2107de74c2ce1e64511e0523f6a5cce3fcc703ff7a1489af8c3900ad68fc7",
+    "20260718005000_issues.sql": "25792a95257e26c887310fe5182cd9f120f79d127d0ba80095c7737df38636e0",
+    "20260718006000_project_greenlight.sql": "ccb7f8b3ebd766f5cd5b36711d0b5eaa14320df1316dc4bb9174e83f91060a96",
+    "20260718007000_task_sessions.sql": "38c59590e9d9cd4bedcdd291c190dead4b159734c9d291be0fb35e7875da50b1",
+    "20260718040030_preissue_ids.sql": "d5586886175a7c012150c2e205f624b87db49c595af4c2cab2f6a5a957cc8c31",
+    "20260718050000_time_timecard.sql": "fd4dc031e8a20b16572ef1d7b69befc10dfb5b5dccc13167ba1b11e884251802",
+    "20260718050030_receiving_delivery.sql": "3e20bbdd632cdd911dc670dbbeee182c3ddb5fc14c00cf8c8ef54c02df411125",
+    "20260718060030_loadout_unload.sql": "e7bdb6c18fed7732cd154eca0573d90ea7b93258b304dd915efdf6db9bf9e343",
+    "20260718070000_service_cases.sql": "2414b81b0d7d376ca304f64b58f846c82cc443797e30f88302fbe3134a67d6aa",
+    "20260718080030_chain_correctness_fixes.sql": "2fd706b36298b3d7519afd7769de860f4b8f70043152f3e5a168c537240585cd",
+    "20260723060000_issue_assignee_fault.sql": "52e7ef0898dd0a0964ad8f76e3901f086df9802a68e0ce57c8227e890cb26a1e",
+    "20260728160000_spec_discrepancy_issues.sql": "18470a8aee52f5e2098baf0f6a56323695cd8e15a3336afae8a3696199091fbf",
+    "20260729200000_profiles_rls_lockdown.sql": "12cc6805e20a0bb4e35afb06ed0089d963b54b0d6a9715c6c59d170a0edf9e39",
+    "20260729200100_profiles_pin_hash.sql": "c9048d53c84a1896871c82bb8e20a718a773f338c9219e27e56c919cc9afbfe9",
+    "20260729220000_staging_bays_guaranteed.sql": "895ddc0cfb3e41a62897d00920b47680149a45d5b74797414f2c055c8bfdeadf",
+    "20260730130000_opening_pin_history.sql": "163815908d3de1e865f857cdd5e11ed5614c5c82908c7f7d2b61999e2eb6f589",
+    "20260730210000_soft_delete_openings.sql": "e563c60dd640dcca6ba69d9371955ad707f04f9d2f258260061a15eb3f949615",
+    "20260730230000_runaway_shift_guard.sql": "b80ff105bcec2962206bd8783955ffd8df99a86c9b6ef57484bf7de62ac42c55",
+    "20260731010000_close_shift_as_no_work.sql": "448eb49f6434b231606e1e97c91b8af17069f93633a08aa6ba62888b0380d34d",
+    "20260811000000_opening_phases.sql": "5af0eaa950d0850c378fbd0a88c84d2aef18945dd3f17a12d824dded86150c51",
+    "20260811010000_phase_pause.sql": "fe437153e8132da6a8938376304238d857a652b6d22455c3142b3789bb13c9cb",
+    "20260811050000_self_unsubmit.sql": "ed5e0162909d032c902c7ffe415b90fe18e9952d6166d22b4f637dbc2b41974b",
+    "20260811060000_shift_void.sql": "cea2944c47767a1ea78ae4de57b4f82b22b6e06b9111ae4d84d68216a118424f",
+    "20260811070000_toolbox_library.sql": "0fa4783c20c30e4f0d29573c33c313625c876042a23c5905da92f817e06473dc",
+    "20260811080000_unapprove_shift.sql": "a0c7e2076d762e5ce30e57d1d9f901862d26c4ba4fa6727ba77d2cb180e91f75",
+    "20260814000000_storage_tracking.sql": "fa853aee45125ee9602e5c573bc57b44272c701bcd9f92ed71e2559a03b1d2fb",
+    "20260815000000_studio_projects.sql": "84b70ee42bcecbeb7315d81b64f17de810c2b134046fb4718ce7ad153627f13f",
+    "20260816000000_learning_videos_fault_trade.sql": "d1b5f7855ec6cab449b956d27872ceedc29f95cece178fcefb33a5a98da3ce17",
+    "20260818000000_summons.sql": "f04885d974609d45750acbb9a805e3aa35188f4273bbecf08585430bef96f245",
+    "20260819000000_unit_signatures.sql": "26e07b8466949113701d339993962e841434540fad9759e7197f5fa934d16ca5",
+    "20260820000000_unit_sessions.sql": "38360d074562614f85f75d2c09243739ffe92ee252c3540125c01631aaa9df13",
+    "20260825000000_one_movement_log.sql": "863ebef6c125d2704d2635fba00ff3c7d08e65aa4bfc8f4a215f2042820a8f9d",
+    "20260827000000_package_staging_and_arrival.sql": "a16e507f1d2375d72a586e64fb269c9712b6773381bd7044f696fce331024169",
+    "20260831000000_store_packages_expected_state.sql": "f042aba1a3779c1df23f1ad64817d87c8aa514d76bb6159de89179a2b65db523",
+    "20260902000000_container_kinds.sql": "c896f0460775b331840d3674eb6e1e6270efcee2d0b341a5d00e5a32e6d31206",
+    "20260906000000_minted_packages.sql": "e73ed1420f4fe0cf31f0c36f542220b08083b3975e584eb1475ad39d22fabfd1",
+    "20260907000000_burn_labels.sql": "507895da1ebf02c2798b0644eac3bf2251b965a213b8c59bf33926a7c202ad54",
+    "20260908000000_boneyard.sql": "ad8a2aed241a7fc4e76cac0b8e639667f127db0053e2d21ae990eb4b938da283",
+    "20260911000000_maker_count.sql": "f62fc4db69f177069cb4c81651f37227d2179356aa20774367bc1167c81f7e1e",
+    "20260915000000_container_model_link.sql": "53d53351001685956eec612d6f9f3cec2f0cf9bc93a22036946cc0ad2dd3b356",
+    "20260919000000_summon_cancel.sql": "1ac20a90f012dc7ebdeeca165618e551a179de91eccb93c48601110ff2744119",
+    "20260922000000_damage_photo.sql": "f9e4ce2394a3b9ff8583849547f352024d4b46a8a76c4202e17d02e933cb4c58",
+    "20260923040000_package_note_edit.sql": "6b6f524af96f17464809f9827a2631a80d4f2a17c64f76a2d4dceb53a9b86c8c",
+    "20260924000000_manual_deliveries.sql": "2c725735bf164b68eac8d0ade4a9543dce398982ee13805650ff37ef454524f2",
+    "20260925000000_clone_sets.sql": "422d5a6405d31bc46eb7f19b4f9d97e4dc1b81e1a7aaab012d4c95bcf70459f4",
+    "20260927000000_unreceive.sql": "c3c307e8e3005e39458361683e625e2e8a30ffd8dc3c858077f652559639762d",
+    "20260928000000_custom_checkin.sql": "76029c0078edefeae704a52761caa45aedb721a902ac6400948bd80d885aaed0",
+    "20260930000000_tailgate_undo_label.sql": "1dd7b8b76afb452552083b2478ce571eb145213f770d34d78dc4d82a5729fcd3",
+    "20260932000000_crates_are_packages.sql": "b2867625504c1338ec734aa865f2a830b06a7faa9cbf58c550f724fe2f329117",
+    "20260933000000_testing_projects.sql": "72cf775fe32fce8540eb91b28d41efa7f279118525d913b9bda37ab4178a0abd",
+    "20260934000000_delivery_scheduling.sql": "eaa4e4828bc54e99d17cf02a2de708685a7f003b245d9587bb9c56208accf22d",
+    "20260939000000_owners_manage_owners.sql": "6cee9512c3c4af30f52076411b69256278a1cb990eff4c455402b0c2a234c983",
+    "20260940000000_crate_supplies.sql": "ba7f7ae1ad64ae25156d14be1f582565d9ade4a6aafa60e516db5e6b5e19206c",
+    "20260941000000_job_lifecycle.sql": "9a4360ea6d43567da76795cec23cc2ac434b78591884d71c473dfd0c8aa8f1d0",
+    "20260944000000_time_void_restore.sql": "51faa507c274e74a7cbdcb9d02f9287dabe667dfc510c269be2a0bd0587f0452",
+    "20260945000000_time_autoclose_reason.sql": "c2c497d700447466ee39a3d6d09a66d8a79d36bbc3eb88d84ea99c9630f17e2a",
+    "20260956000000_rename_package_category.sql": "5ac47d91c8cfca6009a875b4a30b8d27a3786dc7431a72f0eacb499031cf43e1",
+    "20260959000000_project_trash.sql": "fcd86eb945bd20d6a7bc7f9efd61931a7254d21d652a0f6e025aa84251cf6f79",
+    "20260961000000_placement_suggestions.sql": "1118d87b22f420349a71ed08afdb037144eac27518e6ab3f806a14d8c24fd650",
+    "20260963000000_summon_expiry.sql": "f0a0b044bbb6beac611d22dfea78a38474ee2b785003c8d9d873d477b096b9cf",
+    "20260966000000_rough_opening_quick_check.sql": "e1ae8b8e8d97a193b86cb2201cead355c10ec12123a28bcc717562cff57bdfd0",
+    "20260967000000_sandbox_guard_rearm.sql": "770b04b9db5a30b7137f9621cc247a2618d9f683044b60613d0c22c2e83eb277",
+    "20260968000000_profile_language.sql": "b4f9fdff4be25226f98b0d772834d5f3e3bd0221d6c358a745dd3808e860fc02",
+    "20260970000000_job_modes.sql": "351ef81363a3543e6940591c73424c8dd4649d91628d64891c0055c4ebaf3d44",
+    "20260972000000_job_summons.sql": "3f2655333cc991394e723f27c29e55109a34803b898c5f0df27dede0af5dc93d",
+    "20260974000000_job_deletion_supervisor.sql": "62abe95903965c41beee0a7021d49698d32a69fd1cd0165edc8ff4119e48200b",
+    "20260975000000_promote_to_data.sql": "729281d4733c3e21479806f505b37e64d58e405d7917dc2de36ac7e4daad9c15",
+    "20260976000000_time_honesty.sql": "0bcfad15bda2f9308a4ef55977b3a6d3882f782dca3897c8e6cde563b57858a1",
+    "20260977000000_field_truth.sql": "8e3d60c3e5af806ca182db88fce6d40fc639e1a3cecd97b48a2c8af7bbceb408",
+    "20260978000000_money_doors.sql": "e166a51ae4e9579dce18c8b99f48a1f92354a0091c53225eb4e61fc93b8aedc3",
+    "20260979000000_job_pipeline.sql": "71fb6d55c68cd2b028001e0feb3d62556c10c98764399d0682245b5270ac429d",
+    "20260980000000_scope_at_a_glance.sql": "46f4bb9d4fa8f95d091c9d1113c299ca00bb57572456a26102763512b54e6f6e",
+    "20260981000000_gc_handshake.sql": "528990f55348ade085d311e6497259d630129f22585a1de91ba45c23bb157535",
+    "20260982000000_who_did_what.sql": "c20373f1094c5347bac0bfd877e46600157ff164f4dc909f45570138396ff25d",
+    "20260985000000_clock_the_crew.sql": "23e4e164f4e98ee7bb03355036adccc89c9a71893357118c6a7fb85e7f3b9365",
+    "20260986000000_warehouse_is_crew_work.sql": "86070d5df9d03a2faab032bf3472b4307105d8f60201c311c278c6f1e92e50b5",
+    "20260994000000_unit_card_edits.sql": "51643db916d8a01c8ed1174303d032de2f51d10aeefacfdfeadbc522ef45cf7b",
+    "20260996000000_pooled_copies.sql": "1a6daa8138979b1513e2c5325daec1ab9ff7879720f00dc18be0c18999bb079b",
+    "20260998000000_bays_are_boxes.sql": "4aade1cecb4db7c6d5533a4c26ae5fd8e94c85d561b721a83dbe9e13105992ee",
+    "20260999000000_send_to_site_and_finalize.sql": "c600b1caead45e70ad706862e4a3ae4b191c4ab7562f1526256ecb832dffd720",
+    "20261003000000_forge_workflow_permissions.sql": "5dcdd495e9ef401695a412074736c74e585bece68bf9beaf279e85aa8799c029",
+    "20261004000000_connected_workflow_plans.sql": "a7e965ac50aea12f5ea03e45c5cb514008109cde7cee76e572a2e2c37593e772",
+    "20261006000000_schedule_end_time.sql": "668fe0081963ce94c160b2f15f34b8221c695dd92e8cfa85c4f9f08a0f4191a5",
+    "20261011000000_custom_work.sql": "936aa730668e623ed7fe52f35dd5b57594b6db62ad0ddac4d2d109deb6739ecd",
+    "20261012000000_timecard_descriptions_and_weekly_approval.sql": "33c15a12a1ba2a1e14e4978f57d164f5382db84b5229a395698bd4042680bbf4",
+    "20261013000000_time_entry_import_provenance.sql": "e84149a0564f974ad8449f995058eea98b8f07a61d784744c91f12419ef5f583",
+    "20261017000000_servicing_visits.sql": "05316b32be68ec16c5df00de3b23c2e0c3be820eefca9006154261c318a27540",
+    "20261024000000_ai_field_operations.sql": "a1da3725524517ccffbcf1b125aa5b1cebbb1171aa5e488fd2fee3dae48a21dd",
+    "20261028000000_clock_integrity.sql": "19f2904c72c68d2f9ae3c758737c31d4b0caccb5e4b4bf9924392a7bc69d63f6",
+    "20261031000000_new_front_door.sql": "11cbe8022dd0c64b2820459703a50b90dfccda19d85947a143eff87af61f5b59",
+    "20261033000000_offline_toolbox_signing.sql": "2bb1124170c13ed0d22231620bde91a6fb7624c46195fc307fe67dda128a659a",
+    "20261041000000_qc_decision_authority.sql": "65accc70db83482925723d2d12589740c349a5a2c8d7fa16a6bf33551055958e",
+    "20261049000000_foreman_unit_contributors.sql": "3c990644eaa4a4a38e5faa3e567834405d4ceac4ef949faa62c2098b716d7d30",
+    "20261106000000_monthly_values_reviews.sql": "c3c57a80700133d01cf44d12b4bb90b8d417ae714a3115a073a4be76258adec7",
+    "20261108000000_work_configuration.sql": "29c85e53a4fee18ad21ef8fe55c2e53175d7f37fa3bbf51555109dd2a02af369",
+    "20261108300000_work_unit_observations.sql": "1702462dc48e8a60ba33466b3b0de896c4f8505c75136d9df78e9355a9578c33"
+  },
+  "entries": [
+    {
+      "identity": "receive_window(uuid, uuid, text)",
+      "source": "20260718001000_window_short_code.sql",
+      "sourceLine": 55,
+      "bodyOrigin": "installed_exact_definition",
+      "originalBodySha256": "99eaf8319a73ee54a504d408b3980fa6952348669fc040cf0cf0f92895eacd04",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "windows"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "move_window(uuid, uuid, text, text)",
+      "source": "20260715000000_inventory_core.sql",
+      "sourceLine": 165,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "23255e667139943ddb909cc22bb478b568d739e3e399c179b1a9e9c4cfef8106",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "windows"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "load_window(uuid, text)",
+      "source": "20260718080030_chain_correctness_fixes.sql",
+      "sourceLine": 26,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "1161290269e35931ddbb6da38d7d34330bc0ab2fd201de669ac3664d8c1ec3e5",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "windows"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "install_window(uuid, text)",
+      "source": "20260715000000_inventory_core.sql",
+      "sourceLine": 236,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "6581b8a24eef7dd9fbe7f0e67fe8e00c9c76ed330255a8d3f2b6e49714e5d0b5",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "windows"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "assign_window_to_opening(uuid, uuid, text)",
+      "source": "20260715200000_lifecycle_unify.sql",
+      "sourceLine": 14,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "a5d33b05bec1e8e72f0cc2d763db0f7f992e390da9b8994ec4b30503d41b76e3",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings",
+        "windows"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_opening_rough_opening(uuid, numeric, numeric, text)",
+      "source": "20260715230000_fit_condition_gate.sql",
+      "sourceLine": 24,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "5294425f8b5fee7785a4a0841c53472d1b7a214cdc566a4290347997c5d89cb7",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_opening_condition(uuid, text, text, text)",
+      "source": "20260718080030_chain_correctness_fixes.sql",
+      "sourceLine": 224,
+      "bodyOrigin": "installed_exact_definition",
+      "originalBodySha256": "6818f43dde65c296335bd3a7ec7d1a23881eab716a43e220da53acfaff0a4a18",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues",
+        "project_openings",
+        "windows"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "unassign_opening(uuid)",
+      "source": "20260982000000_who_did_what.sql",
+      "sourceLine": 890,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "a527dcc874eaac58cf9474aff00b11d2b082d092e640e462c9ba7a6b91cf4a12",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "start_opening_work(uuid)",
+      "source": "20261031000000_new_front_door.sql",
+      "sourceLine": 647,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "ade7ea6a76d6ed31fce4c5a8a8506508b6be3713f30658c76b2cf198b82b0168",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "close_open_task_sessions"
+      ],
+      "directRelationCandidates": [
+        "project_openings",
+        "task_sessions"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_openings_sequence(uuid[])",
+      "source": "20260715240000_crew_dispatch.sql",
+      "sourceLine": 107,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "e0b49ed786792f3fcb94065fcbccddce5b637edb716e9691b778a3a2143b5a73",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "recompute_window_type_rollups(uuid)",
+      "source": "20260982000000_who_did_what.sql",
+      "sourceLine": 564,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "8bbcc6fee7dc5f140bf59f1ee6deacc1206ac9f671fa843d0ed4bded636508b8",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "window_types"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "trg_recompute_rollups()",
+      "source": "20260716005000_training_howto.sql",
+      "sourceLine": 36,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "e49db617e6806c67d1929726b6ee4fd938bc723bddef7ea56e2115583ff03499",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "pick_golden_install",
+        "recompute_window_type_rollups"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "submit_install_event(uuid, text, integer, integer, text, text, text, text, text, text, text, text, text, timestamp with time zone, uuid, integer)",
+      "source": "20260982000000_who_did_what.sql",
+      "sourceLine": 238,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "d6296509af795129aaf0fe526a19d2173099499740cbd1cc7c0e16cccbd11a45",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "submit_install_event"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "pick_golden_install(uuid)",
+      "source": "20260982000000_who_did_what.sql",
+      "sourceLine": 623,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "24148bf3650dad499d11f4bcd28f27193f487a202af94f08a3e159edd9e47067",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "window_types"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_golden_install(uuid, uuid)",
+      "source": "20260718000000_role_rename.sql",
+      "sourceLine": 83,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "d0b77a76677cf60b77b533cb752933f2605e3aea2174adb68eba8f6031205de5",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "window_types"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "flag_opening(uuid, text)",
+      "source": "20260977000000_field_truth.sql",
+      "sourceLine": 198,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "73bc3ac7261f6f126f473f355c8a4cb97d6af93aa2884781854bcca9789da36c",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "flag_opening"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_my_pin(text)",
+      "source": "20260729200100_profiles_pin_hash.sql",
+      "sourceLine": 89,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "e347d8692324f0a88559b11f5d96a6647fcc8923c2b327eedf0174f14e60577d",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "profiles"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "trg_qc_recompute()",
+      "source": "20260717007000_qc_flywheel.sql",
+      "sourceLine": 60,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "d045c7ffe9d76ca68942b92164aaa2602702db901584c0baf60652096e133fdf",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "recompute_window_type_rollups"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "end_break(uuid)",
+      "source": "20261028000000_clock_integrity.sql",
+      "sourceLine": 682,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "6b007126a2c72e254b1932257e30ce0afc7c0e52938bb63b41e059b4e72fb256",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "undo_install(uuid, text)",
+      "source": "20260811050000_self_unsubmit.sql",
+      "sourceLine": 12,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "66c5de18ec77be26c35aa14c44a3999c395c3e33b4302487b4aacfb9e87ead1d",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "recompute_window_type_rollups"
+      ],
+      "directRelationCandidates": [
+        "install_events",
+        "issues",
+        "project_openings",
+        "task_sessions",
+        "windows"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "create_issue(uuid, uuid, text, text, text)",
+      "source": "20260718005000_issues.sql",
+      "sourceLine": 57,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "b5372f9644ae29ea41be7832fa3c38662c1fc0fe5d0788332ae9bcb7a904b937",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "resolve_issue(uuid)",
+      "source": "20260718005000_issues.sql",
+      "sourceLine": 78,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "bcf05f7f2392763cd91077704eeabe07fc1fea82e2b6f3cc75c7ae2f1435fd74",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_project_green_light(uuid, boolean, text)",
+      "source": "20260718006000_project_greenlight.sql",
+      "sourceLine": 16,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "d74c37fa76e7dbf0348b2f130865a62dcf18a1b23754fb83c5e80b893faefb04",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "projects"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "close_open_task_sessions(uuid)",
+      "source": "20260718007000_task_sessions.sql",
+      "sourceLine": 46,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "b73e5655dd0e7e46338fceb6b58c53821745c894df6baa1c37dc01717b36531d",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "task_sessions"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "start_off_task(uuid)",
+      "source": "20260718007000_task_sessions.sql",
+      "sourceLine": 172,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "b35578374596ae42785ea44af82891fc4e9d72227f07b37c0533a81b8c948742",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "close_open_task_sessions"
+      ],
+      "directRelationCandidates": [
+        "task_sessions"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "preissue_project_units(uuid)",
+      "source": "20260718040030_preissue_ids.sql",
+      "sourceLine": 35,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "038a01f6d6af3304d42f3f438f4113fcbf1d590266e7c03f22fdb8de01bd065d",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "windows"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "clock_in(uuid, uuid, text, double precision, double precision)",
+      "source": "20261031000000_new_front_door.sql",
+      "sourceLine": 339,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "6503402b2d140b967019f6137afe423969855e7012aa683ee93bad758031b4a1",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_close_dangling_shift"
+      ],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "start_break(uuid, text)",
+      "source": "20261028000000_clock_integrity.sql",
+      "sourceLine": 549,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "22e89428eca668880c9cf14693ef9f9acec7db17fd08f3e250009658c14c7ab5",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "opening_phases",
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "activate_preissued_unit(text, uuid, boolean, text)",
+      "source": "20260718080030_chain_correctness_fixes.sql",
+      "sourceLine": 142,
+      "bodyOrigin": "installed_exact_definition",
+      "originalBodySha256": "791f2a02763b7fba07eb7c79fecab7701d9e04e88d18606dd75087630a75e928",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues",
+        "windows"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "reconcile_project_deliveries(uuid)",
+      "source": "20260718050030_receiving_delivery.sql",
+      "sourceLine": 110,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "c60ebe797f1d98a0bed0f3becbe281e099c8c0c4546086dac366deaf754908cf",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "load_units(uuid[], uuid, text)",
+      "source": "20260718060030_loadout_unload.sql",
+      "sourceLine": 30,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "195e994e94d32f50374e2bd1d989f59eb8ea7410770dabcd58ab696fa472986a",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "windows"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "unload_units(uuid[], uuid[], uuid, text, text)",
+      "source": "20260718080030_chain_correctness_fixes.sql",
+      "sourceLine": 59,
+      "bodyOrigin": "installed_exact_definition",
+      "originalBodySha256": "725d8d56b58255fd015da781f65272ca9c96e86b67ff64c2966ad876becdf2c7",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues",
+        "windows"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "open_service_case(uuid, text, text, text)",
+      "source": "20260982000000_who_did_what.sql",
+      "sourceLine": 652,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "ec9b3be406f9477c14fc7e279f9a1dee7f0f668b49c3d44f6d930adbe43826e3",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "service_cases"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "schedule_service_case(uuid, timestamp with time zone)",
+      "source": "20260718070000_service_cases.sql",
+      "sourceLine": 129,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "dffe2b1426e9b93ccdd9681efa669d9e41a318989496606a551ed1fc4d5b3b47",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "service_cases"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "resolve_service_case(uuid, text)",
+      "source": "20260718070000_service_cases.sql",
+      "sourceLine": 156,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "9860e5d67f72ee10308436f6070bd78e5d5f8fcbe373a603f716dcd16d96b586",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "service_cases"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "trg_guard_profile_role_change()",
+      "source": "20260939000000_owners_manage_owners.sql",
+      "sourceLine": 79,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "f668d70aa009e51907dc99bfe15f21a2fbcedf6cbc4c496ceb771ba4bbaea966",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "claim_owner_bootstrap"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "reject_shift(uuid, text)",
+      "source": "20260718050000_time_timecard.sql",
+      "sourceLine": 37,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "dba3a961c3c2c014d886411e3c0866b2b1973fb35549688468e042c4917e0f9c",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "lead_add_shift(uuid, uuid, uuid, timestamp with time zone, timestamp with time zone, integer, text)",
+      "source": "20260718050000_time_timecard.sql",
+      "sourceLine": 62,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "d597b14c874c49e9defc8ff29b9c43681625ba213de8c217f24d0fa38f699d40",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "lead_edit_shift(uuid, uuid, uuid, timestamp with time zone, timestamp with time zone, integer, text)",
+      "source": "20261012000000_timecard_descriptions_and_weekly_approval.sql",
+      "sourceLine": 135,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "f137031a926f91b740fc9904898ae8f64574a8fd5b81acebf38b905a8267f200",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "edit_shift"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "clock_in(uuid, uuid, text, double precision, double precision, uuid)",
+      "source": "20261031000000_new_front_door.sql",
+      "sourceLine": 392,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "998bdee5b7e72fc4a41f7a2eb34c839aa713bacc9a88e3841647a25dbe1c70f1",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_close_dangling_shift"
+      ],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "assign_issue(uuid, uuid)",
+      "source": "20260723060000_issue_assignee_fault.sql",
+      "sourceLine": 25,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "37d388186cde1d92233d807273c938ee552672263239e6fa9e3b3760ed46b88f",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_issue_fault(uuid, uuid)",
+      "source": "20260723060000_issue_assignee_fault.sql",
+      "sourceLine": 50,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "7abbe90ef76510d9ea12a90d18e65bcf123aad99e061ad54c56f813d71063586",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "clock_in(uuid, uuid, text, double precision, double precision, text)",
+      "source": "20261031000000_new_front_door.sql",
+      "sourceLine": 364,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "92650d8957a0d1d1ed50a65c3ff97da9722d720717949aeb8ba580ee32620add",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_close_dangling_shift"
+      ],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "clock_in(uuid, uuid, text, double precision, double precision, uuid, text)",
+      "source": "20261031000000_new_front_door.sql",
+      "sourceLine": 428,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "429baebfc810798b53fac8aa6d3027f3d6cb741c48770fdafeed498336245b8b",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_close_dangling_shift"
+      ],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "acknowledge_spec_discrepancy(uuid, text, text, text, text)",
+      "source": "20260728160000_spec_discrepancy_issues.sql",
+      "sourceLine": 80,
+      "bodyOrigin": "installed_exact_definition",
+      "originalBodySha256": "ba6eeb671bcd9e5c896cbd9f36e0e4c39bd49338f3377d16753b578a05ac5b81",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "withdraw_spec_discrepancy(uuid, text, text)",
+      "source": "20260728160000_spec_discrepancy_issues.sql",
+      "sourceLine": 153,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "651f959ffaa80523dec5b569777d91ebe5aba4b58793df9b3e9f4cd6ce77bfde",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "claim_owner_bootstrap()",
+      "source": "20260729200000_profiles_rls_lockdown.sql",
+      "sourceLine": 372,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "315105aa1e83d6a8cd7447b131182d0401c27aad9273078d0c63cefada8214b1",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "profiles"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_profile_role(uuid, text)",
+      "source": "20260939000000_owners_manage_owners.sql",
+      "sourceLine": 16,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "fc181b7933924c1b7cf3912d4d5e45aae317791722e227cdc0789eb02fc4f0ce",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "profiles"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "create_staging_bays(text)",
+      "source": "20260729220000_staging_bays_guaranteed.sql",
+      "sourceLine": 42,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "0c0c50c370cc407601f3fbd5c1a4eacab032e93805a9d0cd125c78b7e601bcbc",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "locations"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "projects_create_staging_bays()",
+      "source": "20260998000000_bays_are_boxes.sql",
+      "sourceLine": 153,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "c05217d41bb93e3df45c45ecf0c9e5a76b7f5953c6c23007e406627564a37a63",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "job_bay_box"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "ensure_project_staging_bays(uuid)",
+      "source": "20260729220000_staging_bays_guaranteed.sql",
+      "sourceLine": 157,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "4b561e3467745beb1c8d2f28a1bb90f12f5aa0ba43f59c4d40fdb5aed912ea33",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "create_staging_bays"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "undo_opening_pin_move(uuid)",
+      "source": "20260730130000_opening_pin_history.sql",
+      "sourceLine": 217,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "ac5651a91456eaa76d7ac8fc3f40b0bd753a8317c90664afa176edfd8fbd3277",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "reset_project_pins_to_extracted(uuid)",
+      "source": "20260730130000_opening_pin_history.sql",
+      "sourceLine": 260,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "2670026b5164573fa8c51c66ee5c518e04f0e21821df05f385af052108fe55be",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "reset_opening_pin_to_extracted(uuid)",
+      "source": "20260730130000_opening_pin_history.sql",
+      "sourceLine": 299,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "ecc51fc775abbbada34e84d8b80addfb792204e8e4a04965f2a735279412769f",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "remove_opening(uuid, text)",
+      "source": "20260730210000_soft_delete_openings.sql",
+      "sourceLine": 154,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "a97a56e94f2a221b15911402e76593bcb806539a2e3db32b2610c0e1d8a691a4",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "restore_opening(uuid)",
+      "source": "20260730210000_soft_delete_openings.sql",
+      "sourceLine": 211,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "3c9d2d883a2d6450cb9e649946fe702596496436709b54092d142a17ca31d3aa",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "_close_dangling_shift(uuid)",
+      "source": "20260945000000_time_autoclose_reason.sql",
+      "sourceLine": 31,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "43a1d739ef5e6a0739fa4b50d3e540707dd911f0a3f4d3f237f3b738a3a20477",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "finish_shift_at(uuid, timestamp with time zone, boolean, integer)",
+      "source": "20260730230000_runaway_shift_guard.sql",
+      "sourceLine": 243,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "496b9f8a4db452c44d87aedd77cef714901fc3351c94a091d4ee8ea71802ea98",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "close_shift_as_no_work(uuid, text)",
+      "source": "20260731010000_close_shift_as_no_work.sql",
+      "sourceLine": 30,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "d1e5f257ec4512dba6486ba77720b853cfa0bd133de92dbec6521933f7392f86",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "start_opening_phase(uuid, text)",
+      "source": "20261031000000_new_front_door.sql",
+      "sourceLine": 688,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "85e1a758ba4b3323d0272f4f9faafe1cebeee101f06fcd19dc5696117bee08a7",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "opening_phases"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "submit_opening_phase(uuid, text, text)",
+      "source": "20260811010000_phase_pause.sql",
+      "sourceLine": 82,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "d540a99e3e234a22e40d08856f59c3dc151767c10ede2d614f002c78feb85e0a",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "opening_phases"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_opening_needs_flashing(uuid, boolean)",
+      "source": "20260811000000_opening_phases.sql",
+      "sourceLine": 155,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "fb11061192e550f0a3cb08fc1d393cd77226e90f3626db911380b7a732cf04e3",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_project_needs_flashing(uuid, boolean)",
+      "source": "20260811000000_opening_phases.sql",
+      "sourceLine": 173,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "90d738ae796ed3aaeb8556dbd05548e89aa33d58f3d3ba7df4fa71d98da081cd",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "pause_opening_phase(uuid, text)",
+      "source": "20260811010000_phase_pause.sql",
+      "sourceLine": 16,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "dcbae698473765e81e601ddae738926548d8c29a50d1344ea4b215f4fc44609e",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "opening_phases"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "resume_opening_phase(uuid, text)",
+      "source": "20261031000000_new_front_door.sql",
+      "sourceLine": 770,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "f58bd28bcac3e14115bb2ebf0dae41c8c8156b70a2e091f38ea69977f9e66e4c",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "opening_phases"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "cancel_opening_phase(uuid, text)",
+      "source": "20260811010000_phase_pause.sql",
+      "sourceLine": 60,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "f08cdab41a115bf54a164587d3c44adb45e2570de5a1607a4559c3c6e5355f90",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "opening_phases"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_opening_rough_opening(uuid, numeric, numeric, text, jsonb)",
+      "source": "20260966000000_rough_opening_quick_check.sql",
+      "sourceLine": 116,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "73c2c41b65c3a4c57000ce7adaedd27dc6c401771f450cdf7c85aea62a0e9fdd",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "lead_void_shift(uuid, text)",
+      "source": "20260811060000_shift_void.sql",
+      "sourceLine": 22,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "19aa93bdc32e49282fe54aac149a31c730b57b0ec947303823aabde085b9215d",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "get_or_create_toolbox_talk_for_date(date)",
+      "source": "20260811070000_toolbox_library.sql",
+      "sourceLine": 158,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "4bdba56c2cab4a1e05d00e77c256b79bffbf6c56a198e5f80e1a67c9788c1a4f",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "safety_talks"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "lead_unapprove_shift(uuid, text)",
+      "source": "20260811080000_unapprove_shift.sql",
+      "sourceLine": 12,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "d990fd71a5d4bcafec4d3b1fbef65175a50cc01738ce1295b8eeb8c2f104638a",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "mint_packages(integer)",
+      "source": "20260986000000_warehouse_is_crew_work.sql",
+      "sourceLine": 47,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "931ce4ddf7a8bd5a1619e31c142f1d10d7d7f9186654074c9091cdc5ecc96ca2",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "ensure_package_delivery(text)",
+      "source": "20260814000000_storage_tracking.sql",
+      "sourceLine": 251,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "6b11870ecd83bd84f50d57bfa12bd2cd86747354a70010c1ecc46acaca2ea9c6",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "package_deliveries"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "store_packages(uuid[], uuid)",
+      "source": "20260831000000_store_packages_expected_state.sql",
+      "sourceLine": 231,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "2af2b7465dc7056fec5b17a5be1249d98ff2dbeef02c595a49cdfca0ad298d3d",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "checkout_packages(uuid[], text, uuid)",
+      "source": "20260825000000_one_movement_log.sql",
+      "sourceLine": 237,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "4ce9e08e28b48a9a2be0a3ab847fa8fdf16ebbd78266b7fa396a7a79e65faa8b",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "save_studio_project(uuid, text, uuid, jsonb, boolean)",
+      "source": "20260815000000_studio_projects.sql",
+      "sourceLine": 47,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "7d8910bfeebde7ece228c05a0c451c898d07e5411d90bee8da01390f5d0b3e56",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "studio_projects"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_issue_fault_trade(uuid, text)",
+      "source": "20260816000000_learning_videos_fault_trade.sql",
+      "sourceLine": 14,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "59edf9e8a6a8a6965dcd3982aa58c6b7c5ba471191e3091a4b119e20f722404a",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "answer_summon(uuid)",
+      "source": "20261031000000_new_front_door.sql",
+      "sourceLine": 959,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "4044d2b6839800f5a4e8c5a8f040b71d1b6e8f804cc80483e3dead1411da18b8",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "summon_helpers",
+        "summons"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "complete_summon_help(uuid)",
+      "source": "20260818000000_summons.sql",
+      "sourceLine": 138,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "dcce01f06c1dbe85a747648bb9ea6c0b6358c62d966244058baeec08ca281439",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "summon_helpers"
+      ],
+      "replacement": "preserved_header_generated_entry",
+      "deliberateSafetyCorrections": [
+        "completion excludes cancelled helper rows"
+      ]
+    },
+    {
+      "identity": "close_summon(uuid)",
+      "source": "20260963000000_summon_expiry.sql",
+      "sourceLine": 99,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "8585fff6740b6c3b11e60e0d33e4a5e270323565aad3d69584cca6fc689bb14a",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "summon_helpers",
+        "summons"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_unit_signature(uuid, jsonb)",
+      "source": "20260819000000_unit_signatures.sql",
+      "sourceLine": 53,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "c7ddb83b530072f424de29daea43dd3d6c5ac3e546c00bedab264e9865cdb4e3",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "_end_open_session(uuid, text, text, uuid)",
+      "source": "20260820000000_unit_sessions.sql",
+      "sourceLine": 61,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "c221f113a07d93a6fc5625769997a98554a1de9f8fbeb3776ba8155c0e9d722f",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "unit_sessions"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "_close_stale_sessions(uuid)",
+      "source": "20260820000000_unit_sessions.sql",
+      "sourceLine": 84,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "8a71296dca4f3ed31ebb4358eb570f6416e8cd9712ad0e3e7d3eb631d6e2e4f1",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "unit_sessions"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "start_unit_session(uuid, text)",
+      "source": "20261031000000_new_front_door.sql",
+      "sourceLine": 724,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "537ffcd3ff1aa6d5302d6cf212046bfbc80c7d0370e55dbf1a43db59b2e51392",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_close_stale_sessions",
+        "_end_open_session"
+      ],
+      "directRelationCandidates": [
+        "project_openings",
+        "unit_sessions"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "reattribute_session(uuid)",
+      "source": "20260820000000_unit_sessions.sql",
+      "sourceLine": 159,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "a06fde300d359e8fe745a204a0bb884d31e46ab7b97ef87a3409b9ba0e40c62f",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings",
+        "unit_sessions"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "finish_unit(uuid, uuid, text, integer, text, text, text, text, text, text, text, text, text, uuid, integer)",
+      "source": "20260982000000_who_did_what.sql",
+      "sourceLine": 369,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "9f9fc45d0a1433211e50bdc563277a3da4ada80366de925b330a7767761b28b1",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "finish_unit"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "block_unit(uuid, text, uuid, uuid)",
+      "source": "20260820000000_unit_sessions.sql",
+      "sourceLine": 271,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "8ed2fc9507b84fccb83d8e02cfed0c940e22ac83a9409662987203a359c42176",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "start_unit_session"
+      ],
+      "directRelationCandidates": [
+        "issues",
+        "unit_sessions"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "press_redo(uuid, text)",
+      "source": "20260820000000_unit_sessions.sql",
+      "sourceLine": 318,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "1af62172881b9ecc761c660f0c9d182940f3b32ba9964259566cc499f0aa5958",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "unit_sessions_follow_shift()",
+      "source": "20261017000000_servicing_visits.sql",
+      "sourceLine": 422,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "cc3dfcede1c19dc42b9eaba2f07c4c27aede8fe3228c7d7d3f78002f3bb9f932",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_end_open_session"
+      ],
+      "directRelationCandidates": [
+        "unit_sessions"
+      ],
+      "replacement": "manual_lifecycle_callback"
+    },
+    {
+      "identity": "unit_sessions_on_clock_in()",
+      "source": "20261013000000_time_entry_import_provenance.sql",
+      "sourceLine": 34,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "b31c8fe3502a4aab791b182bfd0a4b0ed88659ddeff4a1be3b1c8f5b9a812db1",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_close_stale_sessions"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "manual_lifecycle_callback"
+    },
+    {
+      "identity": "unit_sessions_follow_summon_helpers()",
+      "source": "20260963000000_summon_expiry.sql",
+      "sourceLine": 143,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "f67999b8679fd2bb8d593fd9195d77d07c1be6036fc8f34032da5896e5be1256",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_close_stale_sessions",
+        "_end_open_session"
+      ],
+      "directRelationCandidates": [
+        "unit_sessions"
+      ],
+      "replacement": "manual_lifecycle_callback"
+    },
+    {
+      "identity": "move_container(uuid, uuid, uuid)",
+      "source": "20260902000000_container_kinds.sql",
+      "sourceLine": 67,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "b1d2bcdaa2f2e456d95c4759abec76ed992062c5adcf5912916468e0871b0386",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "storage_containers"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "stage_packages(uuid[], uuid)",
+      "source": "20260827000000_package_staging_and_arrival.sql",
+      "sourceLine": 62,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "a9a9d417b48de6744a8388f8f38736c774a3c705523e9c54b57dea005eb183d1",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "store_packages(uuid[], uuid, jsonb)",
+      "source": "20260831000000_store_packages_expected_state.sql",
+      "sourceLine": 49,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "0c03e8915581ef19667a13a0102f0db06748be27038af1431acaa405b132a50e",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "stage_packages(uuid[], uuid, jsonb)",
+      "source": "20260998000000_bays_are_boxes.sql",
+      "sourceLine": 173,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "ff3e1449d07d30d0b82428cb1ac73a11e00b1ec8f660ca839c7ee0b5d529ba87",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "job_bay_box"
+      ],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "save_storage_container(uuid, text, text, text, text, boolean, text, numeric, numeric, numeric, numeric)",
+      "source": "20260986000000_warehouse_is_crew_work.sql",
+      "sourceLine": 293,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "4efb9b428db04e13a0778e781f4571bcacc483321b9f95ab0b44064dcb90b8c8",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "storage_containers"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_package_area(uuid, text)",
+      "source": "20260986000000_warehouse_is_crew_work.sql",
+      "sourceLine": 384,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "c11eeca95dbd4254d99f96bdd375ae05fa1dd02f9604133b96395a27e90979c8",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "mint_mark_packages(uuid, text, integer, text)",
+      "source": "20260986000000_warehouse_is_crew_work.sql",
+      "sourceLine": 82,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "a75a14a9308af39c03056ffe34c58e8d9147125ee8720deaf920f14ca3b65632",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "receive_minted_packages(uuid[])",
+      "source": "20260906000000_minted_packages.sql",
+      "sourceLine": 131,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "45e46642f46a136371fad1539265cf6224e169390c9a7a7ff2702863d3d45d12",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "burn_packages(uuid[])",
+      "source": "20260907000000_burn_labels.sql",
+      "sourceLine": 24,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "1830998a4797170c2e99f6a55e549c6ed682f4f6774942f74d24a42e535b3d3b",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "bind_package(uuid, uuid, text, text, text[], uuid, integer, integer, text, text, boolean)",
+      "source": "20260908000000_boneyard.sql",
+      "sourceLine": 23,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "59f8c4b38be203b278f465447289d7ee54e16aa9d055e5d554a9dca4b6c3a767",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "assign_package_to_job(uuid, uuid, text)",
+      "source": "20260986000000_warehouse_is_crew_work.sql",
+      "sourceLine": 511,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "4d7e76a43fd6828ad343807c705bb8d5423f7a5883740397da17bad307d140ad",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues",
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "report_maker_count(uuid, integer)",
+      "source": "20260911000000_maker_count.sql",
+      "sourceLine": 30,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "d49583433abbd62e530092ecc2d1b9becebf6edc4fcc4febc937561fa0e1360b",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_mark_part_total(uuid, text, integer)",
+      "source": "20260986000000_warehouse_is_crew_work.sql",
+      "sourceLine": 213,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "f83d69089ed9faa146b51efe6859ed80487dd8130e6e6df701f71584e61ea6e4",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_container_model(uuid, uuid)",
+      "source": "20260915000000_container_model_link.sql",
+      "sourceLine": 21,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "9322171b043169b6d0579df59865b2991f8c00ddb9ce190827e52575e01109f9",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "storage_containers"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "cancel_summon_help(uuid)",
+      "source": "20260919000000_summon_cancel.sql",
+      "sourceLine": 79,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "e2fe46fb16901def9276fb59273ba92058b195dd2cba05d8122ad209cf634eb3",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "summon_helpers",
+        "summons"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "create_summon(uuid, integer, integer, text)",
+      "source": "20260972000000_job_summons.sql",
+      "sourceLine": 129,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "e67eb2063a40e9d9cb093217d097a59219a104c17621572e4cb2d4578faf1d3c",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "summons"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "clock_out(uuid, text, boolean, boolean, integer, double precision, double precision, text)",
+      "source": "20261028000000_clock_integrity.sql",
+      "sourceLine": 396,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "7baa1ba7a4d7d6d86aafca48df557a600c8d5f7c8794299d64c2cf345fd18056",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "arrive_packages(uuid[], uuid[], uuid, text, jsonb)",
+      "source": "20260922000000_damage_photo.sql",
+      "sourceLine": 65,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "eb996d8b477fc26fbf29431b8a86d7821e237bf302df1d48d20d2cfd68cb0501",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_package_note(uuid, text)",
+      "source": "20260923040000_package_note_edit.sql",
+      "sourceLine": 21,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "b18d144c8e9d0fe89f5d338349a0119d3028a35612e11b10654a11bf1cdae47c",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "delete_packages(uuid[])",
+      "source": "20260924000000_manual_deliveries.sql",
+      "sourceLine": 25,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "13cfd2edc0117ff13b79b8f80be5e58590b2521a793021731d1063821fb1108b",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "create_manual_delivery(text, jsonb)",
+      "source": "20260986000000_warehouse_is_crew_work.sql",
+      "sourceLine": 836,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "b6d65e351d5fce7d40f519dd0fcd7c5cf50e99820a0fee3e4df798d58cbe1332",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "create_delivery_set"
+      ],
+      "directRelationCandidates": [
+        "issues",
+        "package_deliveries",
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_package_part(uuid, integer, integer, text, boolean)",
+      "source": "20260925000000_clone_sets.sql",
+      "sourceLine": 309,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "69ce0a236215d17a98fa1bfe5a55c5157e739cdde64d7614b3a6d748db8ed9bd",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "create_delivery_set(uuid, uuid, text, text, integer, text, integer, text, integer, text, uuid)",
+      "source": "20260932000000_crates_are_packages.sql",
+      "sourceLine": 68,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "ca2e38b61cc708039e54fabfe48f800ac2b227bc8fcc3cd1b176054dd124c668",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "file_pending_packages(uuid[], uuid)",
+      "source": "20260986000000_warehouse_is_crew_work.sql",
+      "sourceLine": 967,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "04e2e22be2a79196c4438f9d13d029f807e9e19c6b33f11b0f49068e8392e23c",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues",
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "unreceive_packages(uuid[])",
+      "source": "20260927000000_unreceive.sql",
+      "sourceLine": 12,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "f8d6aed87e1eed065c9cc6bc5b74cfc0777a0d7bc9403cc600648cfd36015b96",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "custom_checkin(uuid, uuid, text, text, text, integer)",
+      "source": "20260928000000_custom_checkin.sql",
+      "sourceLine": 8,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "37121396659e904f7e299e0f9c00c2b6212390c31f2fcb62ea979fa4adc171a7",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "unstore_packages(uuid[])",
+      "source": "20260930000000_tailgate_undo_label.sql",
+      "sourceLine": 15,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "b2c66b26d5b9023714850400beb3f898d5e7619839db30f1a6b6068b7c50cf7e",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "label_packages(uuid[], text)",
+      "source": "20260930000000_tailgate_undo_label.sql",
+      "sourceLine": 49,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "d5e2ac2959c1ae7c29c440551401e97eb1026fe26e1f0c128df504af598981cc",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_piece_count(uuid, integer)",
+      "source": "20260932000000_crates_are_packages.sql",
+      "sourceLine": 374,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "5aa44b6fe97137b0dbf68baf635c42a70a082d3d762c3dc64deb1d9adeae5aaa",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "add_job_crate(uuid, text)",
+      "source": "20260932000000_crates_are_packages.sql",
+      "sourceLine": 401,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "71c8398e2aeb10a47a23d676989d1cfe2a7cca9a3ccf1c610c70b3557dfeb2d8",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "update_delivery(uuid, text, timestamp with time zone)",
+      "source": "20260986000000_warehouse_is_crew_work.sql",
+      "sourceLine": 1092,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "2ff1b60c3bcbb61fbff0d429c934a40bd0c22cd05d896f192c69dfe076ad1cd1",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "package_deliveries",
+        "schedule_assignments"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "delete_delivery(uuid)",
+      "source": "20260934000000_delivery_scheduling.sql",
+      "sourceLine": 73,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "5b8b7f7d61931e2e174e1566517b6a525d4239d6a566624c7e2c9876b6850606",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "package_deliveries",
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "schedule_delivery(uuid, timestamp with time zone, uuid[])",
+      "source": "20261003000000_forge_workflow_permissions.sql",
+      "sourceLine": 124,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "19af25f68929c6a4468dcb02a0d0003931d05138043891aa8648916b29e77823",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "package_deliveries",
+        "schedule_assignment_members",
+        "schedule_assignments"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_project_test(uuid, boolean)",
+      "source": "20260933000000_testing_projects.sql",
+      "sourceLine": 102,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "650b004f31c7d204750dc21d7eb004e26b7be30afd9f70d2f0017a8b16fcb7d9",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "projects",
+        "sandbox_projects"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "delete_test_project(uuid)",
+      "source": "20260933000000_testing_projects.sql",
+      "sourceLine": 180,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "03111930a988f50e50872c345533f9809ee581b869e5d09de0c4560bdfb5f471",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages",
+        "projects"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "add_delivery_set(uuid, uuid, text, text, text, integer, text, integer, text)",
+      "source": "20260986000000_warehouse_is_crew_work.sql",
+      "sourceLine": 1048,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "6982f346f7476a0de9317bf7f954802648cdc0e53106dc0fd6b984eb9a81b3ef",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "create_delivery_set"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "add_crate_supplies(uuid, text, text, integer)",
+      "source": "20260940000000_crate_supplies.sql",
+      "sourceLine": 12,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "453c33492067a6cc57a35bef948a8c6a63a38cc9bc13c7a9b867de3ed569704c",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_project_status(uuid, text)",
+      "source": "20260941000000_job_lifecycle.sql",
+      "sourceLine": 26,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "de0ae17cf953fafd331b8fb8650563fbea42f9f99837c34a15df60a4b8d12829",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "projects"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "delete_project(uuid)",
+      "source": "20260959000000_project_trash.sql",
+      "sourceLine": 125,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "4e5a9545476d09612ff65b618d6b303ba932566f3d202973d9ee3718ad075ded",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "projects",
+        "sandbox_projects"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "edit_shift(uuid, uuid, uuid, timestamp with time zone, timestamp with time zone, integer, text)",
+      "source": "20261012000000_timecard_descriptions_and_weekly_approval.sql",
+      "sourceLine": 32,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "be6b9a953394d52ffbe1b3c37829b1a986704283c72184096576c90c01a78022",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "void_shift(uuid, text)",
+      "source": "20260944000000_time_void_restore.sql",
+      "sourceLine": 24,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "50a4d4b880693ae8308daf6e1f121acac7b898168f14bc273b6a6fc60a4a9ece",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "restore_shift(uuid)",
+      "source": "20260944000000_time_void_restore.sql",
+      "sourceLine": 91,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "1a50d5e25bcb3113ddfc9fb194fadb78f3d7c5a2ab3c9286af1b4a868c19aa56",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "rename_package(uuid, text, text, text)",
+      "source": "20260956000000_rename_package_category.sql",
+      "sourceLine": 25,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "fe611427ccc0b5888648e6596f9b8766f6bb5a9df1433510dc9a3f3e5deb4261",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "rewrite_set(uuid, text, text, jsonb, text)",
+      "source": "20260986000000_warehouse_is_crew_work.sql",
+      "sourceLine": 1142,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "40032639d40c3f032a65ba2fcfbc2c29aed80a50e2e836ef50802906c27e67a2",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "restore_project(uuid)",
+      "source": "20260974000000_job_deletion_supervisor.sql",
+      "sourceLine": 130,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "6b47bb7c029a131a1dfc33e5ab4257d477374b8cc67dc948583e9dc928256dd4",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "projects"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "purge_project(uuid)",
+      "source": "20261004000000_connected_workflow_plans.sql",
+      "sourceLine": 497,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "0ccdfadea041d7f7657f2f26709d94ed40df5f71d8e6b044d04bd1a8514f350f",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues",
+        "packages",
+        "project_messages",
+        "project_openings",
+        "project_plansets",
+        "projects",
+        "sandbox_projects",
+        "schedule_assignments",
+        "service_cases",
+        "studio_projects",
+        "summons",
+        "task_sessions",
+        "time_shifts",
+        "trips",
+        "vehicle_project_assignments",
+        "windows"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "purge_expired_projects()",
+      "source": "20260959000000_project_trash.sql",
+      "sourceLine": 680,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "756c98634c8005bd4d877eecc3fd51e52c1a73d685478c529e5cf2b5a35c784d",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "purge_project"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "apply_placement_suggestions(uuid, jsonb)",
+      "source": "20260961000000_placement_suggestions.sql",
+      "sourceLine": 65,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "0d5f22af60ce83ceea18ba548f77de3d7d1e4cf4416d6c9ac26ce7cd829e5ce7",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "expire_summons()",
+      "source": "20260963000000_summon_expiry.sql",
+      "sourceLine": 53,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "864ad00a80e674c1c55a3f15bf3c5b937c7ab74c24b5b03fa005f290ff3c9923",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "summon_helpers",
+        "summons"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "quick_check_rough_opening(uuid, text)",
+      "source": "20260966000000_rough_opening_quick_check.sql",
+      "sourceLine": 46,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "b306426c1ef97ad0c5e97c9404669f97acfcb8ed2a2106545babb7ed49285a4a",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "attach_sandbox_guards()",
+      "source": "20260967000000_sandbox_guard_rearm.sql",
+      "sourceLine": 204,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "3dc63c5e39126dba0dffcf89c0dbc42ac28acd12b99a1db0acfc850e06c31f3b",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_my_language(text)",
+      "source": "20260968000000_profile_language.sql",
+      "sourceLine": 76,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "b1a6300b1a1bbf0d25759774c983edd8fdcaba2db9d68cc7cdd460132cd20b6b",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "profiles"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_project_modes(uuid, text[])",
+      "source": "20260970000000_job_modes.sql",
+      "sourceLine": 45,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "9011f41fffb3c4320a1eb14e0cc560f9d9d655e25a3c3c12c47e746091994aa8",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "projects"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "clock_in(uuid, uuid, text, double precision, double precision, text, text)",
+      "source": "20261031000000_new_front_door.sql",
+      "sourceLine": 467,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "a1bfe895a915f40faa51b9abd47ab299bd6c645f300b85caed6438e51f31aa4a",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_close_dangling_shift"
+      ],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "create_job_summon(uuid, integer, integer, text, text)",
+      "source": "20260972000000_job_summons.sql",
+      "sourceLine": 64,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "094d88902eec1f58ebe38551db08923d0e30ec965882adc8f59021ddc9ddf295",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "summons"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "trash_project(uuid, text)",
+      "source": "20260974000000_job_deletion_supervisor.sql",
+      "sourceLine": 77,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "08b46a272fb7c8e04b50b940139abd27df36acbf3c5ebcd5dab16522f0bb4482",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "projects"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "promote_project_to_data(uuid)",
+      "source": "20260975000000_promote_to_data.sql",
+      "sourceLine": 31,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "17bed18078bd536905d5a7096011be14c8e80e574c4f26b2cebbf86dc097e10f",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "projects"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "touch_shift_location(double precision, double precision, double precision)",
+      "source": "20260976000000_time_honesty.sql",
+      "sourceLine": 77,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "2699511b5ca98eb30898b1a669053f3b9a3dc5772122b122b360eeae9f0f0f9f",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_evening_nudge_time(text, boolean)",
+      "source": "20260976000000_time_honesty.sql",
+      "sourceLine": 182,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "dbc7efebae530354d78b19429702fb9fdb7cca95ce38179ab1d66d6a5e6b9864",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "company_settings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "claim_still_on_the_job_nudges()",
+      "source": "20260976000000_time_honesty.sql",
+      "sourceLine": 242,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "1ce0a763281b98a62bb4424dcd2d84a909d75443fdbadc7a688886a3792c1ec3",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "flag_opening(uuid, text, text)",
+      "source": "20260977000000_field_truth.sql",
+      "sourceLine": 111,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "8a2d4084edac913614503a431da70504ab567c36ebe8a6c1558a83fe10cd8a20",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "flag_opening"
+      ],
+      "directRelationCandidates": [
+        "issues",
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "clear_opening_flag(uuid)",
+      "source": "20260977000000_field_truth.sql",
+      "sourceLine": 213,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "0337644af5dd956d2d4f04e8199c36dd42f8f5e9f7d533035f096a83c6784b11",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "flag_opening"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "add_field_unit(uuid, text, numeric, numeric, text, numeric, numeric, text, integer)",
+      "source": "20260980000000_scope_at_a_glance.sql",
+      "sourceLine": 104,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "73fdaaaa0937851dbe7e5d1d3bae7863ee82f5c5269a7dead76c9dd93e7bd50a",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues",
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "rename_field_unit(uuid, text)",
+      "source": "20260977000000_field_truth.sql",
+      "sourceLine": 522,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "39f3bd85628cf57d387c3b03c4d422cc9d5b805b9d04a57a4a4514c45de3ac84",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "merge_field_unit(uuid, text)",
+      "source": "20260977000000_field_truth.sql",
+      "sourceLine": 600,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "f57be2996ffb4bf1987e95df0d8b40e52ea8567e7b6d7048373ac3d982a1e03e",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues",
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "remove_field_unit(uuid, text)",
+      "source": "20260977000000_field_truth.sql",
+      "sourceLine": 685,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "51d791569722b0d70a5e99ea6fa47d68b56e3eacef09836f56c5fd42365cb36a",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "remove_opening"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_profile_grants(uuid, boolean, boolean)",
+      "source": "20260978000000_money_doors.sql",
+      "sourceLine": 131,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "7c814bf6040068fbeedd97c17dae111415f34abaf0cb98701d25f2fb05236cb4",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "profiles"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_projects_order(uuid[])",
+      "source": "20260979000000_job_pipeline.sql",
+      "sourceLine": 230,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "4709a62175a868b618f448d92c5cbec39b21c95bdd86fbb0ad559ea2a3e4865c",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "projects"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_project_gc_brand(uuid, text)",
+      "source": "20260981000000_gc_handshake.sql",
+      "sourceLine": 696,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "be0f005dfa01cd591d8e1d6083713adae3c83075ac9ea353ecb2c71d63a51f1c",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "projects"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "submit_install_event(uuid, text, integer, integer, text, text, text, text, text, text, text, text, text, timestamp with time zone, uuid, integer, uuid)",
+      "source": "20260982000000_who_did_what.sql",
+      "sourceLine": 143,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "0fcdc2f941c880c5971cac2dd63045b95ec1eb0cb2769c5a55c1eca8eaf256cb",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "close_open_task_sessions",
+        "install_window"
+      ],
+      "directRelationCandidates": [
+        "install_events",
+        "project_openings",
+        "task_sessions"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "finish_unit(uuid, uuid, text, integer, text, text, text, text, text, text, text, text, text, uuid, integer, uuid)",
+      "source": "20260982000000_who_did_what.sql",
+      "sourceLine": 286,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "128071e45e7c88285295cfce2c8a1e7ec1b3e90a99a7d3f5db520e2465545cd8",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "start_unit_session",
+        "submit_install_event"
+      ],
+      "directRelationCandidates": [
+        "unit_sessions"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "assign_opening_to_installer(uuid, uuid, uuid, integer, text)",
+      "source": "20260982000000_who_did_what.sql",
+      "sourceLine": 845,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "288f35ff2a2d7d7740462ae2a5d9fc152949aaf4e3fdb7059fa604e1e22e8461",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "_file_group_toolbox_signin(uuid, uuid)",
+      "source": "20260985000000_clock_the_crew.sql",
+      "sourceLine": 125,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "167489f6cba67ca8f9937863b26c0a2cb02dca8e60d87e4ecba9c4b60a0a5465",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "toolbox_completions"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "clock_in_for(uuid, uuid, uuid, text, text, boolean, boolean)",
+      "source": "20260985000000_clock_the_crew.sql",
+      "sourceLine": 211,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "75d08ea8fa7cfba157670aa75eb6d22d912a61a736b98fbfb449ef4f49dd3f39",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_close_dangling_shift",
+        "_file_group_toolbox_signin"
+      ],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "clock_out_for(uuid)",
+      "source": "20260985000000_clock_the_crew.sql",
+      "sourceLine": 400,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "b16a08189bc4307d7cf90722e149ee8cbae1d28c3395fa3fa8089cebaf76e162",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "clock_in_many(uuid[], uuid, uuid, text, text, boolean, boolean)",
+      "source": "20260985000000_clock_the_crew.sql",
+      "sourceLine": 500,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "cf97143288c44d7833bbca72d8cf49c9acbf913b48c122ffe3c56536d4a6a672",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "clock_in_for"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "clock_out_many(uuid[])",
+      "source": "20260985000000_clock_the_crew.sql",
+      "sourceLine": 568,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "d3397d93fa705654bcfe9192413934b7a93a901aa3b82a3b9c8f832ce43e94d2",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "clock_out_for"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "reassign_package(uuid, uuid, text, text)",
+      "source": "20260994000000_unit_card_edits.sql",
+      "sourceLine": 39,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "80a40fe6c39edae514ba2ea1bbbea50b08a44500a76ce5ab6aa911c0b18ced3c",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "issues",
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "undo_movement(uuid)",
+      "source": "20260994000000_unit_card_edits.sql",
+      "sourceLine": 186,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "498511bd43575cb41da655260a360452d661b04f715ed611d2328b94cfb85c20",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "copy_unit(uuid, text, integer, boolean)",
+      "source": "20260996000000_pooled_copies.sql",
+      "sourceLine": 35,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "dbd2802494c98178dd1195836b36431b3291b2a01ae7e9a0fa9dd20f50974768",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "packages"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "job_bay_box(uuid)",
+      "source": "20260998000000_bays_are_boxes.sql",
+      "sourceLine": 112,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "d4ce7533174776b7487ffdb307c4cb0163082f91c14cc7888f4d029d60d1723f",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "storage_containers"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "create_placeholder_job(text)",
+      "source": "20260998000000_bays_are_boxes.sql",
+      "sourceLine": 306,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "17769c0fc557e4e783c578622e1b48cd128dad60ae751387588bdccae0a430b1",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "projects"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "finalize_job_materials(uuid)",
+      "source": "20260999000000_send_to_site_and_finalize.sql",
+      "sourceLine": 64,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "e480420a864d8fcbc9c53b62673c921a7446cf55210d114db89762375fa5d323",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "projects",
+        "storage_containers"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "reopen_job_materials(uuid)",
+      "source": "20260999000000_send_to_site_and_finalize.sql",
+      "sourceLine": 125,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "8677f896538b35478c146e8efdd739a338434e6d5837f5a7ad8af2f53d659df3",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "projects"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "boneyard_job_leftovers(uuid)",
+      "source": "20260999000000_send_to_site_and_finalize.sql",
+      "sourceLine": 170,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "ba4dd80e3f94ee91536011f5e019065f6ed2bf44ac9388ba2ac27f2761cecab3",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "reassign_package"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "workflow_lock_writes()",
+      "source": "20261004000000_connected_workflow_plans.sql",
+      "sourceLine": 77,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "928d72be48c829c9b40af31a62357c1fe44164722b30f14e55bf50783f44fd5e",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "workflow_create_plan(uuid, text, uuid[], uuid[])",
+      "source": "20261004000000_connected_workflow_plans.sql",
+      "sourceLine": 167,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "e3b40ee922429ccd10ef9889e5fc4894ecab045822cd31e089ec9f8aa136d46f",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "workflow_save_draft(uuid, bigint, jsonb)",
+      "source": "20261006000000_schedule_end_time.sql",
+      "sourceLine": 28,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "f2fc57e87284ac5dcef614023d8a18dea0a603a7ef49784a60e5ca8758db0f4c",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "workflow_publish_plan(uuid, bigint, uuid, text, boolean, boolean)",
+      "source": "20261006000000_schedule_end_time.sql",
+      "sourceLine": 63,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "fa07964525f9cfa6f5800e0476537778efeb5e4b66800c7810d3044d452d6021",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "schedule_assignment_members",
+        "schedule_assignments",
+        "trip_crew",
+        "trips",
+        "vehicle_project_assignments"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "workflow_discard_plan(uuid, bigint)",
+      "source": "20261004000000_connected_workflow_plans.sql",
+      "sourceLine": 392,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "36815e7037957e583a4bf4c06c47c1076b988af3ffad308c2408e53b4b84fed2",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "schedule_remove_day(uuid, date, timestamp with time zone)",
+      "source": "20261006000000_schedule_end_time.sql",
+      "sourceLine": 135,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "7d35c18c0e7bbe6c379566a0dc671d93227c668b73d9499864453c4324241762",
+      "securityDefiner": false,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "schedule_assignment_members",
+        "schedule_assignments",
+        "vehicle_project_assignments"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "custom_work_command(uuid, text, jsonb)",
+      "source": "20261108300000_work_unit_observations.sql",
+      "sourceLine": 469,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "0ba57efca2176e2ae077feeaaf6bb88110fd76b4e7b1df78ad450afae678afd6",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_work_record_unit_fact"
+      ],
+      "directRelationCandidates": [
+        "custom_work_sessions",
+        "custom_work_units",
+        "opening_phases",
+        "task_sessions",
+        "unit_sessions"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "custom_work_follow_legacy()",
+      "source": "20261011000000_custom_work.sql",
+      "sourceLine": 270,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "48a70a90cead85fc3f74643c78550c17dfb5110edb0a92aed3e76833ee3a4baa",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "custom_work_sessions",
+        "custom_work_units"
+      ],
+      "replacement": "manual_lifecycle_callback"
+    },
+    {
+      "identity": "custom_work_follow_phase()",
+      "source": "20261011000000_custom_work.sql",
+      "sourceLine": 284,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "4077ae26975ddca0825d335ba72e7925ba5e669d3a36aef0101e3f0342b72476",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "custom_work_sessions"
+      ],
+      "replacement": "manual_lifecycle_callback"
+    },
+    {
+      "identity": "custom_work_follow_shift()",
+      "source": "20261011000000_custom_work.sql",
+      "sourceLine": 337,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "6300ae10c7e7c50a1caa6d2a7f0c3b53f5924da2aba084010c2ad1a50275a899",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "custom_work_sessions"
+      ],
+      "replacement": "manual_lifecycle_callback"
+    },
+    {
+      "identity": "edit_shift_with_description(uuid, uuid, uuid, timestamp with time zone, timestamp with time zone, integer, text, text)",
+      "source": "20261012000000_timecard_descriptions_and_weekly_approval.sql",
+      "sourceLine": 148,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "24e1c6a38861d46294f40a0421645c06f779b82cd6bbfe08b3d80f690fad0076",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "edit_shift"
+      ],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "approve_timecard_week(uuid, timestamp with time zone, timestamp with time zone, jsonb)",
+      "source": "20261012000000_timecard_descriptions_and_weekly_approval.sql",
+      "sourceLine": 175,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "52c5b3112708bad9ae4960e010e322252109c9a73f67da3592cfbedb9e690cf7",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "service_notify_lodging(uuid)",
+      "source": "20261017000000_servicing_visits.sql",
+      "sourceLine": 174,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "09a5696f61cc63b42013dc2bb8d5ea4f4b86c091b9eb04d544e4aa4f2cc4eb75",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_messages",
+        "service_visits"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "service_command(uuid, text, jsonb)",
+      "source": "20261017000000_servicing_visits.sql",
+      "sourceLine": 192,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "26f10cbbf12e91381b55ca755504ebd416e133b11e9daaec20c99280e9b45401",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "service_notify_lodging"
+      ],
+      "directRelationCandidates": [
+        "custom_work_sessions",
+        "opening_phases",
+        "service_time_sessions",
+        "service_visit_units",
+        "service_visits",
+        "task_sessions",
+        "unit_sessions"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "service_follow_work()",
+      "source": "20261017000000_servicing_visits.sql",
+      "sourceLine": 379,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "fedabc812f34cf4bbbe5deeac99322c8d1a43f83d388aa18661a7c5847e8e63e",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "service_time_sessions",
+        "service_visits"
+      ],
+      "replacement": "manual_lifecycle_callback"
+    },
+    {
+      "identity": "service_follow_shift()",
+      "source": "20261017000000_servicing_visits.sql",
+      "sourceLine": 402,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "01996b489a7d3050b42ff4da6336b176a52f39b3b29bedacdd77e11e5b78a2ae",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "service_time_sessions",
+        "service_visits"
+      ],
+      "replacement": "manual_lifecycle_callback"
+    },
+    {
+      "identity": "record_crew_work(uuid, jsonb)",
+      "source": "20261049000000_foreman_unit_contributors.sql",
+      "sourceLine": 446,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "9b0234499b660df4e812b77c833b3b616fc8843586ca538413b516d8721be586",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "custom_work_command"
+      ],
+      "directRelationCandidates": [
+        "custom_work_units"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "_ai_one_unit_owner()",
+      "source": "20261024000000_ai_field_operations.sql",
+      "sourceLine": 114,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "dcd91566fa72cdf7e04ccb2293c90ea00553ee7bcbcf178645c199142ac0f61b",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "project_openings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "_ai_field_apply(uuid, text)",
+      "source": "20261024000000_ai_field_operations.sql",
+      "sourceLine": 530,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "b4ff00ef820e022cd93e54017f5183474101c220ce6c789d12b15fe2ec6f0828",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "custom_work_command",
+        "end_break",
+        "record_crew_work"
+      ],
+      "directRelationCandidates": [
+        "custom_work_units",
+        "project_messages",
+        "project_openings",
+        "projects"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "ai_field_command(uuid, text, text, jsonb)",
+      "source": "20261024000000_ai_field_operations.sql",
+      "sourceLine": 917,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "42654e187269e76a57efba72912e7e38ae81d4889b8c11d948c9cea61323521f",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_ai_field_apply"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "ai_field_resolve(uuid, text, text)",
+      "source": "20261024000000_ai_field_operations.sql",
+      "sourceLine": 951,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "9067b76cde79b832ca09dc3cd27e279150f824d5bb660a573bc63ab5ea3ca389",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_ai_field_apply"
+      ],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "_flag_shift_for_review(uuid, text, text)",
+      "source": "20261028000000_clock_integrity.sql",
+      "sourceLine": 208,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "c32e53fee3019dcb0b90a59e7df11d164dfaec03b28553fb14964296617dbb3d",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "clock_in(uuid, uuid, text, double precision, double precision, text, text, uuid, timestamp with time zone, timestamp with time zone, integer)",
+      "source": "20261031000000_new_front_door.sql",
+      "sourceLine": 513,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "f567f8e3617861e22c6cded1b27e11f7de6f7b7654db1120b5e4ce0e74a1a42d",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_close_dangling_shift",
+        "_flag_shift_for_review"
+      ],
+      "directRelationCandidates": [
+        "time_clock_actions",
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry",
+      "deliberateProtocolChanges": [
+        "keyed11 admits unsigned paid setup only through exact one-time private new12 root claim; ordinary11 policy unchanged"
+      ]
+    },
+    {
+      "identity": "clock_out(uuid, text, boolean, boolean, integer, double precision, double precision, text, uuid, timestamp with time zone, timestamp with time zone, integer)",
+      "source": "20261028000000_clock_integrity.sql",
+      "sourceLine": 438,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "a60a58072a07e0b78e1f62656c4c39705443e8ffcb48b65c862f28a3c5db4df6",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_flag_shift_for_review"
+      ],
+      "directRelationCandidates": [
+        "time_clock_actions",
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "start_break(uuid, text, uuid, timestamp with time zone, timestamp with time zone, integer)",
+      "source": "20261028000000_clock_integrity.sql",
+      "sourceLine": 579,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "3664fe81ef27ea6eeb692001339cad2f9a4c17b4405196cc33d337bc4e2e3b3a",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_flag_shift_for_review"
+      ],
+      "directRelationCandidates": [
+        "opening_phases",
+        "time_clock_actions",
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "end_break(uuid, uuid, timestamp with time zone, timestamp with time zone, integer)",
+      "source": "20261028000000_clock_integrity.sql",
+      "sourceLine": 709,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "3cf4a8b2c8bf1c4fb75104e4b83738ebe8e81550dd5de0b66cb0fd792072ce8c",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [
+        "_flag_shift_for_review"
+      ],
+      "directRelationCandidates": [
+        "time_clock_actions",
+        "time_shifts"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_my_ui_design(text)",
+      "source": "20261031000000_new_front_door.sql",
+      "sourceLine": 116,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "132f03112d817cc50d97171dcfaa5ead7401e465b4c5f428e1aeb42e2fe53088",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "profiles"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_new_design_switch(text, boolean)",
+      "source": "20261031000000_new_front_door.sql",
+      "sourceLine": 161,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "355437437b6df30543d75f1c2e7bcb47dbe91be598028ca9bb0c3e83bc8c176c",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "company_settings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_paid_time_rule_date(date)",
+      "source": "20261031000000_new_front_door.sql",
+      "sourceLine": 199,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "834b134b0f313841f9fef1fbc92c75fe28f0debdc1a11473f14fba6d3fc2dae6",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "company_settings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "sign_toolbox_talk(uuid, uuid, uuid, text, text, text, text, timestamp with time zone)",
+      "source": "20261033000000_offline_toolbox_signing.sql",
+      "sourceLine": 89,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "eff0c4ffab9fcc407d4eb67de94b0138f12104a76f754c7e18f4105f00901285",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "toolbox_completions"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "record_qc_decision(uuid, uuid, text, text)",
+      "source": "20261041000000_qc_decision_authority.sql",
+      "sourceLine": 127,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "9bf3da06c5fee5a8bd0a0f436dcc0a81df9fde73d8bbb731c2ef35b9ab12ddbf",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "qc_checks"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "record_stage_contributors(uuid, jsonb)",
+      "source": "20261049000000_foreman_unit_contributors.sql",
+      "sourceLine": 145,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "413648e9bd6338b95076bed3b6e7e17c0a15fb2ec43548cf7bb86f24d65e296a",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "custom_work_units"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "correct_stage_contributors(uuid, jsonb)",
+      "source": "20261049000000_foreman_unit_contributors.sql",
+      "sourceLine": 289,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "a24c2e8367ecc845b24c52ca42c48b18099ae3d8d682730c287e61203d7e9682",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "custom_work_units"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "set_values_scheduler_enabled(boolean)",
+      "source": "20261106000000_monthly_values_reviews.sql",
+      "sourceLine": 393,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "be9241f43b2050f08f4aad7a522a9756abb150eed2e0647579b6cfd7040045be",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "company_settings"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "work_propose_activity_draft(uuid, text, bigint, text, text, text, boolean, jsonb)",
+      "source": "20261108000000_work_configuration.sql",
+      "sourceLine": 380,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "cf159f060cd319541b53ff287b46e6bc17e1cc601af1b740a193578bc5724c8e",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "work_propose_menu_draft(uuid, text, bigint, text, text, jsonb)",
+      "source": "20261108000000_work_configuration.sql",
+      "sourceLine": 444,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "4d2332ab6b6f4169134b7e98ff34440309ea94ee590891b07eaa5dfd0b4b9ba9",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "work_publish_activity_version(uuid, text, integer, text, text, text, boolean, jsonb, timestamp with time zone)",
+      "source": "20261108000000_work_configuration.sql",
+      "sourceLine": 503,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "be0cb72624c6c882bc3aec9fb90bbb237934a5aaa6228e50f8f02c27ac766c51",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "work_activity_definitions"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "work_publish_menu_version(uuid, text, integer, text, text, jsonb, timestamp with time zone)",
+      "source": "20261108000000_work_configuration.sql",
+      "sourceLine": 581,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "8297ff257a3f4356b7c5062808a53ddb3826c11b3ee09e84e7a1cc2347f8832e",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "work_capture_menus"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "work_retire_activity(uuid, text, integer)",
+      "source": "20261108000000_work_configuration.sql",
+      "sourceLine": 658,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "f2deaa9ccbba4d711de7690137f9b90bea2d785f4deb31dccc5c4c394020ed8f",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "work_activity_definitions"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "work_retire_menu(uuid, text, integer)",
+      "source": "20261108000000_work_configuration.sql",
+      "sourceLine": 695,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "823825efcf7306b0688bab3b0d8d5b3f400e67f1d268fd8ed25686f08f48d755",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "work_capture_menus"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "work_select_job_menu(uuid, uuid, uuid, bigint)",
+      "source": "20261108000000_work_configuration.sql",
+      "sourceLine": 739,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "a792d55e0a6da08e21857dbfaae4130f584d6d730e6ba89e6a0717fe0e9ed067",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "work_job_menu_selections"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "work_grant_job_capability(uuid, uuid, uuid, text)",
+      "source": "20261108000000_work_configuration.sql",
+      "sourceLine": 814,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "af211ed8a50e25013881f84a79f77288a64cc1223aa091f75aece52bdac3abbc",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "work_job_management_grants"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "work_revoke_job_capability(uuid, uuid, uuid, text, uuid)",
+      "source": "20261108000000_work_configuration.sql",
+      "sourceLine": 859,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "1a916d84bc9d797eaa194f5fb5156f62db1a2f38ba12ac8f82ec1f808b4a4c8c",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [
+        "work_job_management_grants"
+      ],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "_work_unit_fact_bump_epoch()",
+      "source": "20261108300000_work_unit_observations.sql",
+      "sourceLine": 143,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "beaca8f387aae5596ab6ccbd25ac9fd1c2cd2b0d8462e5e33d1d78d7d19ad7f4",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    },
+    {
+      "identity": "_work_record_unit_fact(uuid, jsonb, jsonb, uuid)",
+      "source": "20261108300000_work_unit_observations.sql",
+      "sourceLine": 377,
+      "bodyOrigin": "latest_local_source_matches_installed_hash",
+      "originalBodySha256": "6b121440ab32cfd5f465da1eff16f44a770dbfac0cec049f30d0a7df6d6ed5be",
+      "securityDefiner": true,
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "callsInClosure": [],
+      "directRelationCandidates": [],
+      "replacement": "preserved_header_generated_entry"
+    }
+  ],
+  "limitations": [
+    "Lexical candidate graph requires installed FK/trigger/API review.",
+    "Provider auth.users and drained administrator multi-statement maintenance are outside online G-first boundary.",
+    "Legacy versionless writers have no invented expected-revision CAS.",
+    "Generated fragments do not enable capture or attest execution."
+  ]
+}

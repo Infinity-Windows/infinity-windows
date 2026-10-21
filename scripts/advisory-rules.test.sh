@@ -143,6 +143,12 @@ create policy "${2}_select" on $2
 SQL
 }
 
+# A full migration can be much larger than a pipe buffer. Put the valid
+# security statements first so a grep -q producer pipeline would SIGPIPE.
+large_migration_tail() { # path
+  awk 'BEGIN { for (i=1; i<=7000; i++) printf "select %d;\n", i }' >>"$root/$1"
+}
+
 # ---------------------------------------------------------------------------
 # Nothing to say
 # ---------------------------------------------------------------------------
@@ -363,6 +369,40 @@ assert_rc 0
 assert_lacks "table-without-rls"
 assert_lacks "table-keeps-default-grants"
 assert_lacks "policy-without-partner-guard"
+
+new_case "a large migration keeps early RLS and revoke matches"
+base_commit
+good_migration "supabase/migrations/20300101000000_tailgate.sql" tailgate_checks
+large_migration_tail "supabase/migrations/20300101000000_tailgate.sql"
+head_commit "Create a private table in a large migration"
+run
+assert_rc 0
+assert_lacks "table-without-rls"
+assert_lacks "table-keeps-default-grants"
+
+new_case "a large migration still reports a genuinely missing RLS statement"
+base_commit
+good_migration "supabase/migrations/20300101000000_tailgate.sql" tailgate_checks
+awk '$0 !~ /^alter table tailgate_checks enable row level security;/' "$root/supabase/migrations/20300101000000_tailgate.sql" >"$root/without-rls"
+mv "$root/without-rls" "$root/supabase/migrations/20300101000000_tailgate.sql"
+large_migration_tail "supabase/migrations/20300101000000_tailgate.sql"
+head_commit "Forget row security in a large migration"
+run
+assert_rc 1
+assert_has "table-without-rls"
+assert_lacks "table-keeps-default-grants"
+
+new_case "a large migration still reports genuinely missing default-grant revocation"
+base_commit
+good_migration "supabase/migrations/20300101000000_tailgate.sql" tailgate_checks
+awk '$0 !~ /^revoke all on tailgate_checks from anon, authenticated;/' "$root/supabase/migrations/20300101000000_tailgate.sql" >"$root/without-revoke"
+mv "$root/without-revoke" "$root/supabase/migrations/20300101000000_tailgate.sql"
+large_migration_tail "supabase/migrations/20300101000000_tailgate.sql"
+head_commit "Forget revocation in a large migration"
+run
+assert_rc 1
+assert_has "table-keeps-default-grants"
+assert_lacks "table-without-rls"
 
 new_case "the shape this repo really writes — a policy inside do \$\$ — is green"
 # Taken from supabase/migrations/20260982000000_who_did_what.sql. 49 migrations
