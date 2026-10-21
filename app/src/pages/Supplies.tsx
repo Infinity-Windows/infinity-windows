@@ -306,6 +306,7 @@ export function Supplies() {
       {taking && (
         <TakeForm
           supply={taking}
+          pageJobId={proj}
           onClose={() => setTaking(null)}
           onDone={() => {
             setTaking(null);
@@ -341,27 +342,35 @@ export function Supplies() {
   );
 }
 
-/** Take: how many, which job, go — the three taps. Job defaults to the last
- * one used anywhere in the warehouse, same key as tagging. */
+/** Take: how many, which job, go — the three taps. Job defaults to the one
+ * picked on this page, else the last one used anywhere in the warehouse, same
+ * key as tagging. */
 function TakeForm({
   supply,
+  pageJobId,
   onClose,
   onDone,
 }: {
   supply: Supply;
+  /** The job the page is showing requests for (picked, or `?job=` from a job's
+   *  "Supplies for this job" button). */
+  pageJobId: string;
   onClose: () => void;
   onDone: () => void;
 }) {
   const t = useT();
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  // The page's job wins over the remembered one. Opened from job A's
+  // Supplies button, the list above says A; defaulting Take to a job B tagged
+  // yesterday put A's material on B's costs with nothing on screen saying so.
   const [projectId, setProjectId] = useState<string>(
-    () => localStorage.getItem(LAST_JOB_KEY) ?? "",
+    () => pageJobId || (localStorage.getItem(LAST_JOB_KEY) ?? ""),
   );
   const [qty, setQty] = useState("1");
   const n = Number(qty);
   const invalid = !Number.isFinite(n) || n <= 0;
 
-  // The remembered job may have finished since it was stored. It then drops
+  // The remembered job (or a stale `?job=` link) may have finished since. It then drops
   // out of the dropdown while STAYING selected behind the scenes, so the
   // picker looks blank, Take stays live, and the material lands on a closed
   // job's costs. Same guard the tag-packages screen already carries.
