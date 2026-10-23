@@ -119,3 +119,10 @@ textarea.job-location-input {
     grid-column: 1 / -1;
   }
 }
+
+.job-location-conflict {
+  border-inline-start: 3px solid currentColor;
+  padding-inline-start: 10px;
+  overflow-wrap: anywhere;
+}
+.job-location-conflict p { margin: 0 0 8px; }

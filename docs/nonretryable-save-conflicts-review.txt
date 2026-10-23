@@ -33,7 +33,7 @@ only40001 and may not route409 into their conflict review path. Open old clients
 and persisted offline queues need explicit rollout verification.
 
 LOCAL VALIDATION (October 23)
-- 99 Vitest tests passed across six focused suites: location RPC/editor,
+- 110 Vitest tests passed across six focused suites: location RPC/editor,
   daily log revision handling, offline outbox/replay, schedule API.
 - 26 disposable PGlite PostgreSQL assertions passed using the five actual RPC
   definitions with synthetic tables and dependency/auth helper fixtures.
@@ -105,3 +105,21 @@ its exact diff matched the transferred fix. Production clock-refresh migration
 already owns20261129000000; this migration uses20261130000000 instead.
 The linked local app/node_modules directory only reuses existing dependencies;
 it is ignored and is not part of the branch or deployable change.
+
+FRONTEND LOCATION CONFLICT RECOVERY
+The Location editor now makes one narrow read of address/latitude/longitude on
+PT409 (also a returned legacy40001). It keeps both draft fields unchanged and
+shows both current saved fields. Original expected snapshot stays fixed; the
+separate displayed latest snapshot is submitted only by a deliberate click on
+Save my changes. Implicit form submissions cannot confirm a conflict. A further
+concurrent edit is refused again by the same backend check and refreshes again.
+If the read fails, the same primary button becomes Check saved location and only
+retries the read; no write occurs until a successful read and another explicit
+Save my changes action. Inputs/cancel/save are held during the request. A ref
+prevents same-frame double submissions; mutation retries are explicitly disabled.
+No polling, automatic save replay, broad cache invalidation on conflict, new DB
+schema, or new migration changes were added for this recovery.
+Tests simulate two independent mounted tab editors against a shared saved value,
+a third edit during review, implicit-submit blocking, double clicks, refresh
+failure and narrow read-only requests. These are mocked UI tests, not a live
+browser/PostgREST multi-session load test. No production traffic generated.

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const db=vi.hoisted(()=>({rpc:vi.fn()}));vi.mock("./supabase",()=>({supabase:{rpc:db.rpc}}));
-import {parseJobCoordinates,saveProjectLocation,readWithJobCoordinates,invalidateJobLocation} from "./jobLocation";
+const db=vi.hoisted(()=>({rpc:vi.fn(),from:vi.fn()}));vi.mock("./supabase",()=>({supabase:{rpc:db.rpc,from:db.from}}));
+import {parseJobCoordinates,saveProjectLocation,readWithJobCoordinates,invalidateJobLocation,readProjectLocation,isJobLocationConflict} from "./jobLocation";
 import type { QueryClient } from "@tanstack/react-query";
 const empty={address:null,latitude:null,longitude:null};
 describe("job location",()=>{
@@ -17,4 +17,20 @@ describe("job location",()=>{
  it("invalidates embedding views",async()=>{const invalidateQueries=vi.fn().mockResolvedValue(undefined);await invalidateJobLocation({invalidateQueries} as unknown as QueryClient);expect(invalidateQueries.mock.calls.map(([s])=>s.queryKey[0])).toEqual(["projects","projectsAll","mySchedule","myScheduleTomorrow","workSchedule","schedule","scheduleAssignments","scheduleDrafts","projectSchedule","homeTodayCrews","trip","trips"]);});
  it.each(["latitude","longitude"])("old schema falls back for %s",async column=>{const read=vi.fn().mockResolvedValueOnce({data:null,error:{code:"42703",message:`column projects.${column} does not exist`}}).mockResolvedValueOnce({data:["kept"],error:null});expect(await readWithJobCoordinates(read,"*, projects(id, address, latitude, longitude)")).toEqual({data:["kept"],error:null});expect(read.mock.calls[1][0]).toBe("*, projects(id, address)");});
  it("does not hide unrelated failures",async()=>{const error={code:"42501",message:"permission denied"};const read=vi.fn().mockResolvedValue({data:null,error});expect((await readWithJobCoordinates(read,"projects(id, latitude, longitude)")).error).toBe(error);expect(read).toHaveBeenCalledTimes(1);});
+});
+
+it.each(["PT409", "40001"])("recognizes location conflict %s", code => expect(isJobLocationConflict({code})).toBe(true));
+it.each([null, {}, {code:"42501"}, {code:"P0001"}])("does not refresh unrelated errors %j", e => expect(isJobLocationConflict(e)).toBe(false));
+it("reads only one job's location without invoking a write", async () => {
+ const single=vi.fn().mockResolvedValue({data:{address:"Latest",latitude:0,longitude:0},error:null});
+ const eq=vi.fn().mockReturnValue({single}); const select=vi.fn().mockReturnValue({eq});
+ db.from.mockReturnValue({select}); db.rpc.mockClear();
+ expect(await readProjectLocation("p1")).toEqual({address:"Latest",latitude:0,longitude:0});
+ expect(db.from).toHaveBeenCalledWith("projects"); expect(select).toHaveBeenCalledWith("address,latitude,longitude");
+ expect(eq).toHaveBeenCalledWith("id","p1"); expect(single).toHaveBeenCalledTimes(1); expect(db.rpc).not.toHaveBeenCalled();
+});
+it("does not retry a failed location read", async () => {
+ const error={code:"42501",message:"denied"}; const single=vi.fn().mockResolvedValue({data:null,error});
+ db.from.mockReturnValue({select:()=>({eq:()=>({single})})});
+ await expect(readProjectLocation("p1")).rejects.toEqual(error); expect(single).toHaveBeenCalledTimes(1);
 });
