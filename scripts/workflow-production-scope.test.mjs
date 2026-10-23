@@ -52,4 +52,10 @@ for (const [file, names] of [['deploy-backend', ['functions', 'migrations', 'ver
     check(expression, 'pull_request', 'master', 'refs/heads/master', false);
   }
 }
-console.log(`workflow-production-scope: ${checks} event/ref checks passed`);
+for (const path of ['../vercel.json', '../app/vercel.json']) {
+  const config = JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
+  assert.equal(config.git.deploymentEnabled.integrations, false);
+  assert.equal(config.git.deploymentEnabled['matt/fix-save-conflicts'], false);
+  assert.equal(config.git.deploymentEnabled.master, undefined, 'production config is unchanged');
+}
+console.log(`workflow-production-scope: ${checks} event/ref checks and Vercel branch guards passed`);
