@@ -45,8 +45,10 @@ LOCAL VALIDATION (October 23)
   missing-function failure rolls back; all five definitions differ ONLY in the
   error clauses and grants/security settings remain unchanged.
 - Targeted oxlint passed; migration_lint.py passed; git diff --check passed.
-- Full tsc -b build did not complete during this run and was stopped; no full
-  build/typecheck pass is claimed. Focused tests and lint above passed.
+- Full tsc -b passed, including a rerun on the pinned Node22 runtime.
+- Vite production build and service worker passed. Bundle budget passed:
+  entry258.9KiB gzip/260 limit; startup792.0KiB/840 limit; all startup chunks
+  are precached. Full app lint exits0 with existing warnings in unchanged files.
 SQL command (PGLITE_MODULE points to a locally installed package):
   node scripts/verify-save-conflicts.mjs
 The test database is disposable/in-memory; no hosted credentials or requests.
@@ -123,3 +125,22 @@ Tests simulate two independent mounted tab editors against a shared saved value,
 a third edit during review, implicit-submit blocking, double clicks, refresh
 failure and narrow read-only requests. These are mocked UI tests, not a live
 browser/PostgREST multi-session load test. No production traffic generated.
+
+LOCAL BROWSER CHECK AND INTEGRATION WORKFLOW SCOPE
+Matthew also successfully tried the two-tab recovery in a local browser using
+the real editor and SQL save function, synthetic records and a small HTTP
+adapter. This still does not test deployed PostgREST. Demo code/runtime removed.
+
+Integration PRs retain offline CI, migration lint/listing and invariant self-tests.
+Production invariant probes, live migration drift and production release/browser
+baseline checks run only on master PRs (existing non-PR checks remain unchanged).
+Paid advisory review and changelog notices are master PR only. Backend/frontend
+deploy entry jobs now require master and push/manual dispatch, including manual
+attempts from integrations. Nightly master monitoring is unchanged.
+50 offline event/ref assertions passed; all20 workflow YAML files parsed;
+the CI script-test inventory and migration lint passed. SQL regression assertions
+now run in the existing disposable CI database job. No GitHub workflow dispatched.
+These gates are local source changes, not repository settings or a security
+boundary against someone editing workflow files. Include them in integrations
+before relying on this branch policy; review required-check settings for jobs
+that are intentionally skipped. A later PR into master still runs live checks.
