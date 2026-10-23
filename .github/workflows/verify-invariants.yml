@@ -80,6 +80,8 @@ jobs:
 
   invariants:
     name: The live database still enforces the rules
+    # Keep offline self-tests on integrations; production probes belong to master.
+    if: github.event_name != 'pull_request' || github.base_ref == 'master'
     needs: [self-test]
     runs-on: ubuntu-latest
     # A fork cannot hold the secret; everywhere else a missing secret fails.

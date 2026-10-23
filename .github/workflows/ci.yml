@@ -8,6 +8,8 @@ on:
 jobs:
   release-baseline:
     name: Pin current production release for installed-app checks
+    # Integration PRs run offline checks without fetching the live release.
+    if: github.event_name != 'pull_request' || github.base_ref == 'master'
     runs-on: ubuntu-latest
     outputs:
       build_ref: ${{ steps.pin.outputs.build_ref }}
@@ -242,7 +244,7 @@ jobs:
     name: Forge workflow on phone and desktop
     needs: release-baseline
     # A failed prerequisite must fail this required browser check, not skip it.
-    if: ${{ always() }}
+    if: ${{ always() && (github.event_name != 'pull_request' || github.base_ref == 'master') }}
     runs-on: ubuntu-latest
     env:
       # Public production can differ from the PR event's cached base revision.
@@ -461,6 +463,9 @@ jobs:
 
       - name: Test production release baseline validation
         run: python3 scripts/test_pwa_release_baseline.py
+
+      - name: Test integration workflow production boundaries
+        run: node scripts/workflow-production-scope.test.mjs
 
       # scripts/verify-functions.sh is what decides whether a backend deploy
       # really happened, so it gets tested like anything else. The tests stub

@@ -58,6 +58,8 @@ name: Advisory review
 
 on:
   pull_request:
+    # Integration review stays local; paid advisory automation runs at release review.
+    branches: [master]
     types: [opened, synchronize, reopened]
 
 # One review per pull request. A branch pushed three times in a minute should

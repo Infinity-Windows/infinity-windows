@@ -96,6 +96,8 @@ env:
 
 jobs:
   functions:
+    # Also fence manual dispatches: integration branches cannot deploy production.
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     name: Deploy edge functions
     runs-on: ubuntu-latest
     outputs:
@@ -810,6 +812,7 @@ jobs:
           exit "$rc"
 
   migrations:
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     name: Push migrations
     runs-on: ubuntu-latest
     outputs:
@@ -956,7 +959,7 @@ jobs:
   verify:
     name: Verify functions are live
     needs: functions
-    if: always()
+    if: always() && github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
