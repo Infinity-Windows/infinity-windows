@@ -26,7 +26,7 @@ const LOCAL_KEY = "infinity.schedule.assignments.v1";
  * session — which name the table in their text often enough ("...policy for
  * table "schedule_assignments"") that isMissingTable's name-based fallback
  * used to mistake them for the table not being there yet. */
-const ANSWERED_CODES = new Set(["42501", "23502", "23503", "23505", "23514", "40001", "P0001", "PGRST301", "PGRST302"]);
+const ANSWERED_CODES = new Set(["42501", "23502", "23503", "23505", "23514", "40001", "PT409", "P0001", "PGRST301", "PGRST302"]);
 
 /** Missing-table / missing-column errors mean the migration isn't applied.
  * A coded refusal is NOT that, however it is worded: a publish the database

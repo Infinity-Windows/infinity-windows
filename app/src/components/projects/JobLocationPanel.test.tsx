@@ -405,7 +405,7 @@ describe("JobLocationPanel — editing", () => {
     expect(saveProjectLocation).toHaveBeenCalledTimes(1);
   });
 
-  it("compares against the location as it was when the editor opened, through a refetch", async () => {
+  it.each(["PT409", "40001"])("preserves the opened snapshot and draft after %s through a refetch", async (code) => {
     const opened = { address: "Old Rd", latitude: 1, longitude: 2 };
     await mount(project(opened), true);
     await tap(button("Edit location"));
@@ -418,7 +418,7 @@ describe("JobLocationPanel — editing", () => {
     expect(addressField()!.value).toBe("My edit");
     expect(gpsField()!.value).toBe("1, 2");
 
-    saveProjectLocation.mockRejectedValueOnce({ code: "P0001", message: "location changed" });
+    saveProjectLocation.mockRejectedValueOnce({ code, message: "location changed" });
     await tap(button("Save location"));
 
     expect(saveProjectLocation).toHaveBeenCalledWith(

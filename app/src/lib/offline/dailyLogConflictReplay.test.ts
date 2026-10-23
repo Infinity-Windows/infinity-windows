@@ -5,7 +5,7 @@ import {loadProgressConflicts,saveProgressConflicts,type DailyLogProgressConflic
 import type {OutboxEntry,OpHandler} from './outbox-core';
 const m=vi.hoisted(()=>({get:vi.fn(),rpc:vi.fn()}));
 vi.mock('../supabase',()=>({supabase:{}}));
-vi.mock('../dailyLogs',()=>({getDailyLog:m.get,isStaleDailyLogError:(e:{code?:string})=>e?.code==='40001'}));
+vi.mock('../dailyLogs',()=>({getDailyLog:m.get,isStaleDailyLogError:(e:{code?:string})=>e?.code==='PT409'}));
 vi.mock('./dailyLogPhotoUploader',()=>({dailyLogPhotoUploader:vi.fn()}));
 const {createSupabaseHandlers,createShiftResolver}=await import('./outboxHandlers');
 const fields={...emptyProgressFields(),unitsToday:12,unitsToDate:12,unitsRemaining:2};
