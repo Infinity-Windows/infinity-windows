@@ -40,6 +40,7 @@ function fakeParse(raw: string): { latitude: number | null; longitude: number | 
 
 const order: string[] = [];
 const parseJobCoordinates = vi.fn(fakeParse);
+const readProjectLocation = vi.fn(async (..._a: unknown[]): Promise<Loc> => ({ address: "Their Rd", latitude: 3, longitude: 4 }));
 const saveProjectLocation = vi.fn(async (..._a: unknown[]): Promise<void> => {});
 const invalidateJobLocation = vi.fn(async (..._a: unknown[]) => {
   order.push("invalidate");
@@ -52,6 +53,8 @@ const formatApiError = vi.fn((..._a: unknown[]) => "Couldn't reach the server. T
 const directionsProps = vi.fn();
 
 vi.mock("../../lib/jobLocation", () => ({
+  readProjectLocation: (...a: unknown[]) => readProjectLocation(...a),
+  isJobLocationConflict: (e: { code?: string }) => e?.code === "PT409" || e?.code === "40001",
   parseJobCoordinates: (raw: string) => parseJobCoordinates(raw),
   saveProjectLocation: (...a: unknown[]) => saveProjectLocation(...a),
   invalidateJobLocation: (...a: unknown[]) => invalidateJobLocation(...a),
@@ -109,6 +112,7 @@ beforeEach(() => {
   root = createRoot(container);
   parseJobCoordinates.mockReset().mockImplementation(fakeParse);
   saveProjectLocation.mockReset().mockResolvedValue(undefined);
+  readProjectLocation.mockReset().mockResolvedValue({ address: "Their Rd", latitude: 3, longitude: 4 });
   invalidateJobLocation.mockClear();
   toastSuccess.mockClear();
   pushToast.mockClear();
@@ -405,7 +409,7 @@ describe("JobLocationPanel — editing", () => {
     expect(saveProjectLocation).toHaveBeenCalledTimes(1);
   });
 
-  it("compares against the location as it was when the editor opened, through a refetch", async () => {
+  it.each(["PT409", "40001"])("preserves the opened snapshot and draft after %s through a refetch", async (code) => {
     const opened = { address: "Old Rd", latitude: 1, longitude: 2 };
     await mount(project(opened), true);
     await tap(button("Edit location"));
@@ -418,7 +422,7 @@ describe("JobLocationPanel — editing", () => {
     expect(addressField()!.value).toBe("My edit");
     expect(gpsField()!.value).toBe("1, 2");
 
-    saveProjectLocation.mockRejectedValueOnce({ code: "P0001", message: "location changed" });
+    saveProjectLocation.mockRejectedValueOnce({ code, message: "location changed" });
     await tap(button("Save location"));
 
     expect(saveProjectLocation).toHaveBeenCalledWith(
@@ -427,9 +431,9 @@ describe("JobLocationPanel — editing", () => {
       opened,
     );
     // The server's refusal is shown in plain words and the draft survives.
-    expect(container.querySelector(".job-location-error")?.textContent).toBe(
-      "Couldn't reach the server. Try again.",
-    );
+    expect(readProjectLocation).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("Their Rd");
+    expect(button("Save my changes")).toBeDefined();
     expect(addressField()!.value).toBe("My edit");
   });
 
@@ -469,5 +473,79 @@ describe("JobLocationPanel — Spanish", () => {
     type(gpsField(), "1, 2");
     await tap(button("Guardar ubicación"));
     expect(toastSuccess).toHaveBeenCalledWith("Ubicación guardada");
+  });
+});
+
+
+describe("location conflict recovery", () => {
+  it("two tabs: keeps tab B's draft, shows tab A's save, and only writes after deliberate review", async () => {
+    let current: Loc = { address: "Original", latitude: 1, longitude: 2 };
+    readProjectLocation.mockImplementation(async () => ({ ...current }));
+    saveProjectLocation.mockImplementation(async (_id, requested, expected) => {
+      if (JSON.stringify(expected) !== JSON.stringify(current)) throw { code: "PT409" };
+      current = { ...(requested as Loc) };
+    });
+    await mount(project(current));
+    await tap(button("Edit location"));
+    type(addressField(), "Tab A address");
+    const tabB = document.createElement("div"); document.body.appendChild(tabB);
+    const rootB = createRoot(tabB);
+    const clientB = new QueryClient({ defaultOptions: { mutations: { retry: 5 } } });
+    const bButton = (text: string) => [...tabB.querySelectorAll("button")].find(b => b.textContent?.trim() === text);
+    try {
+      act(() => rootB.render(<QueryClientProvider client={clientB}><LanguageProvider><JobLocationPanel project={project(current)} isLead /></LanguageProvider></QueryClientProvider>));
+      await flush(); await tap(bButton("Edit location"));
+      const draftB = tabB.querySelector<HTMLTextAreaElement>("textarea");
+      type(draftB, "Tab B address");
+      await tap(button("Save location")); // Tab A commits first.
+      await tap(bButton("Save location")); // Tab B's old snapshot is refused.
+      expect(current.address).toBe("Tab A address");
+      expect(draftB!.value).toBe("Tab B address");
+      expect(tabB.textContent).toContain("Current saved address");
+      expect(tabB.textContent).toContain("Tab A address");
+      expect(readProjectLocation).toHaveBeenCalledTimes(1);
+      expect(saveProjectLocation).toHaveBeenCalledTimes(2);
+      // An implicit form submit cannot turn a conflict into an overwrite.
+      act(() => tabB.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+      await flush(); expect(saveProjectLocation).toHaveBeenCalledTimes(2);
+      await tap(bButton("Save my changes"));
+      expect(saveProjectLocation).toHaveBeenCalledTimes(3);
+      expect(saveProjectLocation.mock.calls[2][2]).toEqual({ address: "Tab A address", latitude: 1, longitude: 2 });
+      expect(current.address).toBe("Tab B address");
+    } finally { act(() => rootB.unmount()); tabB.remove(); clientB.clear(); }
+  });
+
+  it("a third edit during review conflicts again; repeated taps cannot send duplicate saves", async () => {
+    await mount(project({ address: "Original", latitude: 1, longitude: 2 }));
+    await tap(button("Edit location")); type(addressField(), "My draft");
+    saveProjectLocation.mockRejectedValueOnce({ code: "PT409" }).mockRejectedValueOnce({ code: "PT409" });
+    readProjectLocation.mockResolvedValueOnce({ address: "First update", latitude: 3, longitude: 4 }).mockResolvedValueOnce({ address: "Second update", latitude: 5, longitude: 6 });
+    await tap(button("Save location"));
+    const review = button("Save my changes")!;
+    act(() => { review.click(); review.click(); }); await flush();
+    expect(saveProjectLocation).toHaveBeenCalledTimes(2);
+    expect(saveProjectLocation.mock.calls[1][2]).toEqual({ address: "First update", latitude: 3, longitude: 4 });
+    expect(container.textContent).toContain("Second update");
+    expect(addressField()!.value).toBe("My draft");
+    expect(readProjectLocation).toHaveBeenCalledTimes(2);
+    await tap(button("Save my changes"));
+    expect(saveProjectLocation.mock.calls[2][2]).toEqual({ address: "Second update", latitude: 5, longitude: 6 });
+  });
+
+  it("a failed refresh keeps the draft and the existing button retries only the read", async () => {
+    await mount(project({ address: "Original" }));
+    await tap(button("Edit location")); type(addressField(), "My draft");
+    saveProjectLocation.mockRejectedValueOnce({ code: "PT409" });
+    readProjectLocation.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    await tap(button("Save location"));
+    expect(addressField()!.value).toBe("My draft");
+    expect(button("Save my changes")).toBeUndefined();
+    expect(readProjectLocation).toHaveBeenCalledTimes(1);
+    expect(saveProjectLocation).toHaveBeenCalledTimes(1);
+    await tap(button("Check saved location"));
+    expect(readProjectLocation).toHaveBeenCalledTimes(2);
+    expect(saveProjectLocation).toHaveBeenCalledTimes(1);
+    expect(addressField()!.value).toBe("My draft");
+    expect(button("Save my changes")).toBeDefined();
   });
 });

@@ -1,0 +1,146 @@
+PREPARED FOR AMMON REVIEW — NOT PUSHED OR APPLIED
+October 23, 2026 | matt/fix-save-conflicts
+
+Incident evidence: production PostgREST14.5 repeatedly raised40001 from
+set_project_location. Supabase documents infinite retries for custom40001
+exceptions in PostgREST14. Restart/resize cleared processes; it does not remove
+the triggering application exception. We have not proven the original caller.
+
+Proposed additive migration:20261130000000_nonretryable_save_conflicts.sql.
+Rewrites only custom ERRCODE40001 clauses in five audited installed public RPCs
+to PT409 (HTTP409). Uses pg_get_functiondef / CREATE OR REPLACE to preserve
+installed function bodies, signatures, grants, security configuration and locks.
+Fails if the expected five distinct functions are absent/overloaded, or a target
+has neither an old conflict clause nor an already-patched409 clause.
+No historical migration edits, table changes, rows or policies changed.
+Ammon should review actual installed definitions before approving deployment.
+
+AUDIT: eight active application conflict sites across five RPCs:
+- set_project_location:1 stale address/GPS snapshot refusal.
+- file_daily_log:2 missing/invalid revision and stale revision refusals.
+- correct_stage_contributors:1 contributor digest refusal.
+- workflow_save_draft:1 stale/state refusal.
+- workflow_publish_plan:3 stale/state, booking token, linked-source refusals.
+Historical definitions repeat these sites; leave historical migrations intact.
+Hex learning review already deliberately uses P0001 to avoid retry loops.
+Do not blanket-rewrite real PostgreSQL serialization failures.
+
+Client compatibility: daily log stale-error detection accepts PT409 and legacy
+40001. Schedule refusal detection recognizes PT409. Location already surfaces
+errors and preserves the draft. Offline replay fixtures now exercise PT409.
+Deploy compatible client before the migration: older daily-log clients recognize
+only40001 and may not route409 into their conflict review path. Open old clients
+and persisted offline queues need explicit rollout verification.
+
+LOCAL VALIDATION (October 23)
+- 110 Vitest tests passed across six focused suites: location RPC/editor,
+  daily log revision handling, offline outbox/replay, schedule API.
+- 26 disposable PGlite PostgreSQL assertions passed using the five actual RPC
+  definitions with synthetic tables and dependency/auth helper fixtures.
+- SQL checks cover all eight conflict sites returning PT409; stale location/log
+  writes leave original records unchanged; identical lost-response location retry
+  succeeds; permissions still refuse an installer; contributor correction cannot
+  create a receipt after rejection; stale workflow publish/save leaves revision
+  unchanged; current unchanged draft succeeds; migration replay is idempotent;
+  missing-function failure rolls back; all five definitions differ ONLY in the
+  error clauses and grants/security settings remain unchanged.
+- Targeted oxlint passed; migration_lint.py passed; git diff --check passed.
+- Full tsc -b passed, including a rerun on the pinned Node22 runtime.
+- Vite production build and service worker passed. Bundle budget passed:
+  entry258.9KiB gzip/260 limit; startup792.0KiB/840 limit; all startup chunks
+  are precached. Full app lint exits0 with existing warnings in unchanged files.
+SQL command (PGLITE_MODULE points to a locally installed package):
+  node scripts/verify-save-conflicts.mjs
+The test database is disposable/in-memory; no hosted credentials or requests.
+Limits: PGlite does not exercise PostgREST HTTP mapping or concurrent sessions.
+Before production approval, inspect installed definitions, run request-level409
+and bounded-retry checks in staging, and verify rollout with older/open clients.
+Earlier sandbox test failure is superseded by the successful local rerun.
+
+REQUIRED FOLLOW-UP: RIGOROUS BACKEND ERROR-SAFETY CHECK
+Audit every RPC exception and its PostgREST HTTP/retry semantics; distinguish
+permanent conflict/validation/permission refusals from transient transport or
+actual serialization failures. Verify bounded retries/backoff/timeouts, stale
+snapshot protection, idempotency after lost responses, offline replay and old
+client compatibility. Add regression protection against new custom40001 raises
+and request-level tests through the deployed PostgREST version. Alert on repeated
+identical exceptions, sustained CPU/IO pressure and retry amplification. A failed
+request must not create unlimited work. Keep these checks small and targeted.
+
+Operational caveat: a function fix does not stop an already-running retry loop.
+Any termination/restart is a separate authorized production operation. No push, workflow dispatch, production migration or termination performed.
+
+SOURCE DIAGNOSTICS — October23 follow-up
+JobLocationPanel.tsx:82 captures expected address/GPS once on editor open;
+submit passes this exact snapshot. Refetch deliberately does not silently rebase
+it. inFlight ref blocks same-frame duplicate taps. No location-specific retry
+loop in saveProjectLocation; it issues one RPC and throws returned errors.
+queryClient retry:1 applies to queries, not location mutations.
+
+manual_job_location.sql:43 locks the project row FOR UPDATE; lines60–64 return
+success if the desired final location already matches the row. Thus a lost
+response followed by an identical retry is explicitly handled as a safe no-op.
+A conflict requires BOTH a different desired result AND a mismatch between the
+saved location and the editor's expected snapshot. Ordinary two-editor changes,
+an old cached snapshot, or a repeat with a different draft can trigger it.
+The exact incident payload is unavailable, so do not assert which one occurred.
+
+Line70 misclassifies that permanent application conflict as40001. In production
+PostgREST14.5 logs this error repeated, matching Supabase's documented retry
+bug. The correct immediate backend correction is PT409, preserving row lock,
+authorization, compare predicates and idempotent no-op. A generic catch-and-return
+success would hide the refusal and is not acceptable.
+
+Attribution/timing: the preceding successful12:21:07 save maps to Enrique landa;
+no sampled evidence links that identity to looping PID2981982. Earliest sampled
+location conflict12:22:21.346Denver. PostgREST thread-timeout entries already
+appear12:21:02, so that conflict timestamp is not proven overall outage onset.
+This is a confirmed unsafe source-code path and strong incident mechanism;
+it does not establish a complete chronological or user-level root cause.
+
+BRANCH ISOLATION
+matt/fix-save-conflicts was created in projects/forge/fix-save-conflicts from
+freshly fetched origin/master6ed4cc96 (Stop saved shifts looking current when
+the clock cannot refresh #766). No synthesis commits or Data changes included.
+The previous conflict draft was removed from matt/forge-synthesis after checking
+its exact diff matched the transferred fix. Production clock-refresh migration
+already owns20261129000000; this migration uses20261130000000 instead.
+The linked local app/node_modules directory only reuses existing dependencies;
+it is ignored and is not part of the branch or deployable change.
+
+FRONTEND LOCATION CONFLICT RECOVERY
+The Location editor now makes one narrow read of address/latitude/longitude on
+PT409 (also a returned legacy40001). It keeps both draft fields unchanged and
+shows both current saved fields. Original expected snapshot stays fixed; the
+separate displayed latest snapshot is submitted only by a deliberate click on
+Save my changes. Implicit form submissions cannot confirm a conflict. A further
+concurrent edit is refused again by the same backend check and refreshes again.
+If the read fails, the same primary button becomes Check saved location and only
+retries the read; no write occurs until a successful read and another explicit
+Save my changes action. Inputs/cancel/save are held during the request. A ref
+prevents same-frame double submissions; mutation retries are explicitly disabled.
+No polling, automatic save replay, broad cache invalidation on conflict, new DB
+schema, or new migration changes were added for this recovery.
+Tests simulate two independent mounted tab editors against a shared saved value,
+a third edit during review, implicit-submit blocking, double clicks, refresh
+failure and narrow read-only requests. These are mocked UI tests, not a live
+browser/PostgREST multi-session load test. No production traffic generated.
+
+LOCAL BROWSER CHECK AND INTEGRATION WORKFLOW SCOPE
+Matthew also successfully tried the two-tab recovery in a local browser using
+the real editor and SQL save function, synthetic records and a small HTTP
+adapter. This still does not test deployed PostgREST. Demo code/runtime removed.
+
+Integration PRs retain offline CI, migration lint/listing and invariant self-tests.
+Production invariant probes, live migration drift and production release/browser
+baseline checks run only on master PRs (existing non-PR checks remain unchanged).
+Paid advisory review and changelog notices are master PR only. Backend/frontend
+deploy entry jobs now require master and push/manual dispatch, including manual
+attempts from integrations. Nightly master monitoring is unchanged.
+50 offline event/ref assertions passed; all20 workflow YAML files parsed;
+the CI script-test inventory and migration lint passed. SQL regression assertions
+now run in the existing disposable CI database job. No GitHub workflow dispatched.
+These gates are local source changes, not repository settings or a security
+boundary against someone editing workflow files. Include them in integrations
+before relying on this branch policy; review required-check settings for jobs
+that are intentionally skipped. A later PR into master still runs live checks.
