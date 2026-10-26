@@ -73,9 +73,22 @@ html[data-design="new"] :is(.work-screen .ws-btn--primary, .rail-capture, .captu
 html[data-design="new"] :is(.ws-btn--danger, .button-like.danger, .button-like.destructive, .record-btn.recording) {
   background: #bb303d; border-color: #ff858b; color: #fff;
 }
-html[data-design="new"] :is(.danger-outline, .menu-signout) {
+html[data-design="new"] .danger-outline {
   color: var(--danger); border-color: var(--danger);
 }
+/* Quiet navigation groups in both the rail and mobile drawer. */
+html[data-design="new"] .menu-pill {
+  min-height:44px; padding:10px 12px; border:1px solid var(--border);
+  border-radius:8px; background:var(--card); color:var(--text-secondary);
+  font-family:var(--font-body); font-size:13px; font-weight:600;
+  letter-spacing:0; text-transform:none; box-shadow:none;
+}
+html[data-design="new"] .menu-pill:is(:hover, .open) {
+  background:var(--card-raised); color:var(--text);
+}
+html[data-design="new"] :is(.menu-pill-icon, .menu-pill-chevron) { color:var(--muted); }
+html[data-design="new"] .menu-signout { background:transparent; color:var(--muted); border-color:transparent; box-shadow:none; }
+html[data-design="new"] .menu-signout:hover { background:var(--card-raised); color:var(--text); }
 html[data-design="new"] .menu-item { font-family: var(--font-body); font-size: 14px; font-weight: 600; min-height: 47px; }
 html[data-design="new"] .tab-label { font-family: var(--font-body); font-size: 10px; font-weight: 650; letter-spacing: 0; text-transform: none; }
 html[data-design="new"] .menu-item.active {

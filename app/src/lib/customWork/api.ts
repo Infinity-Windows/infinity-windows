@@ -22,7 +22,9 @@ async function allRows<T>(
   projectId?: string | null,
   profileId?: string,
   unitId?: string,
+  scope?: { projectIds?: string[]; from?: number; until?: number; signal?: AbortSignal },
 ): Promise<T[]> {
+  if (scope?.projectIds?.length === 0) return [];
   const result: T[] = [];
   let expected: number | null = null;
   for (let from = 0; from < 1000000;) {
@@ -35,6 +37,10 @@ async function allRows<T>(
     if (unitId) q = q.eq("unit_id", unitId);
     if (projectId === null) q = q.is("project_id", null);
     else if (projectId) q = q.eq("project_id", projectId);
+    if (scope?.projectIds) q = q.in("project_id", scope.projectIds);
+    if (Number.isFinite(scope?.from)) q = q.gt("ended_at", new Date(scope!.from!).toISOString());
+    if (Number.isFinite(scope?.until)) q = q.lt("started_at", new Date(scope!.until!).toISOString());
+    if (scope?.signal) q = q.abortSignal(scope.signal);
     const { data, error, count } = await q;
     if (error) throw error;
     if (count === null || (expected !== null && count !== expected))
@@ -58,12 +64,12 @@ async function allRows<T>(
   }
   throw new Error("This report needs a smaller scope.");
 }
-export async function listWorkUnits(job?: string | null): Promise<WorkUnit[]> {
-  try { return await allRows<WorkUnit>("custom_work_units", UNIT_COLS, job); }
+export async function listWorkUnits(job?: string | null, signal?: AbortSignal, projectIds?: string[]): Promise<WorkUnit[]> {
+  try { return await allRows<WorkUnit>("custom_work_units", UNIT_COLS, job, undefined, undefined, { signal, projectIds }); }
   catch (error) {
     // Keep the existing unit builder working during a backend/frontend rollout gap.
     if (!isMissingColumn(error)) throw error;
-    return allRows<WorkUnit>("custom_work_units", UNIT_COLS.replace(",untimed_work_present", ""), job);
+    return allRows<WorkUnit>("custom_work_units", UNIT_COLS.replace(",untimed_work_present", ""), job, undefined, undefined, { signal, projectIds });
   }
 }
 /** One unit, fresh from the server — a "Unit complete" refused because the
@@ -77,8 +83,8 @@ export async function getWorkUnit(id: string): Promise<WorkUnit | null> {
   if (error) throw error;
   return (data as WorkUnit | null) ?? null;
 }
-export const listWorkSessions = (job?: string | null, profileId?: string) =>
-  allRows<WorkSession>("custom_work_sessions", SESSION_COLS, job, profileId);
+export const listWorkSessions = (job?: string | null, profileId?: string, scope?: { projectIds?: string[]; from?: number; until?: number; signal?: AbortSignal }) =>
+  allRows<WorkSession>("custom_work_sessions", SESSION_COLS, job, profileId, undefined, scope);
 export const listWorkTypes = () =>
   allRows<WorkType>("custom_work_types", "id,label,archived,revision");
 export const listWorkHistory = (job?: string | null) =>

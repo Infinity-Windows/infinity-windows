@@ -35,6 +35,7 @@ export interface QueryKeyRootEntry {
 export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "workDataSnapshot", offline: false, why: "Named work/payroll evidence is token-bound, private in memory, and discarded on auth, preview or offline boundaries." },
   { root: "workDataProjects", offline: false, why: "This private report picker is discarded with its viewer boundary." },
+  { root: "dataReview", offline: false, why: "Owner comparison caches are scoped to sign-in generation and report inputs; snapshots revalidate automatically and are never persisted." },
   { root: "workConfigurationCompany", offline: false, why: "Private configuration drafts and publications are read online for the current account generation only." },
   { root: "workJobMenuChoices", offline: false, why: "Exact-job selection choices are private, online and scoped to the current account generation." },
   { root: "workJobCapabilityGrants", offline: false, why: "Job management grants must be checked fresh before changing authority." },

@@ -293,8 +293,9 @@ export async function listTeamShifts(
   untilIso: string | null,
   /** Personal exports use complete pagination scoped to this person. */
   profileId?: string,
-  options?: { unassignedOnly?: boolean },
+  options?: { unassignedOnly?: boolean; projectIds?: string[] | null; ids?: string[]; signal?: AbortSignal },
 ): Promise<TimeShift[]> {
+  if (options?.projectIds?.length === 0 || options?.ids?.length === 0) return [];
   const out: TimeShift[] = [];
   let expected: number | null = null;
   for (let page = 0; page < 1000; page++) {
@@ -305,6 +306,9 @@ export async function listTeamShifts(
     if (untilIso) query = query.lt("clock_in_at", untilIso);
     if (profileId) query = query.eq("profile_id", profileId);
     if (options?.unassignedOnly) query = query.is("project_id", null);
+    if (options?.ids) query = query.in("id", options.ids);
+    if (options?.projectIds) query = query.in("project_id", options.projectIds);
+    if (options?.signal) query = query.abortSignal(options.signal);
     const { data, error, count } = await query
       .order("clock_in_at", { ascending: false })
       .order("id", { ascending: false })
@@ -327,6 +331,24 @@ export async function listTeamShifts(
     }
   }
   throw new Error("The time report is too large to load completely.");
+}
+
+/** One finished shift per selected job establishes relative-week origins without
+ * downloading that job's entire clock history. */
+export async function listFirstFinishedShifts(projectIds: string[], signal?: AbortSignal): Promise<TimeShift[]> {
+  const rows: TimeShift[] = [];
+  for (const id of projectIds) {
+    signal?.throwIfAborted();
+    let query = supabase.from("time_shifts").select(SHIFT_SELECT)
+      .neq("status", "voided").not("clock_out_at", "is", null)
+      .order("clock_in_at").order("id").limit(1);
+    query = id ? query.eq("project_id", id) : query.is("project_id", null);
+    if (signal) query = query.abortSignal(signal);
+    const { data, error } = await query;
+    if (error) throw error;
+    rows.push(...(data ?? []) as TimeShift[]);
+  }
+  return rows;
 }
 
 /**

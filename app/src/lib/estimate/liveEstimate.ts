@@ -38,7 +38,7 @@ import type { UnitConfig } from "../modelstudio/units";
  * the screens that report provenance — the estimating screen's
  * "N legacy-timed units" line and the Data Tab's timing-source counts.
  */
-export function useCohortEvidence(): {
+export function useCohortEvidence(report?: { enabled: boolean; owner: string; staleTime: number; gcTime: number; retry: false; refetchOnMount: boolean; refetchOnWindowFocus: boolean; refetchOnReconnect: boolean; refetchInterval: false }): {
   evidence: CohortEvidence[];
   sessions: CohortEvidence[];
   legacy: CohortEvidence[];
@@ -49,15 +49,19 @@ export function useCohortEvidence(): {
    */
   dataOff: { unitId?: string; sigKey: string; reason: string }[];
 } {
+  const sessionsKey = ["cohortEvidence", "sessions"];
+  const legacyKey = ["cohortEvidence", "legacy"];
   const sessions = useQuery({
-    queryKey: ["cohortEvidence", "sessions"],
+    queryKey: report ? ["dataReview", report.owner, "cohortSessions"] : sessionsKey,
     queryFn: sessionsEvidence,
     staleTime: 60_000,
+    ...report,
   });
   const legacy = useQuery({
-    queryKey: ["cohortEvidence", "legacy"],
+    queryKey: report ? ["dataReview", report.owner, "cohortLegacy"] : legacyKey,
     queryFn: installEventsEvidence,
     staleTime: 60_000,
+    ...report,
   });
   return useMemo(() => {
     // THE ONE PLACE data-off units leave the estimating world (wave E, Q12).
