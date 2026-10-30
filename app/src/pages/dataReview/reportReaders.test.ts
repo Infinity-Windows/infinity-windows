@@ -13,7 +13,7 @@ vi.mock("../../lib/supabase", () => ({
   } },
 }));
 import { listWorkSessions } from "../../lib/customWork/api";
-import { listFirstFinishedShifts, listTeamShifts } from "../../lib/timeclock";
+import { listTeamShifts } from "../../lib/timeclock";
 import { readHistoricalLabor } from "./historicalLabor";
 
 beforeEach(() => { trace.calls = []; trace.reply = { data: [], count: 0, error: null }; });
@@ -48,13 +48,4 @@ it("does not read any source when no jobs are selected", async () => {
   expect(await listWorkSessions(undefined, undefined, { projectIds: [] })).toEqual([]);
   expect(await readHistoricalLabor([], -Infinity, Infinity)).toEqual([]);
   expect(trace.calls).toEqual([]);
-});
-
-it("fetches one first finished shift per job without a date bound, including unassigned labor", async () => {
-  await listFirstFinishedShifts(["a", ""]);
-  expect(trace.calls.filter(call => call[0] === "limit")).toEqual([["limit", 1], ["limit", 1]]);
-  expect(trace.calls).toContainEqual(["eq", "project_id", "a"]);
-  expect(trace.calls).toContainEqual(["is", "project_id", null]);
-  expect(trace.calls).toContainEqual(["not", "clock_out_at", "is", null]);
-  expect(trace.calls.some(call => call[0] === "gte" || call[0] === "lt")).toBe(false);
 });

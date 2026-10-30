@@ -21,7 +21,7 @@ export function DataComparison({ evidence }: { evidence: ReactNode }) {
   useEffect(() => () => {
     const key = ["dataReview", owner];
     void client.cancelQueries({ queryKey: key });
-    client.removeQueries({ queryKey: key });
+    // Keep session snapshots when leaving this page; auth changes purge them.
   }, [client, owner]);
   const [visited, setVisited] = useState<Set<View>>(() => new Set(["existing"]));
   function choose(next: View) {

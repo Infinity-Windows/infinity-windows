@@ -1,3 +1,4 @@
+import { readShiftRange } from "./shiftRangeCache";
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { listTeamShifts, type TimeShift } from "../../lib/timeclock";
@@ -17,11 +18,16 @@ export function useReportShifts(owner: string, jobs: readonly string[] | null, f
   const client = useQueryClient();
   const options = reportShifts(owner, jobs, from, until, active);
   const scopeKey = JSON.stringify(options.queryKey);
-  const snapshot = useQuery(options);
+  const snapshot = useQuery({...options, structuralSharing:false,
+    queryFn:({signal})=>readShiftRange(client,options.queryKey,from,until,signal,(start,end)=>listTeamShifts(Number.isFinite(start)?new Date(start).toISOString():null,Number.isFinite(end)?new Date(end).toISOString():null,undefined,{projectIds:jobs===null?null:[...jobs],signal})),
+    placeholderData:(previous,query)=>query?.queryKey[1]===owner?previous:undefined,
+  });
+  const hasRecentWindow=until>Date.now()-2*86400_000;
+  const hasOpenRecords=snapshot.data?.some(row=>!row.clock_out_at)??false;
   const recent = useQuery({
     ...reportQueryPolicy,
     queryKey: [...options.queryKey, "recent"],
-    enabled: options.enabled && snapshot.data !== undefined,
+    enabled: options.enabled && snapshot.data !== undefined && !snapshot.isPlaceholderData && (hasRecentWindow||hasOpenRecords),
     structuralSharing: false,
     staleTime: 30_000, refetchInterval: active ? 30_000 : false,
     refetchIntervalInBackground: false,

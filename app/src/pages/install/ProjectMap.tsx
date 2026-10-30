@@ -2,7 +2,7 @@ import { VoiceInput } from "../../components/voice/VoiceInput";
 import { BackChip } from "../../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { listProjects, listWindowTypes } from "../../lib/api";
 import {
   assignOpeningToInstaller,
@@ -1284,6 +1284,18 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       pageNumber: page,
     });
   };
+
+  const [unitLinkParams] = useSearchParams();
+  const linkedOpening = unitLinkParams.get("opening");
+  const openedLinkedUnit = useRef<string|null>(null);
+  useEffect(()=>{
+    if(!linkedOpening || openedLinkedUnit.current===linkedOpening || !openings.data?.some(o=>o.id===linkedOpening))return;
+    openedLinkedUnit.current=linkedOpening;
+    setView("details");
+    setSelectedId(linkedOpening);
+    setExpandedRowId(linkedOpening);
+    setLinkScroll(prev=>({to:"row",id:linkedOpening,n:(prev?.n??0)+1}));
+  },[linkedOpening,openings.data]);
 
   /** Pin tapped: open its row below and bring the row into view. */
   const selectFromMap = (id: string) => {

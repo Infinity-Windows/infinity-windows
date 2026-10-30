@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { TableSelection } from "./TableSelection";
 
-export function ReportingMultiSelect({ label, options, value, onChange }: {
-  label: string; options: { key: string; label: string }[]; value: string[] | null;
+export function ReportingMultiSelect({ label, options, value, onChange, showTags = true }: {
+  showTags?: boolean; label: string; options: { key: string; label: string }[]; value: string[] | null;
   onChange: (value: string[] | null) => void; color?: string;
 }) {
   const container = useRef<HTMLDivElement>(null);
@@ -36,6 +36,6 @@ export function ReportingMultiSelect({ label, options, value, onChange }: {
         {!options.length && <p className="report-muted">No available options.</p>}
       </div>
     </details>
-    {narrowed && <div className="report-selection-tags">{explicit.map(key => <button type="button" key={key} aria-label={`Remove ${label} ${options.find(option => option.key === key)?.label ?? key}`} onClick={() => commit(explicit.filter(item => item !== key))}>{options.find(option => option.key === key)?.label ?? key}<span aria-hidden="true">×</span></button>)}</div>}
+    {showTags && narrowed && <div className="report-selection-tags">{explicit.map(key => <button type="button" key={key} aria-label={`Remove ${label} ${options.find(option => option.key === key)?.label ?? key}`} onClick={() => commit(explicit.filter(item => item !== key))}>{options.find(option => option.key === key)?.label ?? key}<span aria-hidden="true">×</span></button>)}</div>}
   </div>;
 }

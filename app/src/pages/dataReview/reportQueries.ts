@@ -5,7 +5,7 @@ import { listTeamShifts } from "../../lib/timeclock";
 // Private, memory-only snapshots revalidate automatically when stale.
 // High-frequency clock updates use a separate bounded recent-window query.
 export const reportQueryPolicy = {
-  staleTime: 5 * 60_000, gcTime: 5 * 60_000, retry: false,
+  staleTime: 5 * 60_000, gcTime: Infinity, retry: false,
   refetchOnMount: true, refetchOnWindowFocus: true, refetchOnReconnect: true,
   refetchInterval: false, meta: { offline: false },
 } as const;
@@ -35,4 +35,14 @@ export async function mapReportJobs<T, R>(jobs: T[], read: (job: T) => Promise<R
   const result: R[] = [];
   for (const job of jobs) { signal.throwIfAborted(); result.push(await read(job)); }
   return result;
+}
+
+/** Unassigned labor is its own scope, never a synthetic project ID. */
+export function reportUnassignedShifts(owner: string, from: number, until: number, active: boolean) {
+ return { ...reportQueryPolicy,
+  queryKey: ["dataReview", owner, "unassignedClockedShifts", Number.isFinite(from)?from:null, Number.isFinite(until)?until:null],
+  queryFn: ({signal}: {signal:AbortSignal}) => listTeamShifts(Number.isFinite(from)?new Date(from).toISOString():null, Number.isFinite(until)?new Date(until).toISOString():null, undefined, {unassignedOnly:true,signal}),
+  enabled:active && from<until,
+  refetchInterval:active && Number.isFinite(from) && Number.isFinite(until) && until-from<=45*86400000 ? 5*60000 : false as const,
+ };
 }

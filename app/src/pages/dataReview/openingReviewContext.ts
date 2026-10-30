@@ -3,9 +3,9 @@ import { canonicalJson, type SignatureV1 } from "../../lib/estimate/signature";
 import { isMissingColumn } from "../../lib/schemaErrors";
 import { markBase } from "../../lib/install/extract";
 
-export interface ReviewOpening { id: string; project_id: string; opening_code: string; signature: SignatureV1 | null; flag_kind: string | null; status: string; window_type_id?: string | null }
+export interface ReviewOpening { ro_check?: { judgments?: Record<string,"good" | "bad" | null> } | null; planset_id?: string | null; page_number?: number | null; id: string; project_id: string; opening_code: string; signature: SignatureV1 | null; flag_kind: string | null; status: string; window_type_id?: string | null; needs_flashing?: boolean | null; work_started_at?: string | null; work_ended_at?: string | null; condition?: string | null }
 export interface ReviewSpec { planset_id?: string | null; id: string; project_id: string; mark_code: string; width_in: number | null; height_in: number | null; confirmed: boolean; source: string; style: string | null; operation?: string | null; product_line?: string | null; extra?: Record<string, unknown> | null; unit_kind?: string | null; door_kind?: string | null }
-export interface ReviewCatalogType { id: string; name: string; category: string | null }
+export interface ReviewCatalogType { id: string; name: string; category: string | null; width_in?: number | null; height_in?: number | null }
 export interface OpeningContext { catalogType?: ReviewCatalogType | null; opening: ReviewOpening; spec: ReviewSpec | null; specConflict: boolean }
 
 export function openingContexts(openings: ReviewOpening[], specs: ReviewSpec[], catalog: ReviewCatalogType[] = []) {
@@ -49,6 +49,6 @@ export async function readOpeningContexts(ids: string[], signal?: AbortSignal) {
     catch (error) { if (!isMissingColumn(error)) throw error; specs = await read<ReviewSpec>("project_mark_specs", specColumns, "project_id", projects); }
   }
   const typeIds = [...new Set(openings.map(opening => opening.window_type_id).filter((id): id is string => !!id))];
-  const catalog = typeIds.length ? await read<ReviewCatalogType>("window_types", "id,name,category", "id", typeIds) : [];
+  const catalog = typeIds.length ? await read<ReviewCatalogType>("window_types", "id,name,category,width_in,height_in", "id", typeIds) : [];
   return openingContexts(openings, specs, catalog);
 }

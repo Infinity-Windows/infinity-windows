@@ -1,3 +1,4 @@
+import {formatHours} from "./formatHours";
 import type { WorkUnit } from "../../lib/customWork/model";
 import type { ActivityRow } from "./activityRows";
 
@@ -6,6 +7,7 @@ export const metricLabels: Record<LaborMetric, string> = { hours: "Total hours",
 export const metricUnits: Record<LaborMetric, string> = { hours: "h", area: "min/ft²", opening: "min/opening" };
 export function formatMetric(value: number | null, metric: LaborMetric) {
   if (value === null) return "—";
+  if(metric==="hours"&&Math.abs(value)>=1000)return formatHours(value);
   const precision = metric === "area" ? 3 : 2;
   const threshold = 10 ** -precision;
   return value > 0 && value < threshold ? `<${threshold.toFixed(precision)}` : value.toFixed(precision);

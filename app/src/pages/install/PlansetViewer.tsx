@@ -9,12 +9,13 @@ function fileName(ps: Planset): string {
 }
 
 interface PlansetViewerProps {
+  initialPage?: number;
   planset: Planset;
   onClose: () => void;
 }
 
 /** In-app page-by-page PDF viewer for an uploaded planset. */
-export function PlansetViewer({ planset, onClose }: PlansetViewerProps) {
+export function PlansetViewer({ planset, onClose, initialPage = 1 }: PlansetViewerProps) {
   const [page, setPage] = useState(1);
   const [pageCount, setPageCount] = useState(0);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -38,7 +39,9 @@ export function PlansetViewer({ planset, onClose }: PlansetViewerProps) {
         if (cancelled) return;
         docRef.current = doc;
         setPageCount(doc.numPages);
-        const img = await renderPageImage(doc, 1);
+        const targetPage = Math.max(1, Math.min(doc.numPages, Number.isFinite(initialPage) ? Math.floor(initialPage) : 1));
+        setPage(targetPage);
+        const img = await renderPageImage(doc, targetPage);
         if (!cancelled) setImageUrl(img.dataUrl);
       } catch (e) {
         if (!cancelled) setError(formatApiError(e));

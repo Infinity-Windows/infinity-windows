@@ -1,4 +1,5 @@
 import { workAttribution } from "./workAttribution";
+import { reportingActivity } from "./activityLabels";
 import type { ActivityRow } from "./activityRows";
 
 export const dimensionLabels = { job: "Job", floor: "Floor", unit: "Unit", activity: "Activity", scope: "Work attribution", person: "Person", category: "Unit category", subtype: "Operation", configuration: "Configuration", system: "System", material: "Material" };
@@ -8,6 +9,7 @@ export type Facets = Record<Dimension, Facet>;
 export const dimensions = Object.keys(dimensionLabels) as Dimension[];
 export const emptyFacets = (): Facets => ({ job: { include: [], exclude: [] }, floor: { include: [], exclude: [] }, unit: { include: [], exclude: [] }, activity: { include: [], exclude: [] }, scope: { include: [], exclude: [] }, person: { include: [], exclude: [] }, category: { include: [], exclude: [] }, subtype: { include: [], exclude: [] }, configuration: { include: [], exclude: [] }, system: { include: [], exclude: [] }, material: { include: [], exclude: [] } });
 export function dimensionValue(row: ActivityRow, dimension: Dimension) {
+  if (dimension === "activity") { const label = reportingActivity(row.activity); return { key: label, label }; }
   if (dimension === "scope") { const label = workAttribution(row); return { key: label, label }; }
   if (dimension === "category" || dimension === "subtype" || dimension === "configuration" || dimension === "system" || dimension === "material") {
     const value = row.scope === "General" ? "Not allocated" : row[dimension]?.trim() || "Unknown";
@@ -22,7 +24,9 @@ export function matchesFacets(row: ActivityRow, facets: Facets, except?: Dimensi
     if (dimension === except) return true;
     const key = dimensionValue(row, dimension).key;
     const facet = facets[dimension];
-    return !facet.exclude.includes(key) && (!facet.include.length || facet.include.includes(key));
+    const include = dimension === "activity" ? facet.include.map(reportingActivity) : facet.include;
+    const exclude = dimension === "activity" ? facet.exclude.map(reportingActivity) : facet.exclude;
+    return !exclude.includes(key) && (!include.length || include.includes(key));
   });
 }
 export function groupPaths(rows: ActivityRow[], order: Dimension[]) {
