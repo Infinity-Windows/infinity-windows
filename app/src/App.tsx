@@ -402,6 +402,13 @@ function LegacyInstallRedirect({ suffix = "" }: { suffix?: string }) {
   return <Navigate to={`/projects/${projectId}${suffix}`} replace />;
 }
 
+function LegacyPlannerRedirect() {
+  const { projectId = "" } = useParams();
+  const params = new URLSearchParams(useLocation().search);
+  params.set("tab", "planner");
+  return <Navigate to={`/projects/${projectId}?${params}`} replace />;
+}
+
 function LegacyInstallOpeningRedirect() {
   const { projectId = "", openingId = "" } = useParams();
   return (
@@ -848,6 +855,7 @@ export default function App() {
             <Route path="/search" element={<Navigate to="/warehouse" replace />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/jobs/history" element={<JobHistory />} />
+            {import.meta.env.DEV && <Route path="/projects/:projectId/planner" element={<LegacyPlannerRedirect />} />}
             <Route path="/projects/:projectId" element={<ProjectDetail />} />
             {/* Bare /map bookmarks and links → the merged Maps tab. Same
                 machinery as the /install/:projectId legacy redirects below:

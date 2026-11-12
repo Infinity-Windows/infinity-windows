@@ -134,6 +134,7 @@ import {
 // tab/route decision it drives.
 type HubTab = HubTabId;
 
+const JobPlanner = lazy(() => import("./installerPilot/JobPlanner").then(module => ({ default: module.JobPlanner })));
 const CustomData = lazyOptional(
   () => import("./customWork/CustomData").then((m) => ({ default: m.CustomData })),
   <PartDidNotLoad />,
@@ -148,7 +149,8 @@ export function ProjectDetail() {
   const { projectId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   // Read before the tab is resolved: which tabs a URL may open depends on it.
-  const { effectiveRole } = useEffectiveRole();
+  const { effectiveRole, isLoading: rolePending } = useEffectiveRole();
+  const canPlan = import.meta.env.DEV && effectiveRole === "owner";
   const isLead = isForemanPlus(effectiveRole);
   const partner = useIsPartnerUser();
   const t = useT();
@@ -233,7 +235,7 @@ export function ProjectDetail() {
   // (data tabs), so an ordinary job never flickers.
   const trackingOnly = isTrackingOnly(project?.allowed_modes);
   const warehouseStaged = minePkgs.length > 0;
-  const tabOpts = { trackingOnly, isLead, warehouseStaged };
+  const tabOpts = { trackingOnly, isLead, warehouseStaged, canPlan };
   const tab: HubTab = resolveHubTab(tabParam, tabOpts);
   // tracking-jobs cleanup, 2026-09-03: on a cold deep-link the project row is
   // still loading, so isTrackingOnly reads false and resolveHubTab accepts a
@@ -244,6 +246,8 @@ export function ProjectDetail() {
   const modesPending = tabPendingModes(tabParam, projects.isLoading);
   const tabLabel = (id: HubTabId): string => {
     switch (id) {
+      case "planner":
+        return "Plan";
       case "custom-data":
         return "Custom Data";
       case "dispatch":
@@ -278,6 +282,11 @@ export function ProjectDetail() {
   // hidden or legacy ?tab= is stripped back to Overview, so a bookmarked URL
   // can't point at a feature the job doesn't have.
   useEffect(() => {
+    if (tabParam === "planner" && rolePending) return;
+    if (tabParam === "planner" && !canPlan) {
+      setSearchParams({}, { replace: true });
+      return;
+    }
     if (trackingOnly) {
       if (tabParam && tabParam !== "overview" && tab === "overview") {
         setSearchParams({}, { replace: true });
@@ -291,7 +300,7 @@ export function ProjectDetail() {
       navigate(`/studio/j/${projectId}`, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabParam, trackingOnly, tab]);
+  }, [tabParam, trackingOnly, tab, rolePending, canPlan]);
 
   const brainTypes = useMemo(() => {
     const map = new Map<
@@ -361,21 +370,23 @@ export function ProjectDetail() {
           <BackChip fallback="/projects" label="Back to jobs" />
           <div style={{ minWidth: 0 }}>
             <h1 style={{ fontSize: 26, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              {project?.job_code ?? "Job"}
-              {project && <JobModeBadge allowed={project.allowed_modes} />}
+              {tab === "planner" ? project?.name || project?.job_code || "Job" : project?.job_code ?? "Job"}
+              {tab !== "planner" && project && <JobModeBadge allowed={project.allowed_modes} />}
               {/* Wave J: beside the mode badge, never on top of it — the two
                   say different things, and a reader who has learned where the
                   mode pill sits should still find it there. */}
-              {project && <ReadinessBadge readyState={project.ready_state} />}
+              {tab !== "planner" && project && <ReadinessBadge readyState={project.ready_state} />}
             </h1>
+            {tab !== "planner" && <>
             <p className="wh-row-sub" style={{ margin: 0, overflowWrap: "anywhere" }}>
               {project?.name}
               {project?.address ? ` — ${project.address}` : ""}
             </p>
             <ScopeLine counts={scope.data} stories={storiesShown} trackingOnly={trackingOnly} showDoorKinds style={{ marginTop: 2 }} />
+            </>}
           </div>
         </div>
-        <div className="row" style={{ gap: 12, flexWrap: "wrap" }}><Link className="button-like" to={`/service?job=${projectId}`}>{t("servicing.title")}</Link><DirectionsButton address={project?.address} latitude={project?.latitude} longitude={project?.longitude} /></div>
+        {tab !== "planner" && <div className="row" style={{ gap: 12, flexWrap: "wrap" }}><Link className="button-like" to={`/service?job=${projectId}`}>{t("servicing.title")}</Link><DirectionsButton address={project?.address} latitude={project?.latitude} longitude={project?.longitude} /></div>}
       </header>
 
       <ScrollTabs className="hub-tabs" label="Project sections" activeId={tab}>
@@ -400,8 +411,9 @@ export function ProjectDetail() {
           tracking job never flashes its body before the redirect fires. Nothing
           is rendered in the gap on purpose (no new loader for a data job); the
           project row resolves in the same tick its own queries do. */}
-      {!modesPending && (
+      {!modesPending && !(tabParam === "planner" && rolePending) && (
       <>
+      {tab === "planner" && canPlan && <Suspense fallback={<SkeletonCard height={320} />}><JobPlanner /></Suspense>}
       {tab === "custom-data" && <Suspense fallback={<SkeletonCard height={320} />}><CustomData key={projectId} projectId={projectId} /></Suspense>}
       {tab === "overview" && (
         <>
