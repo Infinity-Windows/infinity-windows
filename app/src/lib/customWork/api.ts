@@ -22,7 +22,7 @@ async function allRows<T>(
   projectId?: string | null,
   profileId?: string,
   unitId?: string,
-  scope?: { projectIds?: string[]; from?: number; until?: number; signal?: AbortSignal },
+  scope?: { projectIds?: string[]; from?: number; until?: number; signal?: AbortSignal; isTest?: boolean },
 ): Promise<T[]> {
   if (scope?.projectIds?.length === 0) return [];
   const result: T[] = [];
@@ -37,6 +37,7 @@ async function allRows<T>(
     if (unitId) q = q.eq("unit_id", unitId);
     if (projectId === null) q = q.is("project_id", null);
     else if (projectId) q = q.eq("project_id", projectId);
+    if (scope?.isTest !== undefined) q = q.eq("is_test", scope.isTest);
     if (scope?.projectIds) q = q.in("project_id", scope.projectIds);
     if (Number.isFinite(scope?.from)) q = q.gt("ended_at", new Date(scope!.from!).toISOString());
     if (Number.isFinite(scope?.until)) q = q.lt("started_at", new Date(scope!.until!).toISOString());
@@ -93,7 +94,12 @@ export const listWorkHistory = (job?: string | null) =>
     "id,project_id,actor_id,entity_id,action,reason,before_value,after_value,created_at",
     job,
   );
-export const listCrewRecordPeople = () => allRows<CrewPerson>("profiles", "id,display_name,active,role,is_partner,retired_at,access_revoked_at");
+const CREW_PERSON_COLS = "id,display_name,active,role,is_partner,retired_at,access_revoked_at";
+export const listCrewRecordPeople = () => allRows<CrewPerson>("profiles", CREW_PERSON_COLS);
+export const listPlannerPeople = () => allRows<CrewPerson>(
+  "profiles", CREW_PERSON_COLS,
+  undefined, undefined, undefined, { isTest: false },
+);
 const CREW_RECORD_COLS = "id,project_id,unit_id,filed_by,work_date,stage,outcome,whole_complete,description,created_at,people:crew_work_record_people(profile_id,voided_at,voided_by,void_reason)";
 async function readCrewRecords(job?: string, unit?: string) {
   try {

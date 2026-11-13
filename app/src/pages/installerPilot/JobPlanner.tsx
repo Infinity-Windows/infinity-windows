@@ -7,9 +7,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useClock } from "../../lib/clockContext";
 import { supabase } from "../../lib/supabase";
-import { listCrewRecordPeople, listWorkSessions, listWorkUnits } from "../../lib/customWork/api";
-import { building3PreviewDone, building3ProgressBlocks, finishedUnitActivities } from "../../lib/installerWorkflow/unitProgress";
-import { localWorkDate, type CrewPerson } from "../../lib/customWork/model";
+import { listPlannerPeople, listWorkSessions, listWorkUnits } from "../../lib/customWork/api";
+import { finishedUnitActivities } from "../../lib/installerWorkflow/unitProgress";
+import { crewRecordEligible, localWorkDate, type CrewPerson } from "../../lib/customWork/model";
 import { listMarkSpecs, listOpenings } from "../../lib/install/api";
 import { type ProjectOpening } from "../../lib/install/types";
 import { indexSpecsByMark } from "../../lib/install/specs";
@@ -19,11 +19,11 @@ import { normalizeMarkCode } from "../../lib/fitview/adapter";
 import { formatApiError } from "../../lib/errors";
 import {
   coversPlanSlot, planBoundary, planDayEnd, PLAN_OPEN, PLAN_CLOSE, PLAN_NOON, PLAN_STEP,
-  BUILDING_3_PROJECT, STANDARD_SHIFT_END, readJobPlan, saveJobPlan, shiftPlanDate, type OpeningCrew, type PlanBlock,
+  BUILDING_3_PROJECT, STANDARD_SHIFT_END, shiftPlanDate, type OpeningCrew, type PlanBlock,
 } from "../../lib/installerWorkflow/jobPlan";
 
 import "./jobPlanner.css";
-import { building3ByMark, reviewedBuilding3Openings } from "./building3Openings";
+import { building3ByMark } from "./building3Openings";
 
 import { PILOT_ACTIVITIES as ACTIVITIES } from "../../lib/installerWorkflow/pilotActivities";
 
@@ -125,18 +125,10 @@ function UnitInfo({ mark, lines }: { mark: string; lines: string[] }) {
   </>;
 }
 
-const BUILDING_3_DEMO_CREW = [
-  { id: "mock-maya", display_name: "Maya Chen" },
-  { id: "mock-eli", display_name: "Eli Parker" },
-  { id: "mock-luis", display_name: "Luis Rivera" },
-  { id: "mock-nora", display_name: "Nora Bell" },
-  { id: "mock-jordan", display_name: "Jordan Brooks" },
-];
 const CREW_COLORS = ["#72b7ff", "#d7a2ff", "#55d6a2", "#f5b96e", "#f48faf", "#e6d570", "#60d0dd", "#adba80"];
 const HOURS = Array.from({ length: 12 }, (_, index) => PLAN_OPEN + index * 60);
 const DAY_STEPS = (PLAN_CLOSE - PLAN_OPEN) / PLAN_STEP;
 const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
-type Slot = "am" | "pm" | "day" | "week";
 type WorkConfig = { activity: string; installerIds: string[]; openingIds: string[]; openingCrew?: PlanBlock["openingCrew"] };
 type Point = { date: string; minute: number };
 type Gesture = { x: number; y: number; block: PlanBlock; members: PlanBlock[]; edge: "move" | "start" | "end"; anchor: Point };
@@ -180,12 +172,7 @@ function dateTimeMinute(value: string) {
   return hour * 60 + minute;
 }
 
-function plannedRange(date: string, slot: Slot) {
-  if (slot === "week") {
-    const weekday = new Date(date + "T00:00:00Z").getUTCDay();
-    const monday = shiftPlanDate(date, weekday === 0 ? 1 : weekday === 6 ? 2 : 1 - weekday);
-    return { start: monday, end: shiftPlanDate(monday, 4), startMinute: PLAN_OPEN, endMinute: STANDARD_SHIFT_END, dailyEndMinute: STANDARD_SHIFT_END };
-  }
+function plannedRange(date: string, slot: "am" | "pm") {
   return {
     start: date, end: date,
     startMinute: slot === "pm" ? PLAN_NOON : PLAN_OPEN,
@@ -202,12 +189,8 @@ function DateLabel({ date }: { date: string }) {
 export function JobPlanner() {
   const { projectId } = useParams();
   const { profileId } = useClock();
-  const [params] = useSearchParams();
-  const progressDemo = import.meta.env.DEV && projectId === BUILDING_3_PROJECT && params.get("progressDemo") === "1";
-  const shared = projectId === BUILDING_3_PROJECT && params.get("sharedPlan") === "1";
-  if (shared && projectId && profileId) return <SharedPlanner key={profileId + projectId} project={projectId} account={profileId} />;
   return projectId && profileId
-    ? <Planner key={profileId + projectId + progressDemo} project={projectId} account={profileId} progressDemo={progressDemo} />
+    ? <SharedPlanner key={profileId + projectId} project={projectId} account={profileId} />
     : <p className="page">Open a job while signed in to plan work.</p>;
 }
 
@@ -225,23 +208,17 @@ function SharedPlanner({ project, account }: { project: string; account: string 
     <p role="alert">{formatApiError(query.error)}</p>
     <button type="button" onClick={() => void query.refetch()}>Try again</button>
   </div>;
-  return <Planner project={project} account={account} progressDemo={false} latestSharedPlan={query.data} />;
+  return <Planner project={project} account={account} latestSharedPlan={query.data} />;
 }
 
-export function Planner({ project, account, progressDemo, latestSharedPlan, initialBlocks }: {
-  project: string; account: string; progressDemo: boolean; latestSharedPlan?: SharedPlan; initialBlocks?: PlanBlock[];
+function Planner({ project, account, latestSharedPlan }: {
+  project: string; account: string; latestSharedPlan: SharedPlan;
 }) {
   const [params] = useSearchParams();
-  const currentDate = localWorkDate();
-  const today = progressDemo ? "2026-11-09" : currentDate;
-  const defaultScheduleDate = isSunday(currentDate) ? shiftPlanDate(currentDate, 1) : currentDate;
+  const today = localWorkDate();
+  const defaultScheduleDate = isSunday(today) ? shiftPlanDate(today, 1) : today;
   const firstWorkDay = isSunday(today) ? shiftPlanDate(today, 1) : today;
-  const [blocks, setBlocks] = useState(() => {
-    if (latestSharedPlan) return latestSharedPlan.blocks;
-    const saved = readJobPlan(project, account, initialBlocks);
-    return progressDemo ? [...saved, ...building3ProgressBlocks.filter(sample =>
-      !saved.some(block => block.activity === sample.activity && block.start <= sample.start && block.end >= sample.start))] : saved;
-  });
+  const [blocks, setBlocks] = useState(() => latestSharedPlan.blocks);
   const [draft, setDraft] = useState<WorkConfig>({ activity: "", installerIds: [], openingIds: [] });
   const [buildBy, setBuildBy] = useState<"activity" | "unit" | null>(null);
   const [bundleActivities, setBundleActivities] = useState<string[]>([]);
@@ -292,7 +269,7 @@ export function Planner({ project, account, progressDemo, latestSharedPlan, init
   const [preview, setPreview] = useState<PlanBlock | null>(null);
   const gesture = useRef<Gesture | null>(null);
   useEffect(() => {
-    if (!latestSharedPlan || !sharedPlan || latestSharedPlan.revision <= sharedPlan.revision || sharedBusy || preview) return;
+    if (latestSharedPlan.revision <= sharedPlan.revision || sharedBusy || preview) return;
     setSharedPlan(latestSharedPlan);
     setBlocks(latestSharedPlan.blocks);
     setSelectedBlock(current => latestSharedPlan.blocks.some(block => block.id === current) ? current : "");
@@ -308,7 +285,6 @@ export function Planner({ project, account, progressDemo, latestSharedPlan, init
   const openings = useQuery({
     queryKey: ["openings", project],
     queryFn: () => listOpenings(project),
-    select: project === BUILDING_3_PROJECT ? reviewedBuilding3Openings : undefined,
   });
   const specs = useQuery({ queryKey: ["markSpecs", project], queryFn: () => listMarkSpecs(project) });
   const catalog = useQuery({ queryKey: ["studioUnits"], queryFn: listStudioUnits });
@@ -317,8 +293,8 @@ export function Planner({ project, account, progressDemo, latestSharedPlan, init
   const workUnitByOpening = useMemo(() => new Map(workUnits.data?.map(unit => [unit.opening_id, unit.id])), [workUnits.data]);
   const finished = useMemo(() => finishedUnitActivities(workSessions.data ?? []), [workSessions.data]);
   const openingCodes = useMemo(() => new Map(openings.data?.map(opening => [opening.id, opening.opening_code])), [openings.data]);
-  function isUnitDone(id: string, activity: string, label = openingCodes.get(id) ?? "") {
-    return finished(workUnitByOpening.get(id), activity) || (progressDemo && building3PreviewDone(project, activity, label));
+  function isUnitDone(id: string, activity: string) {
+    return finished(workUnitByOpening.get(id), activity);
   }
   function orderedUnits(ids: string[], activity: string, isDone = (id: string) => isUnitDone(id, activity)) {
     return ids.map(id => {
@@ -332,29 +308,25 @@ export function Planner({ project, account, progressDemo, latestSharedPlan, init
   const people = useQuery({
     queryKey: ["jobPlannerCrew", account, project],
     queryFn: async () => {
-      const { data: job, error } = await supabase.from("projects").select("job_code,is_test").eq("id", project).single();
+      const { data: job, error } = await supabase.from("projects").select("is_test").eq("id", project).single();
       if (error) throw error;
-      if (!job.is_test) return { code: job.job_code, isTest: false, people: await listCrewRecordPeople() };
+      if (!job.is_test) return { isTest: false, people: await listPlannerPeople() };
       const { data, error: rosterError } = await supabase.from("profiles")
         .select("id,display_name,active,role,is_partner,retired_at,access_revoked_at").eq("is_test", true);
       if (rosterError) throw rosterError;
-      return { code: job.job_code, isTest: true, people: data as CrewPerson[] };
+      return { isTest: true, people: data as CrewPerson[] };
     },
   });
-  const crew = people.data?.people.filter(person =>
-    (person.active || people.data.isTest) && !person.retired_at && !person.access_revoked_at && !person.is_partner && person.role === "installer",
+  const roster = people.data?.people.filter(person =>
+    (person.active || people.data.isTest) && crewRecordEligible(person) && person.role === "installer",
   ) ?? [];
-  const showDemo = !sharedPlan && import.meta.env.DEV && project === BUILDING_3_PROJECT && people.data?.isTest;
-  const roster = showDemo
-    ? [...crew, ...BUILDING_3_DEMO_CREW]
-    : crew;
   const rosterIds = [...new Set([...roster.map(person => person.id).sort(), ...blocks.flatMap(block => block.installerIds).sort()])];
   const crewColors = new Map(rosterIds.map((id, index) => [id, CREW_COLORS[index % CREW_COLORS.length]]));
   const crewName = (id: string) => (roster.find(person => person.id === id)?.display_name
     ?? openings.data?.find(opening => opening.assigned_to === id)?.assignee?.display_name
     ?? "Assigned installer").replace(/\s*(?:[·–—-]\s*|\(\s*)(?:demo|automation)\b.*$/i, "").trim();
   const crewStyle = (id: string) => ({ "--crew-color": crewColors.get(id) ?? "var(--muted)" }) as CSSProperties;
-  const crewChoices = [...new Set([...roster.map(person => person.id), ...(edit?.config.installerIds ?? []), ...draft.installerIds])];
+  const crewChoices = [...new Set([...roster.map(person => person.id), ...(edit?.config.installerIds ?? []).filter(id => !id.startsWith("mock-"))])];
   const overviewDates = Array.from({ length: 14 }, (_, index) => shiftPlanDate(today, index - 2))
     .filter(date => !isSunday(date));
   const dates = view === "day" ? [day] : overviewDates;
@@ -385,103 +357,92 @@ export function Planner({ project, account, progressDemo, latestSharedPlan, init
   }, [edit?.block.id]);
 
   async function save(next: PlanBlock[], expected: PlanBlock[] = []) {
-    if (sharedPlan) {
-      if (sharedWrite.current) return false;
-      const original = new Map(blocks.map(block => [block.id, block]));
-      const proposed = new Map(next.map(block => [block.id, block]));
-      const changed = [...new Set([...original.keys(), ...proposed.keys()])]
-        .filter(id => !sameValue(original.get(id), proposed.get(id)));
-      const expectedById = new Map(expected.map(block => [block.id, block]));
-      for (const id of expectedById.keys()) if (!changed.includes(id)) changed.push(id);
-      if (!changed.length) return true;
+    if (sharedWrite.current) return false;
+    const original = new Map(blocks.map(block => [block.id, block]));
+    const proposed = new Map(next.map(block => [block.id, block]));
+    const changed = [...new Set([...original.keys(), ...proposed.keys()])]
+      .filter(id => !sameValue(original.get(id), proposed.get(id)));
+    const expectedById = new Map(expected.map(block => [block.id, block]));
+    for (const id of expectedById.keys()) if (!changed.includes(id)) changed.push(id);
+    if (!changed.length) return true;
 
-      sharedWrite.current = true;
-      setSharedBusy(true);
-      setError("");
-      let latest = sharedPlan;
-      const confirmed = new Set<string>();
-      function confirmChange(key: string, message: string) {
-        if (confirmed.has(key)) return true;
-        if (!window.confirm(message)) {
-          setSharedPlan(latest);
-          setBlocks(latest.blocks);
-          return false;
-        }
-        confirmed.add(key);
-        return true;
-      }
-      try {
-        for (let attempt = 0; attempt < 3; attempt++) {
-          const current = new Map(latest.blocks.map(block => [block.id, block]));
-          for (const id of changed) {
-            const before = expectedById.get(id) ?? original.get(id);
-            const remote = current.get(id);
-            const replacement = proposed.get(id);
-            if (!before && replacement) {
-              const baseline = builderBaseline.current ?? original;
-              const duplicate = latest.blocks.find(block => !baseline.has(block.id)
-                && block.activity.trim().toLowerCase() === replacement.activity.trim().toLowerCase());
-              if (duplicate && !confirmChange(`duplicate:${duplicate.id}:${replacement.activity}`,
-                `${replacement.activity} was already added to this plan. Add another?`)) return false;
-            }
-            if (before && !sameValue(remote, before)) {
-              if (!remote) {
-                if (!replacement) continue;
-                setSharedPlan(latest);
-                setBlocks(latest.blocks);
-                setError("Someone removed this activity. Your edits are still open.");
-                return false;
-              }
-              const moved = remote.start !== before.start || remote.end !== before.end
-                || planBoundary(remote, "start") !== planBoundary(before, "start")
-                || planBoundary(remote, "end") !== planBoundary(before, "end");
-              const changesTime = replacement && (replacement.start !== before.start || replacement.end !== before.end
-                || planBoundary(replacement, "start") !== planBoundary(before, "start")
-                || planBoundary(replacement, "end") !== planBoundary(before, "end"));
-              if (moved && changesTime) {
-                const where = `${remote.start} ${timeLabel(planBoundary(remote, "start"))} to ${remote.end} ${timeLabel(planBoundary(remote, "end"))}`;
-                if (!confirmChange(JSON.stringify(remote), `Someone moved ${remote.activity} to ${where}. Move it to your selected time?`)) return false;
-              }
-            }
-            if (replacement) {
-              if (remote && before) {
-                const fields = new Set([...Object.keys(before), ...Object.keys(replacement)] as (keyof PlanBlock)[]);
-                const changes = Object.fromEntries([...fields].filter(key =>
-                  !sameValue(before[key], replacement[key])).map(key => [key, replacement[key]]));
-                current.set(id, { ...remote, ...changes });
-              } else current.set(id, replacement);
-            } else current.delete(id);
-          }
-          try {
-            const saved = await saveSharedPlan(project, latest.revision, [...current.values()]);
-            setSharedPlan(saved);
-            setBlocks(saved.blocks);
-            return true;
-          } catch (cause) {
-            if (typeof cause !== "object" || !cause || !("code" in cause) || cause.code !== "40001") throw cause;
-            latest = await readSharedPlan(project);
-          }
-        }
+    sharedWrite.current = true;
+    setSharedBusy(true);
+    setError("");
+    let latest = sharedPlan;
+    const confirmed = new Set<string>();
+    function confirmChange(key: string, message: string) {
+      if (confirmed.has(key)) return true;
+      if (!window.confirm(message)) {
         setSharedPlan(latest);
         setBlocks(latest.blocks);
-        setError("The plan is updating quickly. Try saving again.");
         return false;
-      } catch (cause) {
-        setError(formatApiError(cause));
-        return false;
-      } finally {
-        sharedWrite.current = false;
-        setSharedBusy(false);
       }
+      confirmed.add(key);
+      return true;
     }
     try {
-      saveJobPlan(project, account, next.filter(block => !building3ProgressBlocks.some(sample => sample.id === block.id)));
-      setBlocks(next);
-      setError("");
-      return true;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const current = new Map(latest.blocks.map(block => [block.id, block]));
+        for (const id of changed) {
+          const before = expectedById.get(id) ?? original.get(id);
+          const remote = current.get(id);
+          const replacement = proposed.get(id);
+          if (!before && replacement) {
+            const baseline = builderBaseline.current ?? original;
+            const duplicate = latest.blocks.find(block => !baseline.has(block.id)
+              && block.activity.trim().toLowerCase() === replacement.activity.trim().toLowerCase());
+            if (duplicate && !confirmChange(`duplicate:${duplicate.id}:${replacement.activity}`,
+              `${replacement.activity} was already added to this plan. Add another?`)) return false;
+          }
+          if (before && !sameValue(remote, before)) {
+            if (!remote) {
+              if (!replacement) continue;
+              setSharedPlan(latest);
+              setBlocks(latest.blocks);
+              setError("Someone removed this activity. Your edits are still open.");
+              return false;
+            }
+            const moved = remote.start !== before.start || remote.end !== before.end
+              || planBoundary(remote, "start") !== planBoundary(before, "start")
+              || planBoundary(remote, "end") !== planBoundary(before, "end");
+            const changesTime = replacement && (replacement.start !== before.start || replacement.end !== before.end
+              || planBoundary(replacement, "start") !== planBoundary(before, "start")
+              || planBoundary(replacement, "end") !== planBoundary(before, "end"));
+            if (moved && changesTime) {
+              const where = `${remote.start} ${timeLabel(planBoundary(remote, "start"))} to ${remote.end} ${timeLabel(planBoundary(remote, "end"))}`;
+              if (!confirmChange(JSON.stringify(remote), `Someone moved ${remote.activity} to ${where}. Move it to your selected time?`)) return false;
+            }
+          }
+          if (replacement) {
+            if (remote && before) {
+              const fields = new Set([...Object.keys(before), ...Object.keys(replacement)] as (keyof PlanBlock)[]);
+              const changes = Object.fromEntries([...fields].filter(key =>
+                !sameValue(before[key], replacement[key])).map(key => [key, replacement[key]]));
+              current.set(id, { ...remote, ...changes });
+            } else current.set(id, replacement);
+          } else current.delete(id);
+        }
+        try {
+          const saved = await saveSharedPlan(project, latest.revision, [...current.values()]);
+          setSharedPlan(saved);
+          setBlocks(saved.blocks);
+          return true;
+        } catch (cause) {
+          if (typeof cause !== "object" || !cause || !("code" in cause) || cause.code !== "40001") throw cause;
+          latest = await readSharedPlan(project);
+        }
+      }
+      setSharedPlan(latest);
+      setBlocks(latest.blocks);
+      setError("The plan is updating quickly. Try saving again.");
+      return false;
     } catch (cause) {
       setError(formatApiError(cause));
       return false;
+    } finally {
+      sharedWrite.current = false;
+      setSharedBusy(false);
     }
   }
   function clearDraft() {
@@ -827,27 +788,18 @@ export function Planner({ project, account, progressDemo, latestSharedPlan, init
     }
     const rolesByUnit = plannedOpeningCrew(config);
     const active = openings.data?.find(opening => opening.id === activeId && ids.includes(activeId));
-    const roles = rolesByUnit?.[activeId] ?? { crewIds: [] };
+    const selectionKey = JSON.stringify([activeId, [...ids].sort()]);
+    const unassigned = ids.filter(id => !rolesByUnit?.[id]);
+    const assignmentIds = crewBatch.current?.key === selectionKey ? crewBatch.current.ids
+      : unassigned.length ? unassigned : active ? [active.id] : [];
+    const roles = rolesByUnit?.[assignmentIds[0]] ?? { crewIds: [] };
     const popoverId = crewPopoverId + (config === draft ? "-draft" : "-edit");
     function setRoles(leadId: string | undefined, crewIds: string[]) {
-      const selectionKey = (source: string) => JSON.stringify([source, [...ids].sort()]);
-      const unassigned = ids.filter(id => !rolesByUnit?.[id]?.leadId && !rolesByUnit?.[id]?.crewIds.length);
       const leadChanged = leadId !== roles.leadId;
-      if (crewBatch.current?.key !== selectionKey(activeId)) {
-        const source = unassigned.includes(activeId) ? activeId : unassigned[0] ?? activeId;
-        crewBatch.current = { key: selectionKey(source), ids: unassigned.length ? unassigned : [source] };
-        if (source !== activeId) {
-          selectUnit(source);
-          if (leadChanged) crewIds = [];
-          else {
-            leadId = undefined;
-            crewIds = crewIds.filter(id => !roles.crewIds.includes(id));
-          }
-        }
-      }
+      crewBatch.current = { key: selectionKey, ids: assignmentIds };
       const nextCrew = { leadId, crewIds: crewIds.filter(id => id !== leadId) };
       const openingCrew = { ...rolesByUnit };
-      const { ids: batchIds } = crewBatch.current;
+      const batchIds = assignmentIds;
       for (const id of batchIds) openingCrew[id] = nextCrew;
       const message = batchIds.length > 1 && leadId && leadChanged
         ? `Lead assigned to ${batchIds.length} units`
@@ -943,24 +895,27 @@ export function Planner({ project, account, progressDemo, latestSharedPlan, init
               const info = details
                 ? [details.location, details.material, details.catalog, ...details.sizes.map(size => `${details.sizeBasis} · ${size}`)]
                 : [opening.label || diagram?.kind || "Details unavailable"];
-              return <div className="jp-unit-card" key={opening.id} data-active-unit={expanded} data-selected-unit={selected} data-done={done}>
+              return <div className="jp-unit-card" key={opening.id} data-active-unit={expanded} data-selected-unit={selected} data-assigned={!!assigned} data-done={done}>
                 <div className="jp-unit-pick">
                 <button type="button" aria-pressed={selected} data-included={selected}
-                  aria-expanded={expanded} aria-label={`${opening.opening_code}${selected ? " · in activity" : ""}${done ? " · Complete" : ""}`}
+                  aria-expanded={expanded} aria-controls={expanded ? popoverId + "-assignment" : undefined} aria-label={`${opening.opening_code}${selected ? " · in activity" : ""}${done ? " · Complete" : ""}`}
                   onClick={() => {
                     if (!selected) onChange({ ...config, openingIds: [...ids, opening.id] });
                     selectForAssignment(expanded ? "" : opening.id);
                   }}>
-                  <strong>{opening.opening_code}</strong>
-                  <span className="jp-unit-visual">
-                  {diagram ? <img alt="" src={`data:image/svg+xml,${encodeURIComponent(unitSvg(diagram, 60, 35))}`} /> : <SquareDashed size={24} />}
-                  {!expanded && (leadFirstName || crewCount > 0) && <span className="jp-unit-member-summary"
-                    aria-label={[leadFirstName && `Lead: ${leadFirstName}`, crewCount > 0 && `${crewCount} crew`].filter(Boolean).join(", ")}>
-                    {leadFirstName && <span>{leadFirstName}</span>}
-                    {crewCount > 0 && <span><Users size={11} aria-hidden="true" />{crewCount}</span>}
-                  </span>}
+                  <span className="jp-unit-visual" aria-hidden="true">
+                    {diagram ? <img alt="" src={`data:image/svg+xml,${encodeURIComponent(unitSvg(diagram, 40, 38))}`} />
+                      : <SquareDashed size={33} />}
                   </span>
-                  <small className="jp-unit-status" data-done={done}>{done ? <><Check size={11} aria-hidden="true" /> Complete</> : "Open"}</small>
+                  <span className="jp-unit-caption">
+                    <strong>{opening.opening_code}</strong>
+                    {(leadFirstName || crewCount > 0) && <span className="jp-unit-member-summary"
+                      aria-label={[leadFirstName && `Lead: ${leadFirstName}`, crewCount > 0 && `${crewCount} crew`].filter(Boolean).join(", ")}>
+                      {leadFirstName && <span title={leadFirstName}>{leadFirstName}</span>}
+                      {crewCount > 0 && <span><Users size={10} aria-hidden="true" />{crewCount}</span>}
+                    </span>}
+                    <small className="jp-unit-status" data-done={done}>{done ? "Complete" : "Open"}</small>
+                  </span>
                 </button>
                 </div>
                 {selected && <button type="button" className="jp-unit-deselect" aria-label={`Deselect ${opening.opening_code}`}
@@ -971,39 +926,42 @@ export function Planner({ project, account, progressDemo, latestSharedPlan, init
                     selectForAssignment(expanded ? "" : activeId);
                   }}><X size={14} /></button>}
                 <UnitInfo mark={opening.opening_code} lines={info} />
-                {expanded && <div className="jp-unit-assign">
-                  <button type="button" popoverTarget={popoverId + "-lead"} className="jp-unit-role"
-                    aria-label={roles.leadId ? `Lead: ${crewName(roles.leadId)}` : "Lead"}>
-                    {roles.leadId ? crewName(roles.leadId) : "Choose lead"}
-                  </button>
-                  <div id={popoverId + "-lead"} popover="auto" className="jp-unit-crew-popover" role="group" aria-label="Lead installer"
-                    onToggle={event => positionCrewMenu(event.currentTarget)}>
-                    {[undefined, ...crewChoices.filter(id => !roles.crewIds.includes(id))].map(id => (
-                      <button key={id ?? "none"} type="button" aria-pressed={id === roles.leadId}
-                        popoverTarget={popoverId + "-lead"} popoverTargetAction="hide"
-                        onClick={() => setRoles(id, roles.crewIds)}>{id ? crewName(id) : "No lead"}</button>
-                    ))}
-                  </div>
-                  <button type="button" popoverTarget={popoverId} className="jp-unit-role">
-                    {roles.crewIds.length ? `Crew · ${roles.crewIds.length}` : "Choose crew"}
-                  </button>
-                  <div id={popoverId} popover="auto" className="jp-unit-crew-popover" role="group" aria-label="Crew members"
-                    onToggle={event => positionCrewMenu(event.currentTarget)}>
-                    {crewChoices.filter(id => id !== roles.leadId).map(id => (
-                      <label key={id}><input type="checkbox" checked={roles.crewIds.includes(id)}
-                        onChange={() => setRoles(roles.leadId, toggle(roles.crewIds, id))} />{crewName(id)}</label>
-                    ))}
-                  </div>
-                </div>}
               </div>;
             })}</div>
           </section>)}
       </FloorIndex>
+        {assignmentIds.length > 0 && <div id={popoverId + "-assignment"} className="jp-unit-assign">
+          <strong aria-live="polite">Assign to Units ({assignmentIds.length}):</strong>
+          <button type="button" popoverTarget={popoverId + "-lead"} className="jp-unit-role"
+            aria-label={roles.leadId ? `Lead: ${crewName(roles.leadId)}` : "Lead"}>
+            <span>{roles.leadId ? crewName(roles.leadId) : "Choose lead"}</span>
+            <ChevronDown size={14} aria-hidden="true" />
+          </button>
+          <div id={popoverId + "-lead"} popover="auto" className="jp-unit-crew-popover" role="group" aria-label="Lead installer"
+            onToggle={event => positionCrewMenu(event.currentTarget)}>
+            {[undefined, ...crewChoices.filter(id => !roles.crewIds.includes(id))].map(id => (
+              <button key={id ?? "none"} type="button" aria-pressed={id === roles.leadId}
+                popoverTarget={popoverId + "-lead"} popoverTargetAction="hide"
+                onClick={() => setRoles(id, roles.crewIds)}>{id ? crewName(id) : "No lead"}</button>
+            ))}
+          </div>
+          <button type="button" popoverTarget={popoverId} className="jp-unit-role">
+            <span>{roles.crewIds.length ? `Crew · ${roles.crewIds.length}` : "Choose crew"}</span>
+            <ChevronDown size={14} aria-hidden="true" />
+          </button>
+          <div id={popoverId} popover="auto" className="jp-unit-crew-popover" role="group" aria-label="Crew members"
+            onToggle={event => positionCrewMenu(event.currentTarget)}>
+            {crewChoices.filter(id => id !== roles.leadId).map(id => (
+              <label key={id}><input type="checkbox" checked={roles.crewIds.includes(id)}
+                onChange={() => setRoles(roles.leadId, toggle(roles.crewIds, id))} />{crewName(id)}</label>
+            ))}
+          </div>
+        </div>}
       </div>
       {ids.length > 0 && <div className="jp-unit-table-actions">
         <button type="button" aria-controls={unitTableId} aria-expanded={!unitsCollapsed}
           onClick={() => setUnitsCollapsed(current => !current)}>
-          {unitsCollapsed ? "Show units" : "Hide units"}
+          {unitsCollapsed ? `Show units (${ids.length})` : "Hide units"}
           <ChevronDown size={15} aria-hidden="true" />
         </button>
       </div>}
@@ -1215,14 +1173,13 @@ export function Planner({ project, account, progressDemo, latestSharedPlan, init
               const placement = { gridColumn: `${first + 1} / ${end + 1}`, gridRow: lane + 1 };
               if (group.length > 1) {
                 const selected = group.find(item => item.id === selectedBlock);
-                const front = selected ?? block;
                 return <article key={block.id} className="jp-event jp-bundled-event" data-plan-block={block.id}
                   aria-label="Bundled activities" data-stack-selected={!!selected} data-stack-open={bundleIsOpen(group)} data-moving={group.some(item => item.id === preview?.id)}
                   onPointerEnter={event => { if (event.pointerType === "mouse") setHoveredBundle(block.id); }}
                   onPointerLeave={event => { if (event.pointerType === "mouse") setHoveredBundle(current => current === block.id ? "" : current); }}
                   onFocus={event => { if (event.target.matches(":focus-visible")) setFocusedBundle(block.id); }}
                   onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocusedBundle(current => current === block.id ? "" : current); }}
-                  style={{ ...activityColor(activityKey(front)), ...placement, "--jp-stack-depth": group.length - 1 } as CSSProperties}>
+                  style={{ ...activityColor(activityKey(block)), ...placement, "--jp-stack-depth": group.length - 1 } as CSSProperties}>
                   {resizeHandle(block, "start", group)}
                   {resizeHandle(block, "end", group)}
                   {selected && <div className="jp-stack-summary">
@@ -1239,20 +1196,19 @@ export function Planner({ project, account, progressDemo, latestSharedPlan, init
                       onClick={() => void remove(group)}><Trash2 size={13} aria-hidden="true" /></button>
                   </div>}
                   {group.map((item, index) => {
-                    const isFront = item.id === front.id;
-                    const frontIndex = group.indexOf(front);
-                    const depth = isFront ? group.length - 1 : index - Number(index > frontIndex);
-                    return <div key={item.id} className="jp-stack-layer" data-front={isFront}
+                    const isFront = index === 0;
+                    const depth = isFront ? group.length - 1 : index - 1;
+                    return <div key={item.id} className="jp-stack-layer" data-front={isFront} data-activity-selected={selected?.id === item.id}
                       style={{ ...activityColor(activityKey(item)), "--jp-layer-depth": depth, zIndex: depth } as CSSProperties}>
                       <div className="jp-stack-header">
-                        <button type="button" className="jp-stack-title jp-calendar-label" aria-pressed={isFront}
+                        <button type="button" className="jp-stack-title jp-calendar-label" aria-pressed={selected?.id === item.id}
                           title={isFront ? undefined : item.activity}
                           onPointerDown={event => begin(event, item, "move")}
                           onPointerMove={move} onPointerUp={finish} onPointerCancel={cancelGesture}
                           onClick={() => setSelectedBlock(item.id)}>
                           <ActivityIcon activity={item.activity} /><span>{item.activity}</span>
                         </button>
-                        {selected?.id === item.id && <div className="jp-stack-actions">
+                        {selected && <div className="jp-stack-actions">
                           <button type="button" className="jp-stack-edit" aria-label={"Edit " + item.activity}
                             disabled={isEditing([item])} onClick={() => openDetails(item)}><Pencil size={13} aria-hidden="true" /></button>
                           <button type="button" className="jp-stack-edit" aria-label={"Delete " + item.activity}

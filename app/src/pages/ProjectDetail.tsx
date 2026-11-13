@@ -4,7 +4,7 @@ import { JobExecutionPanel } from "../components/projects/JobExecutionPanel";
 import { JobTimecardExport } from "../components/timecard/JobTimecardExport";
 import { JobPackagesPanel } from "../components/warehouse/JobPackagesPanel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { lazyOptional } from "../lib/pwa/lazyOptional";
 import { PartDidNotLoad } from "../lib/pwa/lazyOptionalFallback";
@@ -147,12 +147,13 @@ const CrewGoalCard = lazy(() => import("../components/projects/CrewGoalCard").th
 
 export function ProjectDetail() {
   const { projectId = "" } = useParams();
+  useLayoutEffect(() => { window.scrollTo({ top: 0, behavior: "instant" }); }, [projectId]);
   const [searchParams, setSearchParams] = useSearchParams();
   // Read before the tab is resolved: which tabs a URL may open depends on it.
   const { effectiveRole, isLoading: rolePending } = useEffectiveRole();
-  const canPlan = import.meta.env.DEV && effectiveRole === "owner";
   const isLead = isForemanPlus(effectiveRole);
   const partner = useIsPartnerUser();
+  const canPlan = isLead && partner.data === false;
   const t = useT();
   const tabParam = searchParams.get("tab");
   // The tab resolution, TABS list and legacy-redirect effect all depend on
@@ -282,7 +283,7 @@ export function ProjectDetail() {
   // hidden or legacy ?tab= is stripped back to Overview, so a bookmarked URL
   // can't point at a feature the job doesn't have.
   useEffect(() => {
-    if (tabParam === "planner" && rolePending) return;
+    if (tabParam === "planner" && (rolePending || partner.isPending)) return;
     if (tabParam === "planner" && !canPlan) {
       setSearchParams({}, { replace: true });
       return;
@@ -300,7 +301,7 @@ export function ProjectDetail() {
       navigate(`/studio/j/${projectId}`, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabParam, trackingOnly, tab, rolePending, canPlan]);
+  }, [tabParam, trackingOnly, tab, rolePending, partner.isPending, canPlan]);
 
   const brainTypes = useMemo(() => {
     const map = new Map<
@@ -411,7 +412,7 @@ export function ProjectDetail() {
           tracking job never flashes its body before the redirect fires. Nothing
           is rendered in the gap on purpose (no new loader for a data job); the
           project row resolves in the same tick its own queries do. */}
-      {!modesPending && !(tabParam === "planner" && rolePending) && (
+      {!modesPending && !(tabParam === "planner" && (rolePending || partner.isPending)) && (
       <>
       {tab === "planner" && canPlan && <Suspense fallback={<SkeletonCard height={320} />}><JobPlanner /></Suspense>}
       {tab === "custom-data" && <Suspense fallback={<SkeletonCard height={320} />}><CustomData key={projectId} projectId={projectId} /></Suspense>}

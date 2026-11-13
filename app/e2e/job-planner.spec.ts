@@ -1,12 +1,15 @@
+import type { PlanBlock } from "../src/lib/installerWorkflow/jobPlan";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { TEST_USER, useSupabaseFixtures as replaySupabase } from "./support/supabaseFixtures";
 
 const job = { id: "11111111-1111-4111-8111-111111111111", job_code: "zztest", name: "TEST sandbox", is_test: true };
 const opening = { id: "22222222-2222-4222-8222-222222222222", project_id: job.id, opening_code: "12", window_type_id: null, window_types: null, assigned_window_id: null, status: "planned", confirmed: true, created_at: "2026-11-03T15:00:00Z", page_number: 1, pin_x: 0.5, pin_y: 0.5 };
-async function setup(page: Page, isTest = true, sandbox = true, projectAvailable = true, role: "owner" | "foreman" = "owner") {
+async function setup(page: Page, isTest = true, sandbox = true, projectAvailable = true, role: "owner" | "foreman" | "supervisor" | "installer" = "owner") {
   let language = "en";
   await replaySupabase(page, { role, profileOverrides: () => ({ is_test: isTest, language }) });
   const units: Record<string, any>[] = [], sessions: Record<string, any>[] = [], commands: Record<string, any>[] = [];
+  let revision = 0;
+  let savedBlocks: PlanBlock[] = [];
   const date = new Date().toISOString();
   const shift = { id: "33333333-3333-4333-8333-333333333333", profile_id: TEST_USER.id, project_id: job.id, cost_code_id: null, clock_in_at: date, clock_out_at: null, status: "open", break_seconds: 0, break_started_at: null, projects: job };
   await page.route("**/rest/v1/**", async route => {
@@ -17,6 +20,14 @@ async function setup(page: Page, isTest = true, sandbox = true, projectAvailable
     if (table === "profiles" && url.searchParams.has("is_test")) return reply([{ id: TEST_USER.id, display_name: "TEST foreman", role: "foreman", active: true, is_partner: false }]);
     if (table === "projects") return reply(projectAvailable ? single ? job : [job] : single ? null : []);
     if (table === "rpc/set_my_language") { language = route.request().postDataJSON().p_lang; return reply(null); }
+    if (table === "rpc/get_installer_plan") return reply({ revision, blocks: savedBlocks });
+    if (table === "rpc/save_installer_plan") {
+      const request = route.request().postDataJSON();
+      expect(request.p_project_id).toBe(job.id);
+      expect(request.p_revision).toBe(revision);
+      savedBlocks = request.p_blocks;
+      return reply({ revision: ++revision, blocks: savedBlocks });
+    }
     if (table === "rpc/is_sandbox_project") return reply(sandbox);
     if (table === "time_shifts") return reply(single ? shift : [shift]);
     if (table === "project_openings") return reply([opening, { ...opening, id: "22222222-2222-4222-8222-222222222223", opening_code: "13" }]);
@@ -26,7 +37,7 @@ async function setup(page: Page, isTest = true, sandbox = true, projectAvailable
     if (["rpc/record_crew_work", "rpc/custom_work_command"].includes(table)) commands.push({ command: table });
     return route.fallback();
   });
-  return { commands, sessions, units };
+  return { commands, sessions, units, savedPlan: () => savedBlocks };
 }
 
 
@@ -39,7 +50,7 @@ async function choosePlannerActivity(scope: Page | Locator, name: string) {
 }
 
 test("planner keeps completed units visible and saves dragged priority", async ({ page }) => {
-  const { units, sessions } = await setup(page);
+  const { units, sessions, savedPlan } = await setup(page);
   const second = { ...opening, id: "22222222-2222-4222-8222-222222222223", opening_code: "13" };
   const complete = { ...opening, id: "22222222-2222-4222-8222-222222222224", opening_code: "14" };
   await page.route("**/rest/v1/project_openings?*", route => route.fulfill({ json: [opening, second, complete] }));
@@ -73,10 +84,7 @@ test("planner keeps completed units visible and saves dragged priority", async (
   await expect(queue.locator("[data-drop-position]")).toHaveCount(0);
   await expect(queue.getByRole("button")).toHaveText(["13", "12", "14"]);
   await editor.getByRole("button", { name: "Save changes" }).click();
-  expect(await page.evaluate(() => {
-    const key = Object.keys(localStorage).find(key => key.startsWith("forge:job-plan:"))!;
-    return JSON.parse(localStorage.getItem(key)!)[0].openingIds;
-  })).toEqual([second.id, opening.id, complete.id]);
+  await expect.poll(() => savedPlan()[0]?.openingIds).toEqual([second.id, opening.id, complete.id]);
   await expect(page.locator(".jp-event .jp-scope-unit").first()).toContainText("13");
 });
 
@@ -91,6 +99,21 @@ test("planner priority wraps, scrolls vertically, and reorders across rows", asy
   await page.goto(`/projects/${job.id}?tab=planner`);
   const builder = page.getByRole("region", { name: "Plan an activity" });
   await builder.getByRole("button", { name: "Unit", exact: true }).click();
+  const firstUnit = builder.getByRole("button", { name: "100", exact: true });
+  await firstUnit.click();
+  const cards = builder.locator(".jp-unit-pick > button");
+  const firstRow = await cards.evaluateAll(items => {
+    const y = items[0].getBoundingClientRect().top;
+    return items.filter(item => item.getBoundingClientRect().top === y).length;
+  });
+  const lastInRow = cards.nth(firstRow - 1);
+  const before = (await lastInRow.boundingBox())!;
+  await lastInRow.click();
+  const after = (await lastInRow.boundingBox())!;
+  expect(after).toEqual(before);
+  await expect(builder.locator(".jp-unit-assign")).toContainText("Choose lead");
+  await builder.getByRole("button", { name: "Deselect 100" }).click();
+  await builder.getByRole("button", { name: "Deselect " + (99 + firstRow) }).click();
   const selectAll = builder.getByRole("button", { name: "Select all on Unspecified floor" });
   await selectAll.click();
   await expect(selectAll).toBeDisabled();
@@ -117,9 +140,36 @@ test("planner priority wraps, scrolls vertically, and reorders across rows", asy
   await expect.poll(() => list.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
 });
 
+test("planner unit cards retain their text space on touch screens", async ({ browser }) => {
+  const page = await browser.newPage({ baseURL: "http://127.0.0.1:5194", viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  try {
+    await setup(page);
+    await page.goto("/projects/" + job.id + "?tab=planner");
+    const builder = page.getByRole("region", { name: "Plan an activity" });
+    await builder.getByRole("button", { name: "Unit", exact: true }).tap();
+    const unit = builder.getByRole("button", { name: "12", exact: true });
+    await unit.tap();
+    const selected = builder.getByRole("button", { name: "12 · in activity", exact: true });
+    await expect(selected).toBeVisible();
+    expect(await selected.evaluate(element => {
+      const caption = element.querySelector(".jp-unit-caption")!;
+      const status = element.querySelector(".jp-unit-status")!;
+      const icon = element.querySelector(".jp-unit-visual")!;
+      return {
+        touch: matchMedia("(pointer: coarse)").matches,
+        endPadding: getComputedStyle(element).paddingInlineEnd,
+        captionWider: caption.getBoundingClientRect().width > icon.getBoundingClientRect().width,
+        statusFits: status.scrollWidth <= status.clientWidth,
+      };
+    })).toEqual({ touch: true, endPadding: "0px", captionWider: true, statusFits: true });
+  } finally {
+    await page.close();
+  }
+});
+
 test("fresh planner places activities, edits their specs, and supports mobile placement", async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 1100 });
-  const { commands } = await setup(page);
+  const { commands, savedPlan } = await setup(page);
   const helperId = "55555555-5555-4555-8555-555555555555";
   await page.route("**/rest/v1/profiles?*", async route => {
     if (!new URL(route.request().url()).searchParams.has("is_test")) return route.fallback();
@@ -163,10 +213,7 @@ test("fresh planner places activities, edits their specs, and supports mobile pl
   await expect(assignment).toContainText("Test Installer");
   await expect(assignment).toContainText("Eli Parker");
   expect(await page.locator("[data-plan-block]").evaluate(element => getComputedStyle(element).backgroundColor)).toBe(color);
-  const saved = await page.evaluate(() => {
-    const key = Object.keys(localStorage).find(key => key.startsWith("forge:job-plan:"))!;
-    return JSON.parse(localStorage.getItem(key)!);
-  });
+  const saved = savedPlan();
   expect(saved).toHaveLength(1);
   expect(saved[0]).toMatchObject({ activity: "Flashing", kind: "unit", openingIds: [opening.id], installerIds: [TEST_USER.id, helperId], startMinute: 420, endMinute: 900 });
   expect(commands).toEqual([]);
@@ -205,10 +252,7 @@ test("fresh planner places activities, edits their specs, and supports mobile pl
 
   await composer.getByRole("button", { name: "Schedule", exact: true }).click();
   await expect(assignment).toHaveCount(2);
-  const allWork = await page.evaluate(() => {
-    const key = Object.keys(localStorage).find(key => key.startsWith("forge:job-plan:"))!;
-    return JSON.parse(localStorage.getItem(key)!);
-  });
+  const allWork = savedPlan();
   expect(allWork.find((block: any) => block.activity === "Travel")).toMatchObject({
     kind: "general", installerIds: [], openingIds: [],
   });
@@ -235,8 +279,37 @@ test("planner tab shows current and next job stages", async ({ page }) => {
 });
 
 
-test("foreman cannot open the owner-only planner tab", async ({ page }) => {
-  await setup(page, true, true, true, "foreman");
+test("foreman can plan on a normal project with the active installer roster", async ({ page }) => {
+  await setup(page, false, true, true, "foreman");
+  await page.route("**/rest/v1/projects?*", route => {
+    const project = { ...job, job_code: "FORGE-101", name: "Normal job", is_test: false };
+    return route.fulfill({ json: route.request().headers().accept?.includes("object+json") ? project : [project] });
+  });
+  const roster = [
+    { id: TEST_USER.id, display_name: "Active installer", role: "installer", active: true },
+    { id: "11111111-1111-4111-8111-111111111112", display_name: "Inactive installer", role: "installer", active: false },
+    { id: "11111111-1111-4111-8111-111111111113", display_name: "Office foreman", role: "foreman", active: true },
+  ];
+  await page.route("**/rest/v1/profiles?*", route => {
+    if (!route.request().headers().prefer?.includes("count=exact") || !new URL(route.request().url()).searchParams.get("select")?.includes("retired_at")) return route.fallback();
+    expect(new URL(route.request().url()).searchParams.get("is_test")).toBe("eq.false");
+    return route.fulfill({ json: roster, headers: { "content-range": "0-2/3", "access-control-expose-headers": "content-range" } });
+  });
+  await page.goto(`/projects/${job.id}?tab=planner`);
+  const composer = page.getByRole("region", { name: "Plan an activity" });
+  await composer.getByRole("button", { name: "Activity", exact: true }).click();
+  await choosePlannerActivity(composer, "Travel");
+  const crew = composer.getByRole("region", { name: "Crew", exact: true });
+  await expect(crew.getByRole("button")).toHaveText(["Active installer"]);
+  await crew.getByRole("button", { name: "Active installer" }).click();
+  await composer.getByRole("button", { name: "Schedule", exact: true }).click();
+  await expect(page.locator(".jp-event-body")).toContainText("Active installer");
+  await page.reload();
+  await expect(page.locator(".jp-event-body")).toContainText("Active installer");
+});
+
+test("installer cannot open the planner tab", async ({ page }) => {
+  await setup(page, true, true, true, "installer");
   await page.goto(`/projects/${job.id}/planner`);
   await expect(page).toHaveURL(new RegExp(`/projects/${job.id}$`));
   await expect(page.getByRole("button", { name: "Plan", exact: true })).toHaveCount(0);
@@ -309,7 +382,7 @@ test("planner swaps the activity toolbox and keeps board position", async ({ pag
 });
 
 test("planner moves a bundle, pulls out an activity, and deletes from the card", async ({ page }) => {
-  await setup(page);
+  const { savedPlan } = await setup(page);
   await page.goto(`/projects/${job.id}?tab=planner`);
   const builder = page.getByRole("region", { name: "Plan an activity" });
   await builder.getByRole("button", { name: "Unit", exact: true }).click();
@@ -317,7 +390,7 @@ test("planner moves a bundle, pulls out an activity, and deletes from the card",
   await builder.getByRole("button", { name: "Hide units", exact: true }).click();
   await expect(builder.locator(".jp-floor-browser")).toBeHidden();
   await expect(builder.locator(".jp-priority-list")).toContainText("12");
-  await builder.getByRole("button", { name: "Show units", exact: true }).click();
+  await builder.getByRole("button", { name: "Show units (1)", exact: true }).click();
   await expect(builder.locator(".jp-floor-browser")).toBeVisible();
   await builder.getByRole("button", { name: "Flashing", exact: true }).click();
   await builder.getByRole("button", { name: "Sealing", exact: true }).click();
@@ -332,10 +405,7 @@ test("planner moves a bundle, pulls out an activity, and deletes from the card",
   await editor.getByRole("button", { name: "Save changes", exact: true }).click();
   await page.locator(`button.jp-date[data-date="${date}"]`).click();
 
-  const read = () => page.evaluate(() => {
-    const key = Object.keys(localStorage).find(key => key.startsWith("forge:job-plan:"))!;
-    return JSON.parse(localStorage.getItem(key)!).sort((a, b) => a.activity.localeCompare(b.activity));
-  });
+  const read = () => [...savedPlan()].sort((a, b) => a.activity.localeCompare(b.activity));
   const drag = async (target: Locator, distance = 84, beforeDrop?: () => Promise<void>) => {
     await target.scrollIntoViewIfNeeded();
     const bounds = (await target.boundingBox())!;
@@ -369,10 +439,20 @@ test("planner moves a bundle, pulls out an activity, and deletes from the card",
   });
   await expect(bundle).toBeVisible();
   await bundle.hover();
-  await bundle.getByRole("button", { name: "Flashing", exact: true }).click();
+  const frontTitle = bundle.locator('.jp-stack-layer[data-front="true"] .jp-stack-title');
+  const frontName = await frontTitle.innerText();
+  await bundle.getByRole("button", { name: "Sealing", exact: true }).click();
+  await expect(frontTitle).toHaveText(frontName);
+  await bundle.getByRole("button", { name: "Flashing", exact: true }).hover();
+  await expect(bundle.getByRole("button", { name: "Edit Flashing", exact: true })).toBeVisible();
+  await expect(bundle.getByRole("button", { name: "Edit Sealing", exact: true })).toBeHidden();
+  await expect(bundle.getByRole("button", { name: "Sealing", exact: true })).toHaveAttribute("aria-pressed", "true");
   page.once("dialog", dialog => dialog.accept());
   await page.getByRole("button", { name: "Delete Flashing", exact: true }).click();
   await expect.poll(read).toMatchObject([{ activity: "Sealing" }]);
+  await page.getByRole("button", { name: /^Sealing ·/ }).click();
+  await expect(page.getByRole("button", { name: "Edit Sealing", exact: true })).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(page.getByRole("button", { name: "Delete Sealing", exact: true })).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
 });
 
 test("planner skips Sunday and moves Saturday work to Monday", async ({ page }) => {
@@ -397,7 +477,7 @@ test("planner skips Sunday and moves Saturday work to Monday", async ({ page }) 
   await expect(page.locator(".jp-date-picker input")).toHaveValue("2026-11-09");
 });
 
-test("Building 3 auto-publishes and merges concurrent planner activity", async ({ browser, page }) => {
+test("shared plan auto-publishes and merges concurrent planner activity", async ({ browser, page }) => {
   const project = "c8bf4d94-5086-40ed-9d8c-b3c88add2229";
   const installer = "55555555-5555-4555-8555-555555555555";
   const helper = "55555555-5555-4555-8555-555555555556";
@@ -446,7 +526,7 @@ test("Building 3 auto-publishes and merges concurrent planner activity", async (
     });
   }
   try {
-    const planner = `/projects/${project}/planner?sharedPlan=1`;
+    const planner = `/projects/${project}/planner`;
     await page.goto(planner);
     await second.goto(planner);
     await expect(second.getByRole("button", { name: "Bundle activities" })).toHaveCount(0);
@@ -486,7 +566,10 @@ test("Building 3 auto-publishes and merges concurrent planner activity", async (
     await second.getByRole("button", { name: "Lead", exact: true }).click();
     await second.getByRole("button", { name: "Test installer", exact: true }).click();
     await expect(second.getByText("Lead assigned to 2 units")).toBeVisible();
+    await expect(picker.locator('[data-assigned="true"]')).toHaveCount(2);
     await picker.getByRole("button", { name: "2-1", exact: true }).click();
+    await expect(second.getByText("Assign to Units (1):", { exact: true })).toBeVisible();
+    await expect(picker.locator('[data-selected-unit="true"][data-assigned="false"]')).toHaveCount(1);
     await second.getByRole("button", { name: "Lead", exact: true }).click();
     await second.getByRole("button", { name: "Second installer", exact: true }).click();
     await expect(picker.locator('[aria-label="Lead: Test"]')).toHaveCount(2);
@@ -506,18 +589,16 @@ test("Building 3 auto-publishes and merges concurrent planner activity", async (
     await bundle.hover();
     await expect(bundle.getByRole("button", { name: "Sealing", exact: true }).locator("svg")).toBeVisible();
     const frame = bundle.getByRole("button", { name: "Setting frame", exact: true });
+    const frontTitle = bundle.locator(".jp-stack-layer[data-front=true] .jp-stack-title");
+    const frontName = await frontTitle.innerText();
     await frame.click();
-    const layer = bundle.locator(".jp-stack-layer[data-front=true]");
-    await expect(layer.getByRole("button", { name: "Setting frame", exact: true })).toBeVisible();
-    const back = (await bundle.locator(".jp-stack-layer[data-front=false]").boundingBox())!;
-    const front = (await layer.boundingBox())!;
-    expect(front.y).toBeGreaterThan(back.y);
-    expect(front.y).toBeLessThan(back.y + back.height);
+    await expect(frontTitle).toHaveText(frontName);
     await expect(frame).toHaveAttribute("aria-pressed", "true");
     await bundle.getByRole("button", { name: "Edit Setting frame", exact: true }).click();
     await expect(second.getByRole("region", { name: "Edit activity" }).getByRole("button", { name: "Change activity: Setting frame" })).toBeVisible();
     await expect(bundle.getByRole("button", { name: "Edit Setting frame", exact: true })).toBeDisabled();
     await second.getByRole("region", { name: "Edit activity" }).getByRole("button", { name: "Cancel", exact: true }).click();
+    await frame.hover();
     await expect(bundle.getByRole("button", { name: "Edit Setting frame", exact: true })).toBeEnabled();
 
     await second.locator(`button.jp-date[data-date="${day}"]`).click();

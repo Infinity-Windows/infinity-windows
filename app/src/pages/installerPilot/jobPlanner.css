@@ -128,14 +128,13 @@
   text-align: left;
   cursor: grab;
   touch-action: pan-y;
-
   user-select: none;
 }
 .jp-event[data-selected=true] .jp-work-title { padding-right: 48px; }
 .jp-event-body .jp-card-content { position: sticky; left: 12px; width: max-content; max-width: min(240px, calc(100vw - 64px), 100%); align-self: flex-start; }
 .jp-event-body .jp-card-content:has(.jp-scope) { max-width: min(370px, calc(100vw - 64px), 100%); }
 .jp-event-actions { position: absolute; top: 4px; right: 7px; z-index: 4; display: flex; gap: 2px; }
-.job-planner .jp-event-edit { min-height: 24px; min-width: 24px; padding: 4px; display: grid; place-items: center; border: 0; background: var(--surface); color: var(--activity-color); }
+.job-planner .jp-event-edit { min-height: 24px; min-width: 24px; padding: 4px; display: grid; place-items: center; border: 0; background: transparent; color: var(--activity-color); }
 .jp-time-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .jp-time-fields label { min-width: 0; }
 .jp-time-fields input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 36px; padding-block: 5px; }
@@ -224,7 +223,7 @@
 .jp-unit-stage h3 span { margin-left: 4px; color: var(--muted); }
 .jp-unit-card { min-width: 0; position: relative; }
 .jp-unit-pick { position: relative; }
-.job-planner .jp-unit-pick > button:first-child { width: 100%; padding-right: 34px; }
+.job-planner .jp-unit-pick > button:first-child { width: 100%; }
 .job-planner .jp-unit-options :is(.jp-unit-info-trigger, .jp-unit-deselect) {
   position: absolute;
   top: 0;
@@ -240,11 +239,8 @@
 }
 .job-planner .jp-unit-options .jp-unit-info-trigger { top: auto; bottom: 0; }
 .job-planner .jp-unit-card[data-selected-unit=true] :is(.jp-unit-info-trigger, .jp-unit-deselect) { max-height: 50%; }
-.job-planner .jp-unit-card[data-selected-unit=true] .jp-unit-pick > button:first-child { padding-right: 34px; }
 @media (pointer: coarse) {
-  .job-planner .jp-unit-pick > button:first-child { padding-right: 44px; }
   .job-planner .jp-unit-options :is(.jp-unit-info-trigger, .jp-unit-deselect) { width: 44px; height: 44px; }
-  .job-planner .jp-unit-card[data-selected-unit=true] .jp-unit-pick > button:first-child { padding-right: 44px; }
 }
 .jp-unit-info { width: max-content; max-width: min(300px, 90vw); color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
 .jp-unit-info:popover-open { display: grid; gap: 4px; font-size: 13px; }
@@ -262,7 +258,6 @@
 }
 .jp-composer[hidden] { display: none; }
 .jp-compose-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.jp-compose-header .jp-unit-info ul { margin: 0; padding-inline-start: 1.1em; }
 .jp-draft { display: grid; gap: 8px; min-width: 0; }
 .jp-compose-tools { min-width: 0; }
 .jp-draft > :is(.jp-compose-tools, .jp-bundle-activities, .jp-compose-footer) { border-top: 1px solid var(--border); padding-top: 8px; }
@@ -296,14 +291,15 @@
 .jp-unit-stage > h3 { box-sizing: border-box; min-height: var(--jp-floor-header-height); padding: 4px 6px; border-radius: 5px; }
 
 
-.jp-compose-tools { --jp-unit-row-height: 64px; --jp-unit-row-gap: 6px; }
+.jp-compose-tools { --jp-unit-row-height: 64px; --jp-unit-row-gap: 5px; }
 .jp-compose-tools .jp-floor-list {
   max-height: calc(var(--jp-floor-header-height) + 3 * var(--jp-unit-row-height) + 3 * var(--jp-unit-row-gap));
 }
-.jp-compose-tools .jp-unit-options { grid-template-columns: repeat(auto-fill, minmax(min(100%, 100px), 1fr)); gap: var(--jp-unit-row-gap); }
+.jp-compose-tools .jp-unit-options { grid-template-columns: repeat(auto-fill, minmax(min(100%, 112px), 1fr)); gap: var(--jp-unit-row-gap); }
 .job-planner .jp-compose-tools .jp-unit-pick > button:first-child {
-  gap: 1px;
-  padding: 4px 22px 4px 5px;
+  grid-template-columns: minmax(0, 44%) minmax(0, 1fr);
+  align-items: stretch; justify-items: stretch; gap: 0;
+  padding: 0; overflow: hidden;
   min-height: var(--jp-unit-row-height);
   height: 100%;
 }
@@ -312,46 +308,59 @@
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--muted) 50%, transparent) transparent;
 }
-.jp-compose-tools .jp-unit-options img { width: 25px; height: 16px; }
-.jp-compose-tools .jp-unit-visual > svg { width: 16px; height: 16px; }
 
 
 .job-planner .jp-close-composer { flex: none; display: grid; place-items: center; width: 36px; min-height: 36px; padding: 0; margin-inline-start: auto; }
-.jp-unit-card[data-active-unit=true] {
-  grid-column: span 2;
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  align-items: stretch;
-  border: 1px solid var(--accent);
-  border-radius: 8px;
-  background: var(--accent-soft);
+.job-planner .jp-unit-card[data-active-unit=true] .jp-unit-pick > button:first-child {
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
-.job-planner .jp-unit-card[data-active-unit=true][data-selected-unit=true] .jp-unit-pick > button:first-child {
-  height: 100%; min-width: 50px; padding-right: 4px; border-color: transparent; background: transparent;
+.jp-unit-visual {
+  display: grid; place-items: center; min-width: 0; padding: 3px;
+  background: color-mix(in srgb, var(--surface), transparent 70%);
+  border-inline-end: 1px solid color-mix(in srgb, var(--border), transparent 45%);
 }
-.jp-unit-visual { display: flex; align-items: center; gap: 4px; min-width: 0; width: 100%; }
-.jp-unit-visual > :is(img, svg) { flex-shrink: 0; }
-.jp-unit-visual:has(.jp-unit-member-summary) > img { width: 20px; height: auto; }
-.jp-unit-member-summary { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; font-size: 10px; line-height: 1.1; }
-.jp-unit-member-summary > span { display: inline-flex; align-items: center; gap: 2px; }
-.jp-unit-member-summary > span:not(:has(svg)) { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.jp-unit-member-summary { min-width: 0; }
+.jp-unit-visual > :is(img, svg) { width: min(100%, 40px); height: 38px; }
+.jp-unit-visual > svg { width: min(100%, 33px); height: 33px; color: var(--muted); }
+.jp-unit-caption {
+  display: grid; grid-template-rows: auto 1fr auto; gap: 2px; min-width: 0;
+  align-items: center; padding: 3px 4px 4px 5px; text-align: start;
+}
+.jp-unit-caption > strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jp-unit-card[data-selected-unit=true] .jp-unit-caption > strong { padding-inline-end: 15px; }
+.jp-unit-caption > .jp-unit-status {
+  grid-row: 3; padding-inline-end: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.jp-unit-status[data-done=false] { color: #72b7ff; }
+.jp-unit-member-summary { display: flex; align-items: center; gap: 3px; min-width: 0; font-size: 10px; line-height: 1.1; }
+.jp-unit-member-summary > span { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+.jp-unit-member-summary > span:not(:has(svg)) { display: block; overflow: hidden; text-overflow: ellipsis; font-weight: 650; }
+.jp-unit-member-summary > span:has(svg) { flex: none; color: var(--muted); }
 .jp-priority { display:flex; align-items:center; gap:5px; margin-bottom:8px; min-width:0; font-size:12px; }
 .jp-priority-list { --jp-priority-row-height:30px; --jp-priority-gap:4px; position:relative; display:flex; flex-wrap:wrap; align-content:start; gap:var(--jp-priority-gap); max-height:calc(2.5 * var(--jp-priority-row-height) + 2 * var(--jp-priority-gap)); overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; flex:1; min-width:0; }
 .job-planner .jp-priority button { display:inline-flex; align-items:center; gap:4px; flex:none; height:var(--jp-priority-row-height); min-height:var(--jp-priority-row-height); padding:3px 7px; white-space:nowrap; }
 .job-planner .jp-priority-list button[aria-pressed=true] { border-color:var(--accent); }
 .jp-priority-list small { color:var(--muted); }
-.jp-unit-assign { display: grid; grid-template-columns: minmax(0, 1fr); align-content: center; padding: 3px 34px 3px 4px; }
-@media (pointer: coarse) { .jp-unit-assign { padding-right: 44px; } }
-.job-planner .jp-unit-assign > .jp-unit-role {
-  display: block; grid-column: 1; border: 0; background: transparent; min-height: 28px; padding: 2px;
-  text-align: start; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.jp-unit-assign {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px;
+  margin-top: 6px; padding: 4px 0; font-size: 12px;
 }
+.job-planner .jp-unit-card[data-selected-unit=true][data-assigned=false] .jp-unit-pick > button:first-child {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--surface), var(--accent) 8%);
+}
+.job-planner .jp-unit-assign > .jp-unit-role {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-height: 38px; min-width: 110px; max-width: 100%; padding: 5px 9px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface);
+  text-align: start; font-size: 12px;
+}
+.jp-unit-role > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jp-unit-role > svg { flex: none; color: var(--muted); }
+@media (pointer: coarse) { .job-planner .jp-unit-assign > .jp-unit-role { min-height: 44px; } }
 .jp-unit-crew-popover { position:fixed; inset:auto; margin:0; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--surface); padding: 8px 12px; max-width:calc(100vw - 16px); }
 .jp-unit-crew-popover:popover-open { display: grid; gap: 4px; max-height: 55dvh; overflow: auto; }
 .job-planner .jp-unit-crew-popover label { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
 .job-planner .jp-unit-crew-popover input { width: auto; min-height: 0; }
-@media (max-width: 360px) { .jp-unit-card[data-active-unit=true] { grid-column: 1 / -1; } }
 
 .jp-compose-selection { position: relative; flex: 0 1 380px; min-width: 0; }
 .job-planner .jp-activity-trigger {
@@ -373,11 +382,17 @@
 .jp-activity-menu button > span { flex: 1; }
 .jp-activity-menu button > svg { flex: none; width: 16px; height: 16px; }
 .job-planner .jp-activity-menu button:is(:hover, :focus-visible, [aria-pressed=true]) { background: var(--accent-soft); }
-.job-planner .jp-compose-tools .jp-unit-options :is(.jp-unit-info-trigger, .jp-unit-deselect) { width: 23px; height: 25px; }
+.job-planner .jp-compose-tools .jp-unit-options :is(.jp-unit-info-trigger, .jp-unit-deselect) { width: 21px; height: 22px; }
+@container (max-width: 460px) {
+  .jp-compose-tools .jp-unit-options { grid-template-columns: repeat(auto-fill, minmax(min(100%, 124px), 1fr)); }
+  .job-planner .jp-compose-tools .jp-unit-pick > button:first-child {
+    grid-template-columns: minmax(0, 34%) minmax(0, 1fr);
+  }
+}
 @media (pointer: coarse) {
-  .jp-compose-tools .jp-unit-options { grid-template-columns: repeat(auto-fill, minmax(min(100%, 110px), 1fr)); }
-  .job-planner .jp-compose-tools .jp-unit-pick > button:first-child { min-height: 66px; padding-inline-end: 31px; }
-  .job-planner .jp-compose-tools .jp-unit-options :is(.jp-unit-info-trigger, .jp-unit-deselect) { width: 32px; height: 32px; }
+  .job-planner .jp-compose-tools .jp-unit-options :is(.jp-unit-info-trigger, .jp-unit-deselect) { width: 28px; height: 28px; }
+  .jp-unit-card[data-selected-unit=true] .jp-unit-caption > strong { padding-inline-end: 21px; }
+  .jp-unit-caption > .jp-unit-status { padding-inline-end: 18px; }
 }
 .jp-create-actions { display: flex; align-items: center; gap: 8px; justify-self: end; }
 @container (max-width: 540px) {
@@ -473,7 +488,14 @@
 .job-planner .jp-stack-title { flex: 1; }
 .job-planner .jp-stack-edit { flex: none; }
 .job-planner .jp-stack-body { height: auto; min-height: 24px; padding: 3px 7px 4px; cursor: default; }
-.jp-stack-actions { display: flex; flex: none; align-items: center; gap: 2px; padding-inline: 2px 7px; }
+.jp-stack-actions { display: none; flex: none; align-items: center; gap: 2px; padding-inline: 2px 7px; }
+.jp-stack-layer[data-activity-selected=true] .jp-stack-actions,
+.jp-stack-layer:has(:focus-visible) .jp-stack-actions { display: flex; }
+
+@media (hover: hover) {
+  .jp-bundled-event:has(.jp-stack-layer:hover) .jp-stack-layer:not(:hover, :has(:focus-visible)) .jp-stack-actions { display: none; }
+  .jp-stack-layer:hover .jp-stack-actions { display: flex; }
+}
 .job-planner .jp-stack-actions .jp-stack-edit { min-width: 22px; justify-content: center; }
 .job-planner .jp-stack-title { cursor: grab; touch-action: pan-y; }
 
@@ -484,11 +506,10 @@
 @media (pointer: coarse) { .jp-bundled-event > .jp-resize { width: 11px; } }
 
 @media (hover: hover) {
-  .jp-event:not(.jp-bundled-event):hover, .jp-stack-layer[data-front=false]:hover {
+  .jp-event:not(.jp-bundled-event):hover {
     border-color: color-mix(in srgb, var(--activity-color), var(--border) 25%);
     background: color-mix(in srgb, var(--surface), var(--activity-color) 27%);
   }
-  .job-planner .jp-stack-layer[data-front=false] .jp-stack-title:hover { background: rgb(255 255 255 / 5%); }
 }
 
 .jp-stack-summary {
