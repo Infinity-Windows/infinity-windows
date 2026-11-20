@@ -1,3 +1,4 @@
+import {SkeletonList} from "../../components/ui/States";
 import {unitDisplay} from "./unitDisplay";
 import {TablePage} from "./TablePage";
 import {formatHours} from "./formatHours";
@@ -225,11 +226,11 @@ export function UnitFirstTable({ jobs, jobNames, rows, reviewRows, active }: { r
  })),[openings,factsByOpening,recordsByOpening,phasesByOpening]);
  if(!selected.length) return <p>No jobs with recorded work in this date range.</p>;
 
- const error=inventory.error || units.error || contexts.error || phases.error;
+ const error = [inventory, units, contexts, phases].find(query => query.isLoadingError)?.error;
 
  if(error) return <p role="alert">Unit inventory or progress could not load completely: {String(error)}</p>;
 
- if(inventory.isPending || units.isPending || phases.isPending || (ids.length>0 && contexts.isPending)) return <p role="status">Loading units and phase evidence…</p>;
+ if(inventory.isPending || units.isPending || phases.isPending || (ids.length>0 && contexts.isPending)) return <div role="status"><p>Loading units and activity records…</p><SkeletonList rows={4} /></div>;
 
  const sortValue=(members:ReviewOpening[],groupLabel:string):string|number|null=>{
   if(sort.key==="unit")return groupLabel;

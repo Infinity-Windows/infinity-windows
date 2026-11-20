@@ -12,7 +12,7 @@ export function useJobScope(jobs:string[],active:boolean) {
  const units=useQuery({...reportQueryPolicy,queryKey:["dataReview",owner,"units",selected],queryFn:({signal})=>listWorkUnits(undefined,signal,selected),enabled});
  const ids=(inventory.data??[]).map(o=>o.id).sort();
  const contexts=useQuery({...reportQueryPolicy,queryKey:["dataReview",owner,"openingReview",ids.join(","),"taxonomy-v4-catalog-dimensions"],queryFn:({signal})=>readOpeningContexts(ids,signal),enabled:enabled&&ids.length>0});
- const error=inventory.error||units.error||(ids.length>0&&contexts.error);
+ const error = [inventory, units, ...(ids.length ? [contexts] : [])].find(query => query.isLoadingError)?.error;
  const loading=enabled&&(inventory.isPending||units.isPending||(ids.length>0&&contexts.isPending));
  const scopes=new Map<string,JobScope>();
  if(enabled&&!loading&&!error) for(const id of selected){

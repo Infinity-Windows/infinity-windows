@@ -1,3 +1,4 @@
+import {SkeletonCard,SkeletonList} from "../../components/ui/States";
 import {ReportDateRange} from "./ReportDateRange";
 import {useEffect,useMemo,useState} from "react";
 import {useQuery} from "@tanstack/react-query";
@@ -47,7 +48,10 @@ function ActivityWorkspace({ active }: { active: boolean }) {
   const selectedJobIds = includedJobs(available.data ?? [],pageJobs);
   const effectiveJobs = selectedJobIds;
   useEffect(()=>{setPageJobs(null);},[from,until]);
-  const scoped = active && !!projects.data && rangeFrom < rangeUntil && selectedJobIds.length > 0;
+  const datesValid = rangeFrom < rangeUntil;
+  const scopeLoading = available.isPending || projects.isPending;
+  const scopeError = available.isLoadingError || projects.isLoadingError;
+  const scoped = active && !scopeLoading && !scopeError && datesValid && selectedJobIds.length > 0;
   const sessions = useQuery({ ...reportQueryPolicy, refetchInterval:recentRefresh,refetchIntervalInBackground:false,queryKey: ["dataReview", owner, "workSessions", selectedJobIds, from, until], queryFn: ({ signal }) => listWorkSessions(undefined, undefined, { projectIds: selectedJobIds, from: rangeFrom, until: rangeUntil, signal }), enabled: scoped });
   const historical = useQuery({ ...reportQueryPolicy, refetchInterval:recentRefresh,refetchIntervalInBackground:false,queryKey: ["dataReview", owner, "historical-phases-v1", selectedJobIds.join(","), from, until], queryFn: ({ signal }) => readHistoricalLabor(selectedJobIds, rangeFrom, rangeUntil, signal, true), enabled: scoped, placeholderData: undefined });
   const people = useQuery({ ...reportQueryPolicy, queryKey: ["dataReview", owner, "people"], queryFn: listProfiles, enabled: scoped });
@@ -70,7 +74,10 @@ function ActivityWorkspace({ active }: { active: boolean }) {
   const pageRows = laborRows.map(r => ({ ...r, job: jobNames.get(r.jobId ?? "") ?? r.job })).filter(row => pageJobs === null || pageJobs.includes(row.jobId ?? ""));
   const inspectedRows=pageRows;
   const jobOptions=(available.data??[]).map(id=>({key:id,label:jobNames.get(id)??id})).sort((a,b)=>a.label.localeCompare(b.label));
-  const datesValid=rangeFrom<rangeUntil;
+  const activityQueries = [sessions, historical, units, people, ...(openingIds.length ? [openingContext] : [])];
+  const activityLoading = scoped && activityQueries.some(query => query.isPending);
+  const activityError = scoped && activityQueries.some(query => query.isLoadingError);
+  const refreshing = !scopeLoading && !activityLoading && [available, projects, ...activityQueries].some(query => query.isRefetching);
   const pageControls = <div className="report-page-controls">
 
     <div className="report-top-controls">
@@ -91,10 +98,19 @@ function ActivityWorkspace({ active }: { active: boolean }) {
   </>;
   return <div className="activity-explorer">
     {pageControls}
-    {!datesValid ? <p role="alert">Start date must not be after the end date.</p> : <>
+    {!datesValid ? <p role="alert">Start date must not be after the end date.</p>
+      : scopeError ? <p role="alert">Job availability could not be loaded.</p>
+      : scopeLoading ? <div role="status">
+        <p>Loading work dashboard…</p>
+        <SkeletonCard />
+        <SkeletonList rows={4} />
+      </div> : <>
+      <p className="report-refresh-status muted" role="status">{refreshing ? "Updating report…" : ""}</p>
       <ClockedLabor includeUnassigned={pageJobs === null || pageJobs.length === 0} jobStatuses={jobStatuses} includeRework={includeRework} jobNames={jobNames} active={active} jobs={effectiveJobs} from={rangeFrom} until={rangeUntil} activityRecords={null} />
     <section className="activity-partial-evidence" aria-label="Units and linked work">
-    {available.error||projects.error?<p role="alert">Job availability could not be loaded.</p>:sessions.error||historical.error||units.error||openingContext.error||people.error?<p role="alert">Activity evidence could not be loaded. Clocked hours remain separate.</p>:scoped&&(sessions.isPending||historical.isPending||units.isPending||people.isPending||(openingIds.length>0&&openingContext.isPending))?<p role="status">Tracing recorded activities…</p>:recordInspector}
+    {activityError ? <p role="alert">Activity evidence could not be loaded. Clocked hours remain separate.</p>
+      : activityLoading ? <div role="status"><p>Loading units and activity records…</p><SkeletonList rows={4} /></div>
+      : recordInspector}
       <ChartSlot view="records"><RecordScatter people={personNames} roles={new Map((people.data??[]).map(p=>[p.id,p.role]))} jobs={effectiveJobs} jobNames={jobNames} from={rangeFrom} until={rangeUntil} timers={[...reconciliation.rows,...reconciliation.held]} active={active && !!charts?.open && charts.view === "records"}/></ChartSlot>
     </section>
     </>}

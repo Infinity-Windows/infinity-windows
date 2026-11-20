@@ -15,6 +15,7 @@ vi.mock("../../lib/timeclock", async original => ({ ...await original<typeof imp
 vi.mock("./historicalLabor", async original => ({ ...await original<typeof import("./historicalLabor")>(), readHistoricalLabor: vi.fn(async () => []) }));
 vi.mock("../../lib/signedIn", () => ({ signInMark: () => ({ userId: "owner", generation: 1 }) }));
 vi.mock("./reportControls", async original => ({ ...await original<typeof import("./reportControls")>(), denverToday: () => "2026-10-23" }));
+import { readAvailableJobs } from "./availableJobs";
 import { readComparisonOpenings } from "./comparisonInventory";
 import { listWorkSessions, listWorkUnits } from "../../lib/customWork/api";
 import { listTeamShifts } from "../../lib/timeclock";
@@ -26,7 +27,16 @@ it("bounds the first load, sends changed selections to readers, keeps cleared fi
   const settle = async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); }); };
   const render = async (active: boolean) => { await act(async () => root.render(<QueryClientProvider client={client}><ActivityExplorer active={active} /></QueryClientProvider>)); await settle(); };
   try {
-    await render(true); await settle();
+    let finishAvailability!: (jobs: string[]) => void;
+    const availability = new Promise<string[]>(resolve => { finishAvailability = resolve; });
+    vi.mocked(readAvailableJobs).mockReturnValueOnce(availability);
+    await render(true);
+    expect(host.textContent).toContain("Loading work dashboard");
+    expect(host.querySelector(".report-jobs-table")).toBeNull();
+    expect(host.querySelector("#activity-record-table")).toBeNull();
+    expect(listTeamShifts).not.toHaveBeenCalled();
+    finishAvailability(["a", "b"]);
+    await settle(); await settle();
     const initial = vi.mocked(listWorkSessions).mock.calls[0][2]!;
     expect(initial.projectIds).toEqual(["a", "b"]);
     expect(vi.mocked(readComparisonOpenings).mock.lastCall?.[0]).toEqual(["a","b"]);
@@ -34,6 +44,16 @@ it("bounds the first load, sends changed selections to readers, keeps cleared fi
     expect(host.querySelector('[aria-label="Select unit 1 B"]')).toBeNull();
     expect(Number.isFinite(initial.from)).toBe(true); expect(Number.isFinite(initial.until)).toBe(true);
     expect(initial.until! - initial.from!).toBeLessThan(33 * 86400000);
+    let finishRefresh!: (sessions: []) => void;
+    vi.mocked(listWorkSessions).mockReturnValueOnce(new Promise(resolve => { finishRefresh = resolve; }));
+    const activityTable = host.querySelector("#activity-record-table");
+    const refresh = client.invalidateQueries({ queryKey: ["dataReview", "owner:1", "workSessions"] });
+    await settle();
+    expect(host.textContent).toContain("Updating report");
+    expect(host.querySelector("#activity-record-table")).toBe(activityTable);
+    finishRefresh([]);
+    await refresh; await settle();
+    expect(host.textContent).not.toContain("Updating report");
     const jobs = host.querySelector('[aria-label="Select Jobs"]')!.closest("details")!;
     expect(jobs.textContent).not.toContain("No work");
     const boxes = jobs.querySelectorAll<HTMLInputElement>('.report-multi-options input[type="checkbox"]');
