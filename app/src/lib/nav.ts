@@ -212,8 +212,8 @@ export const NAV: NavDest[] = [
   { id: "job-history", to: "/jobs/history", label: "Job history", icon: "▤", minRole: "supervisor" },
   { id: "studio", to: "/studio", label: "Studio", icon: "◧", minRole: "supervisor" },
   // The company's ledger of where time goes (grilled 2026-08-17):
-  // supervisor+ ONLY — on-tool and per-person time live here.
-  { id: "data", to: "/data", label: "Data", icon: "▤", minRole: "supervisor" },
+  // Owners only for the reporting release.
+  { id: "data", to: "/data", label: "Data", icon: "▤", minRole: "owner" },
   { id: "summary", to: "/summary", label: "Summary", icon: "▤", minRole: "supervisor" },
   { id: "ask", to: "/ask", label: "Ask", icon: "?", minRole: "installer" },
   { id: "notifications", to: "/notifications", label: "Notifications", icon: "◔", minRole: "installer" },

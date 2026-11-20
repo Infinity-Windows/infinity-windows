@@ -888,9 +888,9 @@ export default function App() {
             <Route
               path="/data"
               element={
-                <RequireRole path="/data">
+                <RequireRealOwner>
                   <DataRoute />
-                </RequireRole>
+                </RequireRealOwner>
               }
             />
             <Route path="/summary" element={<RequireRole path="/summary"><DataHub summary /></RequireRole>} />

@@ -19,7 +19,6 @@ import type { WorkKey } from "./workCatalog";
 import type { DesignKey } from "./designCatalog";
 import type { ScheduleConflictKey } from "./scheduleConflictCatalog";
 import type { ValuesKey } from "./valuesCatalog";
-import type { WorkDataKey } from "./workDataCatalog";
 import type { JobLocationKey } from "./jobLocationCatalog";
 
 /**
@@ -5656,7 +5655,7 @@ export const CATALOG = {
  * keys are part of this type through a type-only import, which costs the
  * entry chunk nothing, while its strings ride in the route's own chunk.
  */
-export type TKey = keyof typeof CATALOG | WorkKey | DesignKey | ScheduleConflictKey | ValuesKey | WorkDataKey | JobLocationKey;
+export type TKey = keyof typeof CATALOG | WorkKey | DesignKey | ScheduleConflictKey | ValuesKey | JobLocationKey;
 
 /**
  * Add a lazily loaded phrasebook to the live catalog. Called at module load

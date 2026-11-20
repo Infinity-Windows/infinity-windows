@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-
 import { expect, it, vi } from "vitest";
 import { DataComparison } from "./DataComparison";
 const reads = vi.hoisted(() => ({ history: vi.fn(async () => []) }));
-vi.mock("./data-designer-reference.html?raw", () => ({ default: "<p>Offline pilot fixture</p>" }));
 vi.mock("../../lib/i18n", () => ({ useLanguage: () => ({ lang: "en" }) }));
 vi.mock("../../lib/signedIn", () => ({ signInMark: () => ({ userId: "owner", generation: 1 }) }));
 vi.mock("../../lib/api", () => ({ listProjectsAnyStatus: vi.fn(async () => []) }));
@@ -41,25 +40,24 @@ it("keeps comparison controls while pausing inactive work, shares caches, withou
   const settle = async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); };
   const click = async (text: string) => { const button = [...host.querySelectorAll("button")].find(node => node.textContent === text)!; expect(button).toBeTruthy(); await act(async () => button.click()); await settle(); };
   try {
-    await act(async () => root.render(<QueryClientProvider client={client}><DataComparison evidence={<p>Evidence fixture</p>} /></QueryClientProvider>));
+    await act(async () => root.render(<QueryClientProvider client={client}><DataComparison /></QueryClientProvider>));
     await settle();
+    expect([...host.querySelectorAll('[role="tab"]')].map(tab => tab.textContent)).toEqual(["Job Performance", "Work Dashboard"]);
     await click("Current filter 0");
-    await click("Proposed");
+    await click("Work Dashboard");
     expect(listTeamShifts).toHaveBeenCalledTimes(1);
     expect(listProjectsAnyStatus).toHaveBeenCalledTimes(1);
     expect(reads.history).toHaveBeenCalledTimes(1);
-    await click("Pilot");
-    expect(host.querySelector("iframe")?.title).toContain("fabricated sample data");
     focusManager.setFocused(false); focusManager.setFocused(true); await settle();
     expect(listTeamShifts).toHaveBeenCalledTimes(1);
-    await click("Current");
+    await click("Job Performance");
     expect(host.textContent).toContain("Current filter 1");
     expect(host.textContent).not.toContain("Refresh report");
     await act(async () => { await client.invalidateQueries({ queryKey: ["dataReview", "owner:1"] }); });
     expect(listTeamShifts).toHaveBeenCalledTimes(2);
     expect(listProjectsAnyStatus).toHaveBeenCalledTimes(2);
     expect(reads.history).toHaveBeenCalledTimes(1);
-    await click("Proposed");
+    await click("Work Dashboard");
     expect(reads.history).toHaveBeenCalledTimes(2);
     expect(listTeamShifts).toHaveBeenCalledTimes(2);
   } finally { await act(async () => root.unmount()); client.clear(); host.remove(); focusManager.setFocused(undefined); }
