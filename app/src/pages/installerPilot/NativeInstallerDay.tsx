@@ -675,6 +675,7 @@ function DayView({ sandbox, person, day, actions, preview, previewClock, planBlo
         return lead === person ? text("You", "Tú") : lead ? leadNames.data?.get(lead)?.split(/\s+/)[0] : undefined;
     };
     return <div className="installer-task-board workday-simple" lang={lang}>
+      <p className="wd-clock-status" data-testid="wd-clock-status" data-state={clockStatus} role="status"><span aria-hidden="true"/>{clockStatusLabel}</p>
       {createUnit && <UnitDetailsDialog title={text("Create unit", "Crear unidad")} onClose={() => setCreateUnit(false)}>
         <UnitDetailsPanel projectId={sandbox.id} createOffline={actions.createUnit} onCreated={id => {
           setAddedUnits(current => ({ ...current, [value(picked)]: [...(current[value(picked)] ?? []), id] }));
@@ -695,7 +696,7 @@ function DayView({ sandbox, person, day, actions, preview, previewClock, planBlo
         {jobPicker ? jobPicker(sandbox.job_code)
           : !embedded && (!preview || params.has("planAs")) ? <WorkdayJobs key={sandbox.id} profileId={person} currentJob={sandbox.id}
               previewDate={preview ? day : undefined} jobName={scope ? sandbox.job_code : text("Company work", "Trabajo de la empresa")} />
-          : <strong>{scope ? sandbox.job_code : text("Company work", "Trabajo de la empresa")}</strong>}{preview && previewLabel && <small>{previewLabel}</small>}<small className="wd-clock-status" data-testid="wd-clock-status" data-state={clockStatus} role="status"><span aria-hidden="true"/>{clockStatusLabel}</small></div><div className="wd-heading-right">{clockControls}<button className="wd-language" onClick={() => setLang(es ? "en" : "es")} aria-label={es ? "Change language to English" : "Cambiar idioma a español"}>{es ? "English" : "Español"}</button></div></header>
+          : <strong>{scope ? sandbox.job_code : text("Company work", "Trabajo de la empresa")}</strong>}{preview && previewLabel && <small>{previewLabel}</small>}</div><div className="wd-heading-right">{clockControls}<button className="wd-language" onClick={() => setLang(es ? "en" : "es")} aria-label={es ? "Change language to English" : "Cambiar idioma a español"}>{es ? "English" : "Español"}</button></div></header>
       {toolbox}
       {published.isPending && <p role="status">{text("Loading today’s plan…", "Cargando el plan de hoy…")}</p>}
       {published.isError && <p role="alert">{formatApiError(published.error)}</p>}
