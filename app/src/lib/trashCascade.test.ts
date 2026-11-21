@@ -169,6 +169,14 @@ const CASCADE_COVERED: Record<string, string> = {
   // project_financials above — the row means nothing without the job, so the
   // final `delete from projects` takes it.
   project_build_facts: "ON DELETE CASCADE from projects (the pk is the FK)",
+  // Job plans, Workday and unit details (20261130000000 to 20261130110000). A
+  // plan, its done marks and its lead changes describe one job and nothing
+  // else, and a unit's edit history describes one unit, so each goes with its
+  // parent rather than being detached.
+  installer_job_plans: "ON DELETE CASCADE from projects (the pk is the FK, 20261130000000)",
+  plan_activity_done_marks: "ON DELETE CASCADE from projects and from project_openings (20261130080000)",
+  plan_unit_lead_changes: "ON DELETE CASCADE from projects and from project_openings (20261130110000)",
+  unit_detail_edit_history: "ON DELETE CASCADE from project_openings (20261130060000)",
 };
 
 /** Original identity evidence intentionally survives job purge. These private
