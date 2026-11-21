@@ -136,16 +136,17 @@ function PreviewDay({ sandbox, person, day, planBlock, planName, embedded, jobPi
     }, start: async (choice, unit) => {
         if (clockState === "break") return;
         if (clockState === "off") setClock("working");
-        begin(choice, unit, !!active?.workday_machinery_started_at);
+        begin(choice, unit);
     } };
-    function begin(choice: Choice, unit: string | undefined, continueMachinery: boolean) {
+    function begin(choice: Choice, unit: string | undefined) {
         const at = Date.now();
         const session: WorkSession = {
             id: crypto.randomUUID(), profile_id: person, project_id: choice.scope === "company" ? null : sandbox.id,
             unit_id: unit ?? null, shift_id: "preview", stage: choice.scope === "unit" ? choice.activity : "Idle time",
             description: choice.scope === "unit" ? "" : choice.activity, started_at: new Date(at).toISOString(),
             ended_at: null, end_reason: null, delay_reason: "", outcome: null, participation: "install", kind: unit ? "unit" : "idle", revision: 0,
-            workday_machinery_started_at: continueMachinery ? new Date(at).toISOString() : null,
+            // A machine timer never starts by itself: see "Machine timer stopped" in DayView.
+            workday_machinery_started_at: null,
         };
         setSessions(old => [...old.map(item => closePreviewSession(item, at)), session]);
     }
@@ -157,7 +158,7 @@ function PreviewDay({ sandbox, person, day, planBlock, planName, embedded, jobPi
             return setClock("break");
         }
         setClock("working");
-        if (beforeBreak.current) begin(beforeBreak.current.choice, beforeBreak.current.unit, false);
+        if (beforeBreak.current) begin(beforeBreak.current.choice, beforeBreak.current.unit);
     };
     const clockControls = clockState !== "off" && (
       <section className="wd-preview-clock-actions" aria-label={es ? "Reloj de prueba" : "Preview clock"}>
@@ -243,8 +244,9 @@ function LiveDay({ sandbox, planBlock, embedded, jobPicker }: {
         const commands: { action: WorkAction; data: Record<string, unknown> }[] = [];
         if (task && !work.units.some(unit => unit.id === task.unit.id)) commands.push({ action: "unit", data: { ...task.unit } });
         commands.push({ action: "start", data: { ...payload, finish_note: fromClockIn ? undefined : finishNote(previousNote), preserve_unit_completion: true, workday_from_clock_in: fromClockIn } });
-        if (!fromClockIn && work.active?.project_id === projectId && work.active.workday_machinery_started_at)
-            commands.push({ action: "workday_activity", data: { id: idForSession, at: tappedAt, machinery_ms: 0, machinery_running: true } });
+        // The machine timer is not carried onto the new activity. The stop that
+        // this start sends closes it, and the person is told (Matt, 2026-11-21:
+        // "it should not auto start on the new activity").
         await work.commandMany(commands, { background: true });
     };
     const actions: Actions = { sessions: work.sessions, active: work.active, blocked, finishBlocked, error: error || (work.error || work.queueError ? formatApiError(work.error || work.queueError) : ""), update: data => run(() => work.command("workday_activity", data, { background: true })),
@@ -648,6 +650,16 @@ function DayView({ sandbox, person, day, actions, preview, previewClock, planBlo
     const [machineryConfirmed, setMachineryConfirmed] = useStoredState<boolean>(
         `forge:workday-machinery-confirmed:${person}`, false, { maxAgeMs: 24 * 60 * 60_000 });
     const [askMachinery, setAskMachinery] = useState(false);
+    // Moving to another activity or unit stops a running machine timer, and
+    // says so: a machine left "on" across activities was time nobody meant to
+    // record. Break and clock out end the work entirely, so they do not ask.
+    const [machineStopped, setMachineStopped] = useState(false);
+    const lastWork = useRef<{ id?: string; machine: boolean }>({ machine: false });
+    useEffect(() => {
+        const before = lastWork.current;
+        if (before.id && before.machine && active && active.id !== before.id) setMachineStopped(true);
+        lastWork.current = { id: active?.id, machine: machineryRunning };
+    }, [active, machineryRunning]);
     const toggleMachinery = () => {
         if (!active) return;
         const at = Date.now();
@@ -753,6 +765,14 @@ function DayView({ sandbox, person, day, actions, preview, previewClock, planBlo
           <button type="button" className="wd-shift-confirm" onClick={() => { setMachineryConfirmed(true); setAskMachinery(false); toggleMachinery(); }}>
             {text("Yes, I am", "Sí")}</button>
           <button type="button" className="wd-shift-cancel" onClick={() => setAskMachinery(false)}>{text("No", "No")}</button>
+        </div>
+      </section>}
+      {machineStopped && <section className="wd-shift-panel" role="alertdialog" aria-label={text("Machine timer stopped", "Temporizador de máquina detenido")}>
+        <h3>{text("Machine timer stopped", "Temporizador de máquina detenido")}</h3>
+        <p>{text("It was still running when you changed work, so it was stopped. Turn it on again if you are operating a machine now.",
+          "Seguía en marcha cuando cambiaste de trabajo, así que se detuvo. Actívalo de nuevo si ahora operas una máquina.")}</p>
+        <div className="wd-shift-choices">
+          <button type="button" className="wd-shift-confirm" onClick={() => setMachineStopped(false)}>{text("OK", "Entendido")}</button>
         </div>
       </section>}
       {showActivities && <section id={activityPickerId} className="wd-activity-tools"

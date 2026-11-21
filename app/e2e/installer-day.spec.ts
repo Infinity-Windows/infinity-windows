@@ -383,10 +383,17 @@ test("Workday keeps the running unit until the next tap and switches to the trai
  expect(sessions[0].ended_at).toBeNull();
  await add("13");
  await page.getByRole("button", { name: "Start unit 13 Sealing" }).click();
- await expect.poll(() => sessions[1]?.workday_machinery_started_at).toBeTruthy();
+ // Changing work stops the machine timer and says so; it does not start on the new activity.
+ const stopped = page.getByRole("alertdialog", { name: "Machine timer stopped" });
+ await expect(stopped).toBeVisible();
+ await expect.poll(() => sessions[1]?.started_at).toBeTruthy();
  expect(sessions[0].ended_at).toBe(sessions[1].started_at);
  expect(sessions[0].workday_machinery_started_at).toBeNull();
- expect(sessions[1].workday_machinery_started_at).toBe(sessions[1].started_at);
+ expect(sessions[0].workday_machinery_ms).toBeGreaterThan(0);
+ expect(sessions[1].workday_machinery_started_at ?? null).toBeNull();
+ await stopped.getByRole("button", { name: "OK", exact: true }).click();
+ await expect(stopped).toHaveCount(0);
+ await expect(machinery).toHaveAttribute("aria-checked", "false");
  await page.getByRole("button", { name: "Running unit 13 Sealing" }).click();
  await expect(page.getByRole("region", { name: "Activity details" })).toBeVisible();
  expect(sessions[1].ended_at).toBeNull();
@@ -394,7 +401,7 @@ test("Workday keeps the running unit until the next tap and switches to the trai
  await pickWorkdayActivity(page, "job:Setup");
  await expect.poll(() => sessions[2]?.description).toBe("Setup");
  expect(sessions[1].ended_at).toBe(sessions[2].started_at);
- expect(sessions[1].workday_machinery_started_at).toBeNull();
+ expect(sessions[1].workday_machinery_started_at ?? null).toBeNull();
  const sheet = page.locator(".clock-sheet");
  const pickTraining = async () => {
    await page.getByRole("button", { name: /^Switch job/ }).click();
@@ -465,6 +472,8 @@ test("Travel starts even if the installer leaves Workday before clock-in returns
  await expect.poll(() => clockIns.length).toBe(1);
  expect(clockIns[0]).toMatchObject({ p_project_id: job.id, p_cost_code_id: opening.id });
  await expect(page.getByRole("dialog", { name: "Time clock" })).toHaveCount(0);
+ // Settings sits in the menu's folded "Help" section.
+ await page.getByRole("button", { name: "Help", exact: true }).click();
  await page.getByRole("link", { name: "Settings", exact: true }).first().click();
  await expect(page).toHaveURL(/\/settings$/);
  finishClockIn();
