@@ -82,6 +82,7 @@ export type RoutePath =
   | "/team"
   | "/timecard"
   | "/team-timecards"
+  | "/activities"
   | "/scheduling"
   | "/vehicles"
   | "/my-schedule"
@@ -212,8 +213,8 @@ export const NAV: NavDest[] = [
   { id: "job-history", to: "/jobs/history", label: "Job history", icon: "▤", minRole: "supervisor" },
   { id: "studio", to: "/studio", label: "Studio", icon: "◧", minRole: "supervisor" },
   // The company's ledger of where time goes (grilled 2026-08-17):
-  // Owners only for the reporting release.
-  { id: "data", to: "/data", label: "Data", icon: "▤", minRole: "owner" },
+  // Supervisor+ reporting access.
+  { id: "data", to: "/data", label: "Data", icon: "▤", minRole: "supervisor" },
   { id: "summary", to: "/summary", label: "Summary", icon: "▤", minRole: "supervisor" },
   { id: "ask", to: "/ask", label: "Ask", icon: "?", minRole: "installer" },
   { id: "notifications", to: "/notifications", label: "Notifications", icon: "◔", minRole: "installer" },
@@ -240,6 +241,7 @@ export const NAV: NavDest[] = [
   // Foreman+ (managers): coordination + warehouse ops + quality.
   { id: "team", to: "/team", label: "Team", icon: "⚑", minRole: "foreman" },
   // The crew-wide roster + edit surface; /timecard stays the personal view.
+  { id: "recent-activities", to: "/activities", label: "Recent Activities", icon: "☷", minRole: "foreman" },
   { id: "team-timecards", to: "/team-timecards", label: "Team timecards", icon: "▥", minRole: "foreman" },
   { id: "issues", to: "/issues", label: "Issues", icon: "!", minRole: "foreman" },
   { id: "service", to: "/service", label: "Servicing", icon: "⚕", minRole: "installer" },
@@ -513,6 +515,7 @@ const MENU_DEF: MenuSection[] = [
       { action: "open-clock", label: "Clock in / out", Icon: Clock },
       { to: "/timecard", label: "My timecard", Icon: CalendarClock },
       { to: "/team-timecards", label: "Team timecards", Icon: Users },
+      { to: "/activities", label: "Recent Activities", Icon: Activity },
       { to: "/cost-codes", label: "Cost codes", Icon: Hash },
     ],
   },

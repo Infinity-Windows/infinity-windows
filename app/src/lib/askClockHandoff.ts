@@ -29,7 +29,7 @@ export function askClockPick(handoff: AskClockHandoff): ClockInPick {
  * A break or an overlong shift still gets the normal clock safeguards first. */
 export function askClockEntryMode(shift: TimeShift | null, pick?: ClockInPick | null): "pick" | "main" | "switch" {
   if (!shift) return "pick";
-  if (!(pick?.returnToAsk || pick?.switchToProject) || !pick.projectId || pick.projectId.toLowerCase() === shift.project_id?.toLowerCase() || shift.break_started_at) return "main";
+  if (!(pick?.returnToAsk || pick?.switchToProject) || (!pick.projectId && !pick.companyWork) || (pick.projectId?.toLowerCase() ?? null) === (shift.project_id?.toLowerCase() ?? null) || shift.break_started_at) return "main";
   const guard = shiftGuard(shift, Date.now());
   return guard.state === "over-cap" || guard.state === "needs-finish" ? "main" : "switch";
 }

@@ -25,7 +25,6 @@ import {
   flagOpening,
   getMyProfile,
   getOpening,
-  listOpenings,
   getTypeBrainStats,
   listMarkSpecs,
   listMyOpeningsAllJobs,
@@ -119,6 +118,8 @@ import { indexSpecsByMark, specForOpeningCode } from "../../lib/install/specs";
 import { SpecCard } from "../../components/install/SpecCard";
 import { PartsPanel } from "../../components/install/PartsPanel";
 import { MissingSpecNotice } from "../../components/install/MissingSpecNotice";
+import { AgendaUnitDetails } from "../work/AgendaUnitDetails";
+import { unitSourceMark } from "../../lib/install/unitDetails";
 import { UnitFactsCard } from "../../components/install/UnitFactsCard";
 import { OpeningMoved } from "../../components/install/OpeningMoved";
 import { rememberOpening } from "../../lib/install/staleOpening";
@@ -280,6 +281,7 @@ export function OpeningSheet() {
     });
   }, []);
 
+  const [showUnitDetails, setShowUnitDetails] = useState(false);
   const opening = useQuery({
     queryKey: ["opening", openingId],
     queryFn: () => getOpening(openingId),
@@ -290,14 +292,6 @@ export function OpeningSheet() {
   // rather than by a uuid nobody recognises. Shared query key, so it rides
   // whatever the rest of the app has already fetched.
   const crew = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
-
-  // The job's other windows and doors, for the merge-a-missed-unit picker.
-  // Only fetched when this IS a missed unit — every other sheet pays nothing.
-  const jobOpenings = useQuery({
-    queryKey: ["openings", projectId],
-    queryFn: () => listOpenings(projectId),
-    enabled: Boolean(opening.data?.field_added),
-  });
 
   // Stream this job's openings so a phone left open on a window notices when
   // the office reloads the plans, instead of holding a dead id until someone
@@ -607,13 +601,14 @@ export function OpeningSheet() {
     queryFn: () => listMarkSpecs(projectId),
     enabled: Boolean(projectId),
   });
+  const specMark = opening.data ? unitSourceMark(opening.data) : undefined;
   const openingSpec = useMemo(
     () =>
       specForOpeningCode(
         indexSpecsByMark(markSpecs.data ?? []),
-        opening.data?.opening_code,
+        specMark ?? undefined,
       ),
-    [markSpecs.data, opening.data?.opening_code],
+    [markSpecs.data, specMark],
   );
 
   // The nominal size this opening's window is supposed to be - catalog type
@@ -1357,10 +1352,9 @@ export function OpeningSheet() {
       onFlag: (kind, note) => flag.mutate({ kind, note }),
       onClear: () => clearFlag.mutate(),
     },
-    missedUnit: o.field_added
+    missedUnit: o.field_added && !o.unit_details?.placeholder
       ? {
           opening: o,
-          openings: jobOpenings.data ?? [],
           canAct: isSupervisorPlus(effectiveRole),
           onDone: (msg) => {
             setMessage({ text: msg, tone: "ok" });
@@ -1475,12 +1469,20 @@ export function OpeningSheet() {
         <div className="sheet-head-top">
           <BackChip fallback={`/projects/${projectId}?tab=map`} label="Back to map" />
           <h1 className="opening-code-title sheet-head-code">{o.opening_code}</h1>
+          <button type="button" className="button-like" aria-haspopup="dialog" onClick={() => setShowUnitDetails(true)}>
+            {t("unitDetails.title")}
+          </button>
+          {showUnitDetails && <AgendaUnitDetails unit={{ id: o.id, label: o.opening_code, projectId, crewIds: [] }}
+            profileId={myId ?? ""} openingRow={o} localSessions={[]} onClose={() => setShowUnitDetails(false)} />}
           {o.window_types?.type_code && (
             <span className="ui-status-chip" data-tone="mute">{o.window_types.type_code}</span>
           )}
           <Link to={`/projects/${projectId}?tab=map`} className="button-like">
             Map
           </Link>
+          {import.meta.env.DEV && effectiveRole === "owner" && <Link to={`/projects/${projectId}?tab=planner&opening=${encodeURIComponent(o.id)}`} className="button-like">
+            Plan this opening
+          </Link>}
           {/* K2.3: Ask opens tagged with this job and map unit, so the person
               can say "set it up" or "I'm finished" without naming either. */}
           <Link to="/ask" className="button-like"
@@ -1812,8 +1814,7 @@ export function OpeningSheet() {
               startedAt={startedAt}
               tips={tips}
               onOpenClock={clock.openClock}
-              beginInstallPending={beginInstall.isPending}
-              onBeginInstall={() => beginInstall.mutate()}
+              onReviewChecks={() => setStage("check")}
               summon={moreProps.summon}
               more={moreProps}
             />
@@ -1846,6 +1847,7 @@ export function OpeningSheet() {
               grade={grade}
               onGradeChange={setGrade}
               ready={ready}
+              onReviewChecks={() => setStage("check")}
               submitBlockedBy={submitBlockedBy}
               flashingBlocked={flashingBlocked}
               canManageFlashing={isForemanPlus(effectiveRole)}

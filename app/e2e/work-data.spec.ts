@@ -2,8 +2,8 @@ import { expect, test } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
 import { hideWrongProjectBanner, json } from "./support/specHelpers";
 
-test("owner can switch among the two reporting tabs", async ({ page }) => {
-  await useSupabaseFixtures(page, { role: "owner", uiDesign: "new" });
+test("supervisor can switch among the two reporting tabs", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "supervisor", uiDesign: "new" });
   await hideWrongProjectBanner(page);
   await page.goto("/data");
   const tabs = page.getByRole("tablist", { name: "Data comparison views" });
@@ -22,8 +22,8 @@ test("Spanish Data labels come from the owner profile language", async ({ page }
     .toHaveText(["Rendimiento de obras", "Panel de trabajo"]);
 });
 
-for (const role of ["installer", "foreman", "supervisor"] as const) {
-  test(`${role} cannot see the owner Data route`, async ({ page }) => {
+for (const role of ["installer", "foreman"] as const) {
+  test(`${role} cannot see the Data route`, async ({ page }) => {
     await useSupabaseFixtures(page, { role, uiDesign: "new" });
     await hideWrongProjectBanner(page);
     await page.goto("/data");
@@ -32,7 +32,7 @@ for (const role of ["installer", "foreman", "supervisor"] as const) {
   });
 }
 
-test("owner role preview cannot see the owner Data route", async ({ page }) => {
+test("owner role preview cannot see the Data route", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "owner", uiDesign: "new" });
   await hideWrongProjectBanner(page);
   await page.goto("/data");

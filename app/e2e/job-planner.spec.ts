@@ -63,7 +63,8 @@ test("planner keeps completed units visible and saves dragged priority", async (
   const completed = builder.getByRole("button", { name: "14 \u00b7 Complete", exact: true });
   await expect(completed).toBeVisible();
   await expect(completed).toHaveAttribute("aria-pressed", "false");
-  for (const code of ["14 \u00b7 Complete", "12", "13"]) {
+  await expect(completed).toBeDisabled();
+  for (const code of ["12", "13"]) {
     await builder.locator(".jp-unit-options").getByRole("button", { name: code, exact: true }).click();
   }
   await builder.getByRole("button", { name: "Schedule", exact: true }).click();
@@ -71,7 +72,7 @@ test("planner keeps completed units visible and saves dragged priority", async (
   await page.getByRole("button", { name: "Edit Flashing", exact: true }).click();
   const editor = page.getByRole("region", { name: "Edit activity" });
   const queue = editor.getByLabel("Unit priority");
-  await expect(queue.getByRole("button")).toHaveText(["12", "13", "14"]);
+  await expect(queue.getByRole("button")).toHaveText(["12", "13"]);
   const source = await queue.getByRole("button", { name: "13", exact: true }).boundingBox();
   const target = queue.getByRole("button", { name: "12", exact: true });
   const destination = await target.boundingBox();
@@ -82,10 +83,44 @@ test("planner keeps completed units visible and saves dragged priority", async (
   await expect.poll(async () => (await target.boundingBox())!.x).toBeGreaterThan(destination!.x + 5);
   await page.mouse.up();
   await expect(queue.locator("[data-drop-position]")).toHaveCount(0);
-  await expect(queue.getByRole("button")).toHaveText(["13", "12", "14"]);
+  await expect(queue.getByRole("button")).toHaveText(["13", "12"]);
   await editor.getByRole("button", { name: "Save changes" }).click();
-  await expect.poll(() => savedPlan()[0]?.openingIds).toEqual([second.id, opening.id, complete.id]);
+  await expect.poll(() => savedPlan()[0]?.openingIds).toEqual([second.id, opening.id]);
   await expect(page.locator(".jp-event .jp-scope-unit").first()).toContainText("13");
+  await builder.getByRole("button", { name: "Activity", exact: true }).click();
+  await choosePlannerActivity(builder, "Flashing");
+  await expect(builder.getByRole("button", { name: "12 · Planned", exact: true })).toBeDisabled();
+  await builder.getByRole("button", { name: "Cancel schedule", exact: true }).click();
+  await builder.getByRole("button", { name: "Unit", exact: true }).click();
+  await builder.locator(".jp-unit-options").getByRole("button", { name: "12", exact: true }).click();
+  await expect(builder.getByRole("button", { name: "Flashing", exact: true })).toBeDisabled();
+  await expect(builder.getByRole("button", { name: "Sealing", exact: true })).toBeEnabled();
+});
+
+test("planner carries only cards with unfinished unit work onto the current day", async ({ page }) => {
+  const { units, sessions } = await setup(page);
+  await page.clock.setFixedTime(new Date("2026-11-16T18:00:00Z"));
+  const secondId = "22222222-2222-4222-8222-222222222223";
+  units.push({ id: secondId, opening_id: secondId, facts: { installation_complete: "Yes" } });
+  for (const stage of ["Flashing", "Setting frame"]) {
+    sessions.push({ id: stage, unit_id: secondId, stage, outcome: "finished", ended_at: "2026-11-14T16:00:00Z" });
+  }
+  const past = { start: "2026-11-14", end: "2026-11-14", startMinute: 420, endMinute: 720, installerIds: [] };
+  const blocks = [
+    { ...past, id: "open", activity: "Flashing", kind: "unit", openingIds: [opening.id, secondId] },
+    { ...past, id: "done", activity: "Setting frame", kind: "unit", openingIds: [secondId] },
+    { ...past, id: "empty", activity: "RO checked", kind: "unit", openingIds: [] },
+    { ...past, id: "general", activity: "Setup", kind: "general", openingIds: [] },
+  ];
+  await page.route("**/rest/v1/rpc/get_installer_plan", route => route.fulfill({ json: { revision: 1, blocks } }));
+  await page.goto(`/projects/${job.id}/planner`);
+  const calendar = page.getByRole("region", { name: "Work calendar" });
+  await expect(calendar.locator(".jp-event")).toHaveCount(1);
+  await expect(calendar.locator(".jp-event")).toContainText("Flashing");
+  await expect(calendar.locator(".jp-event .jp-scope-units .jp-scope-unit[title*='Unit complete']")).toHaveCount(1);
+  await expect(page.getByText("Carried-forward unit work", { exact: true })).toHaveCount(0);
+  await calendar.locator('button[data-date="2026-11-16"]').click();
+  await expect(calendar.locator(".jp-event")).toContainText("Flashing");
 });
 
 test("planner priority wraps, scrolls vertically, and reorders across rows", async ({ page }) => {
@@ -274,7 +309,7 @@ test("planner tab shows current and next job stages", async ({ page }) => {
  const tabs = page.getByRole("navigation", { name: "Project sections" });
  await expect(tabs.getByRole("button").filter({ hasText: /^(Overview|Plan|Custom Data)$/ })).toHaveText(["Overview", "Plan", "Custom Data"]);
  await expect(tabs.getByRole("button", { name: "Plan", exact: true })).toHaveAttribute("aria-current", "page");
- await expect(page.getByLabel("Job planning status")).toHaveText("Stage: RO's Checked → RO's Flashed");
+ await expect(page.getByLabel("Job planning status")).toHaveText("Stage: RO's Checked \u2192 RO's Flashed");
  expect(commands).toHaveLength(0);
 });
 
@@ -334,6 +369,7 @@ test("planner activity dropdown scrolls through the full list", async ({ page })
   await lastActivity.click();
   await expect(menu).toBeHidden();
   await expect(composer.getByRole("button", { name: "Change activity: Problem-solving" })).toBeVisible();
+  await composer.locator(".jp-unit-options").getByRole("button", { name: "12", exact: true }).click();
   const start = await composer.getByLabel("Start", { exact: true }).inputValue();
   await composer.getByLabel("End", { exact: true }).fill(start.slice(0, 10) + "T08:00");
   await composer.getByRole("button", { name: "Schedule", exact: true }).click();
@@ -456,7 +492,7 @@ test("planner moves a bundle, pulls out an activity, and deletes from the card",
 });
 
 test("planner skips Sunday and moves Saturday work to Monday", async ({ page }) => {
-  await page.clock.setFixedTime(new Date("2026-11-08T19:00:00Z"));
+  await page.clock.setFixedTime(new Date("2026-11-07T19:00:00Z"));
   await setup(page);
   await page.goto(`/projects/${job.id}/planner`);
   await expect(page.locator('.jp-date[data-date="2026-11-08"]')).toHaveCount(0);
@@ -464,7 +500,7 @@ test("planner skips Sunday and moves Saturday work to Monday", async ({ page }) 
   await choosePlannerActivity(page, "Travel");
   await page.getByLabel("Start", { exact: true }).fill("2026-11-07T07:00");
   await page.getByRole("button", { name: "Schedule", exact: true }).click();
-  const card = page.getByRole("button", { name: /Travel ·/ });
+  const card = page.getByRole("button", { name: /^Travel/ });
   const monday = page.locator('.jp-date[data-date="2026-11-09"]');
   const from = (await card.boundingBox())!;
   const to = (await monday.boundingBox())!;
@@ -511,7 +547,7 @@ test("shared plan auto-publishes and merges concurrent planner activity", async 
       if (insertConcurrentDuplicate) {
         insertConcurrentDuplicate = false;
         const added = body.p_blocks.find((block: { activity: string }) => block.activity === "Sealing");
-        published = [...published, { ...added, id: "concurrent-sealing", installerIds: [], openingCrew: {} }];
+        published = [...published, { ...added, id: "concurrent-sealing", installerIds: [], openingIds: [], openingCrew: {} }];
         revision++;
       }
       if (moveConcurrentActivity) {

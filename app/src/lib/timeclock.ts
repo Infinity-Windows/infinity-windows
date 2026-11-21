@@ -776,6 +776,13 @@ export interface ClockInPick {
   returnToAsk?: boolean;
   /** A saved unit can open directly on the switch screen for its assigned job. */
   switchToProject?: boolean;
+  companyWork?: boolean;
+  stayOnPage?: boolean;
+  /** Workday already picked the work. The sheet only confirms the paid shift. */
+  workdayStart?: { label: string; onReady: () => void; autoClockIn?: boolean; onClockIn?: (shift: TimeShift) => Promise<void> };
+  /** A chosen Workday destination only needs confirmation of the paid switch. */
+  workdaySwitch?: boolean;
+  workdayClockAction?: "break" | "clock-out";
   /**
    * The tap being handed over, WHOLE: its one-time id, its tap time and the
    * clock check it was stamped with (K0.2/K0.5). The sheet sends this same

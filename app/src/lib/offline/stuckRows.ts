@@ -19,7 +19,7 @@ import { uploadKind } from "./outbox-core";
 import { isPhotoConflictIndexError } from "./recoverPhotoUploads";
 import type { SentWrite } from "./outbox";
 import type { InstallOutboxRecord, SentInstall } from "../install/installOutbox";
-import type { WorkCommand } from "../customWork/model";
+import { workAwaitingShiftReview, type WorkCommand } from "../customWork/model";
 import type { ServiceCommand } from "../servicing/model";
 
 /**
@@ -46,6 +46,7 @@ export const OP_LABEL_KEY: Record<OutboxOp, TKey> = {
   pin_undo: "stuck.op.pinChange",
   pin_reset_project: "stuck.op.pinChange",
   pin_reset_opening: "stuck.op.pinChange",
+  save_unit_details: "stuck.op.unitDetails",
   store_packages: "stuck.op.storePackages",
   checkout_packages: "stuck.op.checkoutPackages",
   take_supply: "stuck.op.takeSupply",
@@ -197,21 +198,24 @@ export function buildStuckRows(inputs: StuckInputs, t: TFn): StuckSections {
     (failed ? needsYou : waiting).push(row);
   }
 
+  const shiftReview = workAwaitingShiftReview(inputs.work);
   for (const c of inputs.work) {
+    const held = shiftReview.has(c.id);
+    const failed = Boolean(c.error) || held;
     const row: StuckRow = {
       id: `work:${c.id}`,
       label: t("stuck.customWork"),
-      // The command queues record no time — said so, never guessed.
-      when: 0,
-      detail: c.error ?? null,
+      when: typeof c.data.at === "string" && Number.isFinite(Date.parse(c.data.at))
+        ? Date.parse(c.data.at) : 0,
+      detail: c.error ?? (held ? "This work depends on an activity saved for shift review." : null),
       source: "work",
-      state: c.error ? "failed" : "waiting",
+      state: failed ? "failed" : "waiting",
       sentAt: null,
-      canRetry: Boolean(c.error),
+      canRetry: failed && !held,
       canDiscard: false,
       reviewTo: "/current-work",
     };
-    (c.error ? needsYou : waiting).push(row);
+    (failed ? needsYou : waiting).push(row);
   }
 
   for (const c of inputs.service) {

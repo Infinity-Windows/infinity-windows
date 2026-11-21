@@ -20,6 +20,7 @@ import {
   Radio,
   Square,
 } from "lucide-react";
+import { supabase } from "../lib/supabase";
 import { getMyProfile, getRealProfile, listMyOpeningsAllJobs, listProfiles } from "../lib/install/api";
 import { openingReadiness } from "../lib/install/fit";
 import { ROLE_LABELS, type CrewRole } from "../lib/install/types";
@@ -216,11 +217,26 @@ export function Layout() {
     queryFn: listProfiles,
     enabled: view.canPreviewPerson,
   });
+  const testInstallers = useQuery({
+    queryKey: ["viewAsTestInstallers", realMe.data?.id],
+    enabled: view.canPreviewPerson,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("profiles").select("id,display_name,role")
+        .eq("is_test", true).eq("role", "installer").is("retired_at", null)
+        .is("access_revoked_at", null).order("display_name");
+      if (error) throw error;
+      return data as { id: string; display_name: string; role: "installer" }[];
+    },
+  });
+  const previewPeople = [...new Map([
+    ...(crew.data ?? []).filter(person => person.active),
+    ...(testInstallers.data ?? []),
+  ].filter(person => person.id !== realMe.data?.id).map(person => [person.id, person])).values()];
   const applyPersonPreview = (personId: string) => {
     if (!personId) {
       view.setPreviewPerson(null);
     } else {
-      const p = (crew.data ?? []).find((c) => c.id === personId);
+      const p = previewPeople.find((c) => c.id === personId);
       if (!p) return;
       view.setPreviewPerson({ id: p.id, name: p.display_name, role: p.role });
     }
@@ -351,9 +367,7 @@ export function Layout() {
           onChange={(e) => applyPersonPreview(e.target.value)}
         >
           <option value="">— view as a person —</option>
-          {(crew.data ?? [])
-            .filter((c) => c.active && c.id !== realMe.data?.id)
-            .map((c) => (
+          {previewPeople.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.display_name} ({c.role})
               </option>
@@ -391,7 +405,9 @@ export function Layout() {
               the button the owner asked to be "on every tab and view" simply
               did not exist on a laptop. Primary weight, directly under the
               brand and above the menu, because it is an action and the rows
-              below it are destinations. */}
+              below it are destinations. Whenever the rail is hidden (a small
+              screen, or the phone layout) the bottom bar's FAB is showing
+              instead, so there is exactly one Capture on screen. */}
           <button
             type="button"
             className={`rail-capture${captureOpen ? " open" : ""}`}

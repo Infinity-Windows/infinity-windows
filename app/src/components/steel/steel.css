@@ -112,7 +112,7 @@ html[data-design="new"] .ws-saved-unit { padding: 12px 0; border-bottom: 1px sol
 /* Task order stays clock -> job -> unit at every width. Tablet columns start
    below that context so a wider screen never changes what the next action is. */
 @media (min-width: 700px) {
-  html[data-design="new"] .work-screen { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  html[data-design="new"] .work-screen:not(.ws-installer) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
   html[data-design="new"] .work-screen > * { min-width: 0; }
   html[data-design="new"] .work-screen > :is(.steel-work-heading, .ws-clock, .ws-today, .ws-unit, .ws-heads-ups) { grid-column: 1 / -1; }
 }

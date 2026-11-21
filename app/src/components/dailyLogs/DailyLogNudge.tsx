@@ -29,6 +29,7 @@ export function DailyLogNudge({ role }: { role: CrewRole | string | null | undef
   const queryClient = useQueryClient();
   const canLog = canUseDailyLogs(role);
   const [askedFor, setAskedFor] = useState<string | null>(null);
+  const [fallback, setFallback] = useState<JobNeedingLog | null>(null);
   // The whole job, not its id. The dialog below is mounted from THIS and never
   // from the live query: `jobsNeedingLog` refetches on window focus and on
   // every invalidation, and it stops listing a job the moment anybody files
@@ -49,20 +50,23 @@ export function DailyLogNudge({ role }: { role: CrewRole | string | null | undef
   useEffect(() => {
     if (!canLog) return;
     const onClockedOut = (e: Event) => {
-      const projectId = (e as CustomEvent<ClockedOutDetail>).detail?.projectId ?? null;
+      const detail = (e as CustomEvent<ClockedOutDetail>).detail;
+      const projectId = detail?.projectId ?? null;
       // A shift with no job on it (an overarching clock-in) has no log to
       // file, and a job already offered today has had its answer.
       if (!projectId || alreadyAskedToday(projectId, localDateISO())) return;
       setAskedFor(projectId);
+      setFallback({ projectId, jobCode: detail.job?.job_code ?? "", name: detail.job?.name ?? t("dailyLog.whichJob") });
       // Whether the job still needs a log is a question for the server, and
       // the answer may have changed while this phone was clocked in.
       void queryClient.invalidateQueries({ queryKey: ["jobsNeedingLog"] });
     };
     window.addEventListener(CLOCKED_OUT_EVENT, onClockedOut);
     return () => window.removeEventListener(CLOCKED_OUT_EVENT, onClockedOut);
-  }, [canLog, queryClient]);
+  }, [canLog, queryClient, t]);
 
-  const job = askedFor ? (needing.data ?? []).find((j) => j.projectId === askedFor) : undefined;
+  const job = askedFor ? (needing.data ?? []).find((j) => j.projectId === askedFor)
+    ?? ((!navigator.onLine || needing.isError) ? fallback : undefined) : undefined;
 
   const close = () => {
     if (askedFor) rememberAskedToday(askedFor, localDateISO());
@@ -73,8 +77,9 @@ export function DailyLogNudge({ role }: { role: CrewRole | string | null | undef
     return (
       <DailyLogDialog
         projectId={openFor.projectId}
+        clockOut
         logDate={localDateISO()}
-        jobLabel={`${openFor.jobCode} — ${openFor.name}`}
+        jobLabel={!openFor.jobCode ? openFor.name : `${openFor.jobCode} — ${openFor.name}`}
         onClose={() => {
           setOpenFor(null);
           close();

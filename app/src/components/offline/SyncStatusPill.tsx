@@ -18,7 +18,9 @@
 // while that one sheet was open.
 
 import { useClock } from "../../lib/clockContext";
+import { useQueryClient } from "@tanstack/react-query";
 import {
+  nextWorkRetryAt,
   readWorkQueue,
   syncWork,
   WORK_QUEUE_EVENT,
@@ -70,31 +72,54 @@ function useInstallOutboxCount(): { pending: number; failed: number; theirs: num
 }
 
 function useCustomWorkCount(profileId: string | null) {
+  const queryClient = useQueryClient();
   const [state, setState] = useState({ pending: 0, failed: 0 });
   useEffect(() => {
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let syncing = false;
+    let cancelled = false;
     const read = () => {
+      if (cancelled) return;
+      clearTimeout(retryTimer);
       try {
         const rows = profileId ? readWorkQueue(profileId) : [];
         setState({
           pending: rows.length,
           failed: rows.filter((r) => r.error).length,
         });
+        const retryAt = nextWorkRetryAt(rows);
+        if (retryAt !== undefined && navigator.onLine && !syncing)
+          retryTimer = setTimeout(sync, Math.max(0, retryAt - Date.now()));
       } catch {
         setState({ pending: 1, failed: 1 });
       }
     };
     const sync = () => {
+      if (syncing || cancelled) return;
+      syncing = true;
       read();
       if (profileId && navigator.onLine) {
         try {
-          if (readWorkQueue(profileId).length)
-            void syncWork(profileId).catch(() =>
-              setState({ pending: 1, failed: 1 }),
-            );
+          const before = readWorkQueue(profileId);
+          if (before.length) void syncWork(profileId).then(() => {
+            syncing = false;
+            if (cancelled) return;
+            const remaining = new Set(readWorkQueue(profileId).map(command => command.id));
+            if (before.some(command => !remaining.has(command.id))) {
+              for (const key of ["customWorkUnits", "customWorkSessions", "opening-work-progress", "myInstallerPlan"])
+                void queryClient.invalidateQueries({ queryKey: [key] });
+            }
+            read();
+          }).catch(() => {
+            syncing = false;
+            if (!cancelled) setState({ pending: 1, failed: 1 });
+          });
+          if (before.length) return;
         } catch {
           setState({ pending: 1, failed: 1 });
         }
       }
+      syncing = false;
     };
     sync();
     window.addEventListener(WORK_QUEUE_EVENT, read);
@@ -103,13 +128,15 @@ function useCustomWorkCount(profileId: string | null) {
     window.addEventListener("focus", sync);
     const retry = setInterval(sync, 30000);
     return () => {
+      cancelled = true;
       window.removeEventListener(WORK_QUEUE_EVENT, read);
       window.removeEventListener("storage", read);
       window.removeEventListener("online", sync);
       window.removeEventListener("focus", sync);
+      clearTimeout(retryTimer);
       clearInterval(retry);
     };
-  }, [profileId]);
+  }, [profileId, queryClient]);
   return state;
 }
 

@@ -9,8 +9,7 @@ const ExistingReport = lazy(() => import("../DataHub").then(m => ({ default: m.D
 const views = ["existing", "proposed"] as const;
 type View = typeof views[number];
 
-/** Mounted only after WorkData's real-owner and non-preview checks.
- * Review selection is ephemeral: it never changes profile/company settings. */
+/** Report tabs keep their selection in this session. */
 export function DataComparison() {
   const es = useLanguage().lang === "es";
   const [view, setView] = useState<View>("existing");

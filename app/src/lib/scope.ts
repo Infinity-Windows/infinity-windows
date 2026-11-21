@@ -15,8 +15,9 @@ import { storiesOf } from "./fitview/stories";
 /**
  * One job's row of project_scope_counts. `unknown_units` is the honest bucket:
  * marks whose spec text does not say what they are, and every mark written
- * before the backfill ran. openings = windows + doors + unknown, always, which
- * is what stops the parts of the line arguing with each other.
+ * before the backfill ran. openings = windows + doors + curtain walls +
+ * unknown, always, which is what stops the parts of the line arguing with each
+ * other.
  */
 export interface ScopeCounts {
   project_id: string;
@@ -30,6 +31,9 @@ export interface ScopeCounts {
   door_swing: number;
   door_other: number;
   unknown_units: number;
+  /** Absent from a database before 20261130140000, and from counts a phone
+   * saved for offline before then: read it as zero. */
+  curtain_walls?: number;
 }
 
 /** One piece of the line: a catalog key plus the number to drop into it. */
@@ -74,6 +78,10 @@ export function scopeLineParts(
   }
   if (counts && counts.doors > 0) {
     parts.push({ key: plural("scope.doors", counts.doors), n: counts.doors });
+  }
+  const curtainWalls = counts?.curtain_walls ?? 0;
+  if (curtainWalls > 0) {
+    parts.push({ key: plural("scope.curtainWalls", curtainWalls), n: curtainWalls });
   }
   const stories = opts.stories;
   if (stories != null && stories > 0) {

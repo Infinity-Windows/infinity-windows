@@ -15,6 +15,8 @@ export interface PlanBlock {
   startMinute?: number;
   endMinute?: number;
   dailyEndMinute?: number;
+  /** Newer saved blocks supersede these units when this block is overdue. */
+  supersededOpeningIds?: string[];
   openingIds: string[];
   installerIds: string[];
   openingCrew?: Record<string, OpeningCrew>;
@@ -34,7 +36,7 @@ export const PLAN_CLOSE = 19 * 60;
 export const STANDARD_SHIFT_END = 16 * 60;
 export const PLAN_STEP = 15;
 
-export function planBoundary(block: PlanBlock, edge: "start" | "end") {
+export function planBoundary(block: Pick<PlanBlock, "startMinute" | "endMinute" | "startPeriod" | "endPeriod">, edge: "start" | "end") {
   return edge === "start"
     ? block.startMinute ?? (block.startPeriod === "PM" ? PLAN_NOON : PLAN_OPEN)
     : block.endMinute ?? (block.endPeriod === "AM" ? PLAN_NOON : PLAN_CLOSE);
@@ -50,23 +52,28 @@ export function coversPlanSlot(block: PlanBlock, date: string, period: PlanPerio
     && planDayEnd(block, date) > (period === "AM" ? PLAN_OPEN : PLAN_NOON);
 }
 
-function storageKey(project: string, account: string) {
-  // Keep the existing Building 3 storage key so manually created blocks survive.
-  const version = project === BUILDING_3_PROJECT ? "sample-v4-first-week" : "v1";
-  return `forge:job-plan:${version}:${account}:${project}`;
-}
-
-export function readJobPlan(project: string, account: string): PlanBlock[] {
-  try {
-    const saved = localStorage.getItem(storageKey(project, account));
-    if (saved === null) return [];
-    const blocks: PlanBlock[] = JSON.parse(saved);
-    return project === BUILDING_3_PROJECT ? blocks.filter(block => !block.id.startsWith("demo-")) : blocks;
-  } catch {
-    return [];
-  }
-}
-
-export function saveJobPlan(project: string, account: string, blocks: PlanBlock[]) {
-  localStorage.setItem(storageKey(project, account), JSON.stringify(blocks));
+export function currentPlanBlocks(
+  blocks: readonly PlanBlock[],
+  day: string,
+  isUnfinished: (openingId: string, activity: string) => boolean,
+  keepCompleted = false,
+): PlanBlock[] {
+  return blocks.map(block => {
+    if (block.kind !== "unit" || block.end >= day) return block;
+    const remaining = block.openingIds.filter(id => isUnfinished(id, block.activity) && !block.supersededOpeningIds?.includes(id)
+      && !blocks.some(other => other.id !== block.id && other.kind === "unit"
+        && other.activity === block.activity && other.openingIds.includes(id)
+        && (other.end > block.end || (other.end === block.end && other.id > block.id))));
+    if (!remaining.length) return block;
+    // Carried work keeps the hours it was planned for; only the day moves
+    // (Matt, 2026-11-20: "end time shouldn't adjust with carryover"). A card
+    // that ran overnight can end before it starts once it is one day long, so
+    // that one runs to the end of its planned day instead.
+    const startMinute = planBoundary(block, "start"), planned = planBoundary(block, "end");
+    const endMinute = planned > startMinute ? planned : block.dailyEndMinute ?? PLAN_CLOSE;
+    return { ...block, start: day, end: day, startMinute, endMinute,
+      openingIds: keepCompleted
+        ? block.openingIds.filter(id => remaining.includes(id) || !isUnfinished(id, block.activity))
+        : remaining };
+  });
 }

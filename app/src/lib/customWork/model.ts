@@ -87,6 +87,13 @@ export interface WorkSession {
   participation: "install" | "helper";
   stage: string;
   description: string;
+  workday_done_at?: string | null;
+  workday_machinery_ms?: number;
+  workday_machinery_started_at?: string | null;
+  /** Each time the machine was switched on and off during this activity,
+   * oldest first. Absent until 20261130150000 is applied; empty on activities
+   * recorded before it, which kept only the total. */
+  workday_machinery_spans?: MachineTimer[];
   outcome: "finished" | "partial" | "blocked" | "rework" | null;
   delay_reason: string;
   started_at: string;
@@ -113,14 +120,18 @@ export interface WorkHistory {
   after_value: unknown;
   created_at: string;
 }
+export type MachineTimer = { on: string; off: string | null };
 export type WorkAction =
-  "unit" | "link" | "start" | "stop" | "session" | "type" | "crew_record" | "stage_contributors" | "correct_stage_contributors";
+  "machinery_correction" | "unit" | "unit_create" | "link" | "start" | "stop" | "workday_activity" | "plan_activity_done" | "plan_unit_lead" | "session" | "type" | "crew_record" | "stage_contributors" | "correct_stage_contributors";
 export interface WorkCommand {
   id: string;
   userId: string;
   action: WorkAction;
   data: Record<string, unknown>;
   error?: string;
+  retry?: { failures: number; notBefore: number };
+  /** Existing clock/signature outbox entries this event must follow. */
+  afterOutbox?: string[];
   /** Client-only, never sent: this unit save is a "Unit complete" mark, so a
    * refusal because someone else changed the unit can be rebuilt from the
    * latest copy instead of stranding the completion (queue.ts). */
@@ -128,6 +139,26 @@ export interface WorkCommand {
   /** Set once a completion has been rebuilt, so it is rebuilt at most once. */
   rebased?: boolean;
 }
+export function isShiftWindowRefusal(command: WorkCommand) {
+  return command.action === "start" &&
+    !!command.error?.includes("Clock in or resume your job clock before starting work.");
+}
+
+export function workAwaitingShiftReview(commands: WorkCommand[]): Set<string> {
+  const held = new Set<string>();
+  const refusedSessions = new Set<unknown>();
+  for (const command of commands) {
+    const { action, data } = command;
+    const dependsOnRefusedStart = refusedSessions.has(data.expected_session_id) ||
+      (action === "workday_activity" && refusedSessions.has(data.id));
+    if (isShiftWindowRefusal(command) || dependsOnRefusedStart) {
+      held.add(command.id);
+      if (action === "start" && data.id) refusedSessions.add(data.id);
+    }
+  }
+  return held;
+}
+
 /**
  * Prep time's one-tap reasons (crew redesign K1.5, 2026-09-23): job work
  * that isn't on one unit. Stored as the session's description, in English,
@@ -231,10 +262,12 @@ export function previewCommands(
 ) {
   const us = new Map(units.map((u) => [u.id, { ...u }]));
   const ss = new Map(sessions.map((s) => [s.id, { ...s }]));
+  const awaitingReview = workAwaitingShiftReview(commands);
   for (const c of commands) {
-    // The server refused this command. Later queued commands have not run
-    // either, so none of them may masquerade as confirmed active work.
-    if (c.error) break;
+    if (awaitingReview.has(c.id)) continue;
+    // A refused change is not shown as if it happened, and it does not hide
+    // what was recorded after it: those changes are sent on their own.
+    if (c.error) continue;
     const d = c.action === "crew_record" ? {
       ...c.data.unit as Record<string, unknown>,
       ...((c.data.outcome !== "assigned") ? { untimed_work_present: true } : {}),
@@ -260,6 +293,20 @@ export function previewCommands(
             revision: s.revision + 1,
           });
     }
+    if (c.action === "workday_activity") {
+      const entry = ss.get(String(d.id));
+      if (entry) ss.set(entry.id, {
+        ...entry,
+        ...(d.done ? { workday_done_at: String(d.at) } : {}),
+        ...(typeof d.note === "string" ? {
+          description: entry.unit_id ? d.note : `${entry.description.split(" — ")[0]} — ${d.note}`,
+        } : {}),
+        ...(typeof d.machinery_running === "boolean" ? {
+          workday_machinery_ms: Number(d.machinery_ms),
+          workday_machinery_started_at: d.machinery_running ? String(d.at) : null,
+        } : {}),
+      });
+    }
     if (c.action === "start" || c.action === "stop") {
       const active = d.expected_session_id
         ? ss.get(String(d.expected_session_id))
@@ -269,13 +316,17 @@ export function previewCommands(
           ...active,
           ended_at: String(d.at),
           end_reason: c.action,
-          outcome: (d.outcome ?? null) as WorkSession["outcome"],
+          outcome: (active.workday_done_at ? "finished" : d.outcome ?? null) as WorkSession["outcome"],
           description: String(d.finish_note ?? active.description),
           delay_reason: String(d.delay_reason ?? active.delay_reason),
           revision: active.revision + 1,
+          workday_machinery_ms: (active.workday_machinery_ms ?? 0) +
+            (active.workday_machinery_started_at
+              ? Math.max(0, Date.parse(String(d.at)) - Date.parse(active.workday_machinery_started_at)) : 0),
+          workday_machinery_started_at: null,
         });
       const unit = us.get(String(d.unit_id));
-      if (c.action === "start" && unit?.facts.installation_complete === "Yes")
+      if (c.action === "start" && d.preserve_unit_completion !== true && unit?.facts.installation_complete === "Yes")
         us.set(unit.id, {
           ...unit,
           facts: { ...unit.facts, installation_complete: "No" },
@@ -301,12 +352,20 @@ export function previewCommands(
           revision: 1,
         });
     }
+    if (c.action === "machinery_correction") {
+      const old = ss.get(String(d.id));
+      const spans = (d.spans as MachineTimer[]).filter(span => span.off)
+        .sort((a, b) => Date.parse(a.on) - Date.parse(b.on));
+      if (old) ss.set(old.id, { ...old, workday_machinery_spans: spans,
+        workday_machinery_ms: spans.reduce((ms, span) => ms + Date.parse(span.off!) - Date.parse(span.on), 0) });
+    }
     if (c.action === "session") {
       const old = ss.get(String(d.id));
       if (old)
         ss.set(old.id, {
           ...old,
           ...d,
+          ...(old.ended_at && old.outcome !== d.outcome && d.outcome !== "finished" ? { workday_done_at: null } : {}),
           revision: old.revision + 1,
         } as WorkSession);
     }

@@ -298,15 +298,6 @@ const SUPERVISOR: RoleFlow = {
     ],
     [
       {
-        id: "data",
-        label: "The data",
-        lines: ["Signatures, cohorts,", "the evidence."],
-        asks: "Every estimate is a computed signature over real installed panels — the Data tab is where you read what the field has been writing.",
-        doors: ["/data"],
-      },
-    ],
-    [
-      {
         id: "jobs",
         label: "Jobs & plansets",
         lines: ["New jobs, planset uploads,", "extraction, publish."],
@@ -347,8 +338,17 @@ const OWNER: RoleFlow = {
   role: "owner",
   title: "What the owner alone holds",
   lede:
-    "Everything supervisors carry is yours too. This last stretch is short on purpose — the app pushes decisions down, and keeps only the money at the top.",
+    "Everything supervisors carry is yours too. This last stretch is short on purpose — the app pushes decisions down, and keeps reporting and costing with the owner.",
   rows: [
+    [
+      {
+        id: "data",
+        label: "The data",
+        lines: ["Signatures, cohorts,", "the evidence."],
+        asks: "Every estimate is a computed signature over real installed panels — the Data tab is where you read what the field has been writing.",
+        doors: ["/data"],
+      },
+    ],
     [
       {
         id: "money",

@@ -114,7 +114,9 @@ describe("custom work labor", () => {
       "Frame set",
     );
   });
-  it("does not show a refused start or commands stuck behind it as running time", () => {
+  // 2026-11-20 (Matt): a refused change waits for review; what was recorded
+  // after it is still shown and sent, not hidden behind it.
+  it("does not show a refused start as running time, and still shows what was recorded after it", () => {
     const running = session("me", 0, null);
     const result = previewCommands([unit], [running], [
       { id: "refused", userId: "me", action: "start", error: "Current work changed", data: {
@@ -126,8 +128,8 @@ describe("custom work labor", () => {
         expected_session_id: "unsaved", at: new Date(45 * 60000).toISOString(),
       } },
     ]);
-    expect(result.sessions.find((s) => s.id === running.id)?.ended_at).toBeNull();
-    expect(result.sessions.some((s) => s.id === "unsaved" || s.id === "later")).toBe(false);
+    expect(result.sessions.some((s) => s.id === "unsaved")).toBe(false);
+    expect(result.sessions.find((s) => s.id === "later")?.ended_at).toBeNull();
   });
   it("attribution keeps the original shift rather than rewriting payroll", () => {
     const result = previewCommands(

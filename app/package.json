@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:installer-day": "vite --mode steel-preview --host 127.0.0.1 --port 5188 --strictPort",
+    "e2e:installer-day": "playwright test --config playwright.installer-day.config.ts",
     "build": "tsc -b && vite build",
     "budget": "node scripts/check-bundle-budget.mjs",
     "lint": "oxlint",

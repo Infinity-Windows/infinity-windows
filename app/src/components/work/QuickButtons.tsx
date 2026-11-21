@@ -43,9 +43,11 @@ export interface QuickButtonsProps {
   /** Today's talk is owed: Prep time stays locked, like unit work (K1.3). */
   locked: boolean;
   now: number;
+  workday?: boolean;
+  preview?: boolean;
 }
 
-export function QuickButtons({ role, jobId, jobLabel, shift, work, unit, locked, now }: QuickButtonsProps) {
+export function QuickButtons({ role, jobId, jobLabel, shift, work, unit, locked, now, workday = false, preview = false }: QuickButtonsProps) {
   const t = useT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -125,7 +127,7 @@ export function QuickButtons({ role, jobId, jobLabel, shift, work, unit, locked,
 
   return (
     <section className="ws-quick-wrap" aria-label={t("work.quick.prep")} data-testid="ws-quick">
-      {prepSession && (
+      {!workday && prepSession && (
         <div className="ws-card ws-prep-running" data-testid="ws-prep-running">
           <p className="ws-unit-title">
             {t("work.prep.running", { reason: prepSession.description || t("work.prep.reason.Other") })}
@@ -138,7 +140,8 @@ export function QuickButtons({ role, jobId, jobLabel, shift, work, unit, locked,
           </button>
         </div>
       )}
-      <div className="ws-quick">
+      <div className={workday ? "ws-quick ws-quick--installer" : "ws-quick"}>
+        {!workday && <>
         <button
           type="button"
           className="ws-btn ws-quick-btn"
@@ -148,13 +151,16 @@ export function QuickButtons({ role, jobId, jobLabel, shift, work, unit, locked,
         >
           {prepLocked ? <Lock size={20} aria-hidden /> : <Timer size={20} aria-hidden />} {t("work.quick.prep")}
         </button>
-        <button type="button" className="ws-btn ws-quick-btn" onClick={() => navigate("/supplies")}>
+        </>}
+        <button type="button" className="ws-btn ws-quick-btn" disabled={preview}
+          onClick={() => navigate(workday && jobId ? `/supplies?${new URLSearchParams({ job: jobId })}` : "/supplies")}>
           <Package size={20} aria-hidden /> {t("work.quick.supplies")}
         </button>
         {canLog && (
           <button
             type="button"
             className="ws-btn ws-quick-btn"
+            disabled={preview}
             onClick={() => (jobId ? setLogOpen(true) : needJob())}
             data-testid="ws-quick-log"
           >
@@ -164,6 +170,7 @@ export function QuickButtons({ role, jobId, jobLabel, shift, work, unit, locked,
         <button
           type="button"
           className="ws-btn ws-quick-btn"
+          disabled={preview}
           onClick={() => (jobId ? setProblemOpen(true) : needJob())}
           data-testid="ws-quick-problem"
         >

@@ -128,6 +128,7 @@ export function modeBadgeKey(
  * rest are real tabs. `specs` and `time` are the tracking-only additions. */
 export type HubTabId =
   | "planner"
+  | "units"
   | "custom-data"
   | "overview"
   | "warehouse"
@@ -165,7 +166,9 @@ export interface HubTabOpts {
  */
 export function hubTabsFor(opts: HubTabOpts): HubTabId[] {
   const { trackingOnly, isLead, warehouseStaged } = opts;
-  const planning: HubTabId[] = opts.canPlan ? ["planner"] : [];
+  // Units (the Unit Builder) sits beside Plan and is offered to the same
+  // people: units are established there, then planned (Matt, 2026-11-20).
+  const planning: HubTabId[] = opts.canPlan ? ["planner", "units"] : [];
   if (trackingOnly) {
     return [
       "overview",
@@ -216,7 +219,7 @@ export function resolveHubTab(
     return visible.includes(t as HubTabId) ? (t as HubTabId) : "overview";
   }
   const accept: string[] = [
-    ...(opts.canPlan ? ["planner"] : []),
+    ...(opts.canPlan ? ["planner", "units"] : []),
     "custom-data",
     "warehouse",
     "map",

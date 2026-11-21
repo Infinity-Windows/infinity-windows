@@ -1,3 +1,4 @@
+import { useWorkdayPreview } from "../installerPilot/workdayPreview";
 // Work — the new front door (crew redesign Release 1, K1.2, owner-approved
 // 2026-09-23). One screen, one job: "clocked in? where? what's next?"
 //
@@ -19,6 +20,7 @@
 // chunk has a budget and this file's strings register themselves from its
 // own chunk (lib/i18n/workCatalog.ts).
 
+import { ArrowLeft, CalendarDays } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useIsRestoring, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -31,7 +33,9 @@ import { UnitContributors } from "../../components/work/UnitContributors";
 import { YourUnit } from "../../components/work/YourUnit";
 import { LiveSummonsStrip } from "../../components/install/LiveSummonsStrip";
 import { CrewGoalCard } from "../../components/projects/CrewGoalCard";
-import { useClock } from "../../lib/clockContext";
+import { formatApiError } from "../../lib/errors";
+import { prepareWorkdayDestination, workdayProjectQuery } from "../../lib/installerWorkflow/workdayProject";
+import { openClockGlobally, useClock } from "../../lib/clockContext";
 import { getCompanySettings } from "../../lib/companySettings";
 import { listProjectsAnyStatus } from "../../lib/api";
 import { useWork } from "../../lib/customWork/useWork";
@@ -51,12 +55,19 @@ import { listMyPublished } from "../../lib/schedule/api";
 import { addDaysISO } from "../../lib/schedule/dates";
 import { isOnTheClock } from "../../lib/timeclock";
 import { useTodayTalk, useToolboxToday } from "../../lib/useToolboxGate";
+import { useViewAsRole } from "../../lib/viewAsRoleContext";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { headsUps } from "../../lib/work/headsUps";
 import { pendingWorkPhotos } from "../../lib/work/pendingWorkPhotos";
 import { chooseNextUp } from "../../lib/work/nextUp";
 import { unitWorkLocked, type StartDayInput } from "../../lib/work/startDay";
 import { pickTodayEntries } from "../../lib/work/today";
+import { WorkdayJobs } from "./WorkdayJobs";
+import { WorkdayProject } from "../installerPilot/NativeInstallerDay";
+import { PLAN_OPEN, planBoundary } from "../../lib/installerWorkflow/jobPlan";
+import { supabase } from "../../lib/supabase";
+import { readMyPlanWindow, readPublishedPlan } from "../../lib/installerWorkflow/sharedPlan";
+import { AssignedPlan } from "./AssignedPlan";
 import "./work.css";
 
 function todayLocalISO(): string {
@@ -77,6 +88,13 @@ export function WorkScreen() {
   useSafeSurface();
   const queryClient = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
+  const { previewPerson, previewRole } = useViewAsRole();
+  const installer = effectiveRole === "installer";
+  const preview = Boolean(previewPerson || previewRole);
+  const simulator = useWorkdayPreview(`work:${previewPerson?.id ?? previewRole ?? "self"}`);
+  const [switchError, setSwitchError] = useState("");
+  const [switchChecking, setSwitchChecking] = useState(false);
+  const [selection, setSelection] = useState<{ profileId: string; project: string | null }>();
   const clock = useClock();
   const shift = clock.shift;
   // Is the clock KNOWN yet? Not while the shared clock state is still being
@@ -102,20 +120,79 @@ export function WorkScreen() {
   const schedule = useQuery({
     queryKey: ["workSchedule", profileId, today, through],
     queryFn: () => listMyPublished(profileId!, today, through),
-    enabled: Boolean(profileId),
+    enabled: Boolean(profileId) && !preview,
     refetchInterval: 60_000,
     refetchOnWindowFocus: "always",
     refetchOnReconnect: "always",
+  });
+  const planThrough = addDaysISO(today, 13);
+  const installerPlan = useQuery({
+    queryKey: ["myInstallerPlan", profileId, today, planThrough, undefined],
+    queryFn: () => readMyPlanWindow(today, planThrough),
+    enabled: installer && !preview && Boolean(profileId),
+    refetchInterval: 15000,
+    retry: false,
+  });
+  const previewPlan = useQuery({
+    queryKey: ["previewInstallerJobs", previewPerson?.id, today, planThrough],
+    enabled: installer && Boolean(previewPerson),
+    queryFn: async () => {
+      const person = previewPerson!;
+      const { data: profile, error: profileError } = await supabase.from("profiles")
+        .select("is_test").eq("id", person.id).single();
+      if (profileError) throw profileError;
+      if (!profile.is_test) return [];
+      const { data: jobs, error } = await supabase.from("projects").select("id,job_code,name")
+        .eq("is_test", true).is("deleted_at", null);
+      if (error) throw error;
+      return Promise.all(jobs.map(async job => {
+        const blocks = (await readPublishedPlan(job.id, person.id))
+          .filter(block => block.start <= planThrough && block.end >= today);
+        const assignedIds = new Set(blocks.flatMap(block => block.openingIds));
+        const openings = assignedIds.size ? await listOpenings(job.id).catch(() => []) : [];
+        const unitLabels = Object.fromEntries(openings.filter(opening => assignedIds.has(opening.id))
+          .map(opening => [opening.id, opening.opening_code]));
+        return { projectId: job.id, jobCode: job.job_code, jobName: job.name, blocks, unitLabels };
+      }));
+    },
+    refetchInterval: 15000,
+    retry: false,
   });
   const pick = useMemo(
     () => pickTodayEntries(schedule.data ?? [], profileId ?? "", today, through),
     [schedule.data, profileId, today, through],
   );
-  const todayJobId = pick.day === today ? (pick.entries.find((e) => e.project_id)?.project_id ?? null) : null;
+  const activityJobs = ((preview ? previewPlan.data : installerPlan.data) ?? []).flatMap(job => {
+    const shifts = job.blocks.filter(block => block.start <= today && block.end >= today);
+    if (!shifts.length) return [];
+    return [{ id: job.projectId, job_code: job.jobCode, name: job.jobName,
+      start: Math.min(...shifts.map(block => block.start < today ? PLAN_OPEN : planBoundary(block, "start"))) }];
+  }).sort((a, b) => a.start - b.start || a.job_code.localeCompare(b.job_code));
+  const assignedJobs = pick.day === today ? pick.entries.flatMap(entry => {
+    if (!entry.project_id || !entry.project) return [];
+    const [hour, minute] = entry.start_time?.split(":").map(Number) ?? [];
+    return [{ id: entry.project_id, job_code: entry.project.job_code, name: entry.project.name,
+      start: Number.isFinite(hour) ? hour * 60 + minute : Infinity }];
+  }) : [];
+  const jobChoices = new Map(activityJobs.map(job => [job.id, job]));
+  for (const job of [...assignedJobs].reverse()) {
+    const plannedStart = jobChoices.get(job.id)?.start;
+    jobChoices.set(job.id, { ...job, start: Number.isFinite(job.start) ? job.start : plannedStart ?? Infinity });
+  }
+  const plannedJobs = [...jobChoices.values()].sort((a, b) => a.start - b.start || a.job_code.localeCompare(b.job_code));
+  const scheduledDestinationIds = plannedJobs.slice(0, 4).map(job => job.id).join(",");
+  useEffect(() => {
+    if (!installer || preview || !profileId || !navigator.onLine || !scheduledDestinationIds) return;
+    for (const project of scheduledDestinationIds.split(","))
+      void queryClient.prefetchQuery(workdayProjectQuery(profileId, project));
+  }, [installer, preview, profileId, queryClient, scheduledDestinationIds]);
+  const plannedJob = plannedJobs[0];
+  const todayJobId = installer ? plannedJob?.id ?? null : pick.day === today ? (pick.entries.find((e) => e.project_id)?.project_id ?? null) : null;
   const jobId = shift?.project_id ?? todayJobId;
   const jobEntry = pick.entries.find((e) => e.project_id === jobId) ?? null;
   const jobLabel = shift?.projects
     ? `${shift.projects.job_code} · ${shift.projects.name}`
+    : plannedJob ? `${plannedJob.job_code} · ${plannedJob.name}`
     : jobEntry?.project
       ? `${jobEntry.project.job_code} · ${jobEntry.project.name}`
       : null;
@@ -149,7 +226,7 @@ export function WorkScreen() {
   const myOpenings = useQuery({
     queryKey: ["myOpenings", profileId],
     queryFn: () => listMyOpeningsAllJobs(profileId!),
-    enabled: Boolean(profileId),
+    enabled: Boolean(profileId) && !installer,
   });
   const jobOpenings = useQuery({
     queryKey: ["openings", jobId],
@@ -241,6 +318,27 @@ export function WorkScreen() {
     );
   }
 
+  const selectedJob = selection?.profileId === profileId ? selection.project
+    : preview ? simulator.sessions.find(session => !session.ended_at)?.project_id ?? null
+      : (shift?.status === "open" ? shift.project_id : null) ?? work.active?.project_id
+        ?? (work.active ? todayJobId : null);
+  const chooseJob = async (project: string, label?: string) => {
+    if (switchChecking || clock.isOpen) return;
+    setSwitchError("");
+    const enter = () => setSelection({ profileId, project });
+    if (preview && selectedJob !== project) simulator.stopWork();
+    if (!preview && shift?.status === "open" && shift.project_id !== project) {
+      setSwitchChecking(true);
+      try { await prepareWorkdayDestination(queryClient, profileId, project); }
+      catch (error) { setSwitchError(formatApiError(error)); return; }
+      finally { setSwitchChecking(false); }
+      openClockGlobally({
+        projectId: project, costCodeId: null, note: null, mode: null, stayOnPage: true,
+        switchToProject: true, workdaySwitch: true,
+        workdayStart: { label: label ?? (es ? "Obra seleccionada" : "Selected job"), onReady: enter },
+      });
+    } else enter();
+  };
   const unitForProblem =
     nextUp.kind === "running" || nextUp.kind === "next"
       ? nextUp.source === "opening"
@@ -249,14 +347,27 @@ export function WorkScreen() {
       : null;
 
   return (
-    <div className="page work-screen" data-testid="work-screen">
-      {steel ? <header className="steel-work-heading">
+    <div id={installer ? "installer-workday-top" : undefined} className={`page work-screen${installer ? " ws-installer" : ""}`} data-testid="work-screen">
+      {steel && !installer ? <header className="steel-work-heading">
         <div><p className="steel-eyebrow">{es ? "TU JORNADA" : "YOUR WORKDAY"}</p>
           <h1>{t("work.title")}</h1></div>
-        <Link to="/projects" className="ws-btn">{es ? "Ver trabajos" : "Browse jobs"}</Link>
-      </header> : <h1 className="ws-sr-only">{t("work.title")}</h1>}
+        {!installer && <Link to="/projects" className="ws-btn">{es ? "Ver trabajos" : "Browse jobs"}</Link>}
+      </header> : !installer && <h1 className="ws-sr-only">{t("work.title")}</h1>}
+      {installer && <header className="ws-installer-heading">
+        <div>
+          {selectedJob && <button type="button" className="ws-work-back" onClick={() => setSelection({ profileId, project: null })}>
+            <ArrowLeft size={16} aria-hidden="true" />{es ? "Elegir obra" : "Choose a job"}
+          </button>}
+          <h1>{es ? "Mi jornada" : "My workday"}</h1>
+        </div>
+        <a href="#work-upcoming" className="ws-work-upcoming"><CalendarDays size={17} aria-hidden="true" />{es ? "Próximos trabajos" : "Upcoming work"}</a>
+      </header>}
       <LiveSummonsStrip />
-      <ClockStrip
+        {installer && <QuickButtons key={`work-tools:${selectedJob ?? "no-job"}`} role={effectiveRole} jobId={selectedJob}
+          jobLabel={selectedJob === jobId ? jobLabel : null} shift={shift} work={work}
+          unit={selectedJob === jobId ? unitForProblem : null} locked={locked} now={now} workday preview={preview} />}
+      {!installer && <ClockStrip
+        key={profileId}
         profileId={profileId}
         shift={shift}
         clockKnown={clockKnown}
@@ -266,7 +377,36 @@ export function WorkScreen() {
         gate={gate}
         toolboxDone={toolboxDone}
         onShiftChanged={onShiftChanged}
-      />
+      />}
+      {installer ? <>
+        {switchError && <p role="alert">{switchError}</p>}
+        {switchChecking && <p role="status">{es ? "Comprobando la obra…" : "Checking job access…"}</p>}
+        {selectedJob ? <WorkdayProject key={selectedJob} project={selectedJob} day={today}
+          planAs={preview ? profileId : null} planBlock={null} simulator={simulator} live embedded
+          jobPicker={name => <WorkdayJobs key={selectedJob} profileId={profileId} currentJob={selectedJob}
+            jobName={name} plannedJobs={plannedJobs} onChoose={chooseJob} />} />
+          : <section className="ws-card ws-today-jobs" aria-label={es ? "Inicia tu jornada" : "Start Your Work Day"}>
+            <h2 className="ws-h2">{es ? "Inicia tu jornada" : "Start Your Work Day"}</h2>
+            {plannedJobs.map(job => <button type="button" key={job.id} className="ws-today-job"
+              onClick={() => chooseJob(job.id, job.job_code)}>
+              <span className="ws-today-job-copy">
+                <strong>{job.name || job.job_code}</strong>
+                <span className="ws-meta">
+                  {job.name && job.name !== job.job_code && <>{job.job_code} · </>}{!Number.isFinite(job.start) ? (es ? "Asignado hoy" : "Assigned today") : new Intl.DateTimeFormat(es ? "es" : "en", {
+                hour: "numeric", minute: "2-digit", timeZone: "UTC",
+              }).format(new Date(job.start * 60_000))}
+                </span>
+              </span>
+              <span className="ws-today-job-action">{es ? "Elegir obra" : "Choose Job"}</span>
+            </button>)}
+            <WorkdayJobs profileId={profileId} onChoose={chooseJob} />
+          </section>}
+        <div id="work-upcoming"><AssignedPlan profileId={profileId} today={today} plan={preview ? previewPlan : installerPlan}
+          previewSessions={preview ? simulator.sessions : undefined}
+          previewUnitCompletion={preview ? simulator.unitCompletion : undefined}
+          liveWork={preview ? undefined : work} /></div>
+        <HeadsUps items={notices} />
+      </> : <>
       <TodayCard
         meId={profileId}
         todayISO={today}
@@ -316,7 +456,9 @@ export function WorkScreen() {
         </section>
       )}
       {lead && <LeadRow role={effectiveRole} />}
+      {lead && <Link className="ws-btn" to="/activities">{es ? "Actividades recientes" : "Recent activities"}</Link>}
       <UnitContributors key={work.user ?? "signed-out"} work={work} jobId={jobId} canRecord={lead} />
+      </>}
     </div>
   );
 }

@@ -1,31 +1,38 @@
-import { readSharedPlan, saveSharedPlan, type SharedPlan } from "../../lib/installerWorkflow/sharedPlan";
+import { FloorIndex } from "../../components/install/FloorIndex";
+import { useWork } from "../../lib/customWork/useWork";
+import { readActivityDone, readSharedPlan, saveSharedPlan, type SharedPlan } from "../../lib/installerWorkflow/sharedPlan";
 import { ActivityIcon } from "../../components/projects/ActivityIcon";
 import { PlannerJobContext } from "./PlannerJobContext";
-import { ArrowLeft, Check, ChevronDown, GripVertical, Info, ListChecks, Pencil, SquareDashed, Trash2, Users, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, GripVertical, ListChecks, Pencil, SquareDashed, Trash2, Users, X } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useClock } from "../../lib/clockContext";
 import { supabase } from "../../lib/supabase";
 import { listPlannerPeople, listWorkSessions, listWorkUnits } from "../../lib/customWork/api";
-import { finishedUnitActivities } from "../../lib/installerWorkflow/unitProgress";
+import { readUnitState } from "../../lib/installerWorkflow/unitState";
 import { crewRecordEligible, localWorkDate, type CrewPerson } from "../../lib/customWork/model";
 import { listMarkSpecs, listOpenings } from "../../lib/install/api";
 import { type ProjectOpening } from "../../lib/install/types";
 import { indexSpecsByMark } from "../../lib/install/specs";
 import { catalogByMarkFrom, resolveMarkConfig } from "../../lib/modelstudio/fromProject";
-import { listStudioUnits, unitSvg } from "../../lib/modelstudio/units";
+import { listStudioUnits } from "../../lib/modelstudio/units";
+import { unitPicture } from "../../lib/install/unitDefinitionDiagram";
+import { UnitKindIcon } from "../../components/install/UnitKindIcon";
+import { UnitTile } from "../../components/install/UnitTile";
 import { normalizeMarkCode } from "../../lib/fitview/adapter";
 import { formatApiError } from "../../lib/errors";
 import {
-  coversPlanSlot, planBoundary, planDayEnd, PLAN_OPEN, PLAN_CLOSE, PLAN_NOON, PLAN_STEP,
-  BUILDING_3_PROJECT, STANDARD_SHIFT_END, shiftPlanDate, type OpeningCrew, type PlanBlock,
+  currentPlanBlocks, coversPlanSlot, planBoundary, planDayEnd, PLAN_OPEN, PLAN_CLOSE, PLAN_NOON, PLAN_STEP,
+  STANDARD_SHIFT_END, shiftPlanDate, type OpeningCrew, type PlanBlock,
 } from "../../lib/installerWorkflow/jobPlan";
 
 import "./jobPlanner.css";
-import { building3ByMark } from "./building3Openings";
+import { unitFloor, unitSourceMark } from "../../lib/install/unitDetails";
+import { UnitDetailsDialog, UnitDetailsPanel } from "../../components/install/UnitDetails";
+import { AgendaUnitDetails, type AgendaUnit } from "../work/AgendaUnitDetails";
 
-import { PILOT_ACTIVITIES as ACTIVITIES } from "../../lib/installerWorkflow/pilotActivities";
+import { PILOT_ACTIVITIES as ACTIVITIES, pilotActivityColor } from "../../lib/installerWorkflow/pilotActivities";
 
 function bundleKey(block: PlanBlock) {
   const units = [...block.openingIds].sort().map(id => {
@@ -65,41 +72,6 @@ function blockAssignments(config: WorkConfig, legacyCrew: string[] = []) {
   };
 }
 
-function FloorIndex({ floors, children }: { floors: string[]; children: (currentFloor: number) => ReactNode }) {
-  const listRef = useRef<HTMLDivElement>(null);
-  const [currentFloor, setCurrentFloor] = useState(0);
-
-  function updateCurrentFloor(list: HTMLDivElement) {
-    const top = list.getBoundingClientRect().top;
-    let current = 0;
-    for (const [index, section] of Array.from(list.children).entries()) {
-      if (section.getBoundingClientRect().top > top + 1) break;
-      current = index;
-    }
-    if (list.scrollTop > 0 && list.scrollTop + list.clientHeight >= list.scrollHeight - 1) {
-      current = list.children.length - 1;
-    }
-    setCurrentFloor(current);
-  }
-
-  return <div className="jp-floor-browser">
-    <nav aria-label="Jump to floor" className="jp-floor-index">
-      {floors.map((floor, index) => <button type="button" key={floor}
-        aria-label={`Jump to ${floor}`} aria-current={index === currentFloor ? "location" : undefined}
-        onClick={() => {
-          const list = listRef.current;
-          const group = list?.children[index];
-          if (list && group) {
-            list.scrollTop += group.getBoundingClientRect().top - list.getBoundingClientRect().top;
-            updateCurrentFloor(list);
-          }
-        }}>{floor.replace("Level ", "L").replace("Unspecified floor", "No floor")}</button>)}
-    </nav>
-    <div ref={listRef} className="jp-floor-list" onScroll={event => updateCurrentFloor(event.currentTarget)}>
-      {children(currentFloor)}
-    </div>
-  </div>;
-}
 
 function positionCrewMenu(menu: HTMLElement, gap = 4) {
   if (!menu.matches(":popover-open")) return;
@@ -113,25 +85,13 @@ function positionCrewMenu(menu: HTMLElement, gap = 4) {
   menu.style.top = `${top}px`;
 }
 
-function UnitInfo({ mark, lines }: { mark: string; lines: string[] }) {
-  const id = useId();
-  return <>
-    <button type="button" className="jp-unit-info-trigger" popoverTarget={id}
-      aria-label={`Details for ${mark}`} title={lines.join("\n")}><Info size={15} /></button>
-    <div id={id} popover="auto" className="jp-unit-info" aria-label={`Details for ${mark}`}>
-      <strong>{mark}</strong>
-      {lines.map(line => <span key={line}>{line}</span>)}
-    </div>
-  </>;
-}
-
 const CREW_COLORS = ["#72b7ff", "#d7a2ff", "#55d6a2", "#f5b96e", "#f48faf", "#e6d570", "#60d0dd", "#adba80"];
 const HOURS = Array.from({ length: 12 }, (_, index) => PLAN_OPEN + index * 60);
 const DAY_STEPS = (PLAN_CLOSE - PLAN_OPEN) / PLAN_STEP;
 const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 type WorkConfig = { activity: string; installerIds: string[]; openingIds: string[]; openingCrew?: PlanBlock["openingCrew"] };
 type Point = { date: string; minute: number };
-type Gesture = { x: number; y: number; block: PlanBlock; members: PlanBlock[]; edge: "move" | "start" | "end"; anchor: Point };
+type Gesture = { x: number; y: number; block: PlanBlock; members: PlanBlock[]; expected: PlanBlock[]; edge: "move" | "start" | "end"; anchor: Point };
 function sameValue(left: unknown, right: unknown) {
   const canonical = (block: unknown) => JSON.stringify(block, (_, value: unknown) =>
     value && typeof value === "object" && !Array.isArray(value)
@@ -153,10 +113,7 @@ function activityParts(key: string) {
   return { kind: key.slice(0, separator) === "unit" ? "unit" as const : "general" as const, activity: key.slice(separator + 1) };
 }
 function activityColor(key: string): CSSProperties {
-  const keys = ACTIVITIES.flatMap(group => group.names.map(name => group.kind + ":" + name));
-  const index = keys.indexOf(key);
-  const hash = [...key].reduce((value, letter) => (value * 31 + letter.charCodeAt(0)) >>> 0, 0);
-  return { "--activity-color": `hsl(${index < 0 ? hash % 360 : Math.round(index * 137.508) % 360} 55% 65%)` } as CSSProperties;
+  return { "--activity-color": pilotActivityColor(key) } as CSSProperties;
 }
 function isSunday(date: string) {
   return new Date(`${date}T00:00:00Z`).getUTCDay() === 0;
@@ -235,6 +192,8 @@ function Planner({ project, account, latestSharedPlan }: {
   const [draftUnit, setDraftUnit] = useState("");
   const [unitsCollapsed, setUnitsCollapsed] = useState(false);
   const unitTableId = useId();
+  const [detailUnit, setDetailUnit] = useState<AgendaUnit>();
+  const [createUnit, setCreateUnit] = useState(false);
   const activityPopoverId = useId();
   const activityMenuRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -288,14 +247,24 @@ function Planner({ project, account, latestSharedPlan }: {
   });
   const specs = useQuery({ queryKey: ["markSpecs", project], queryFn: () => listMarkSpecs(project) });
   const catalog = useQuery({ queryKey: ["studioUnits"], queryFn: listStudioUnits });
-  const workUnits = useQuery({ queryKey: ["customWorkUnits", account, project], queryFn: () => listWorkUnits(project) });
+  const workUnits = useQuery({ queryKey: ["customWorkUnits", account, project], queryFn: () => listWorkUnits(project), refetchInterval: 30000 });
   const workSessions = useQuery({ queryKey: ["customWorkSessions", account, project], queryFn: () => listWorkSessions(project), refetchInterval: 30000 });
   const workUnitByOpening = useMemo(() => new Map(workUnits.data?.map(unit => [unit.opening_id, unit.id])), [workUnits.data]);
-  const finished = useMemo(() => finishedUnitActivities(workSessions.data ?? []), [workSessions.data]);
+  const commands = useWork(project);
+  const marks = useQuery({ queryKey: ["planActivityDone", project, account], queryFn: () => readActivityDone(project), refetchInterval: 15000 });
+  // The same reading of a unit Workday and the unit dialog use.
+  const unitState = readUnitState({ sessions: workSessions.data ?? [], marks: marks.data, units: workUnits.data });
+  const finished = unitState.activityDone;
   const openingCodes = useMemo(() => new Map(openings.data?.map(opening => [opening.id, opening.opening_code])), [openings.data]);
   function isUnitDone(id: string, activity: string) {
-    return finished(workUnitByOpening.get(id), activity);
+    return finished(id, activity);
   }
+  const savedBlocks = new Map(blocks.map(block => [block.id, block]));
+  const savedMembers = (members: PlanBlock[]) => members.map(block => savedBlocks.get(block.id) ?? block);
+  const showCarry = (marks.isSuccess || !!marks.data) && workUnits.isSuccess && workSessions.isSuccess && openings.isSuccess
+    && (view !== "day" || day >= firstWorkDay);
+  const calendarBlocks = showCarry ? currentPlanBlocks(blocks, firstWorkDay,
+    (id, activity) => openingCodes.has(id) && !isUnitDone(id, activity), true) : blocks;
   function orderedUnits(ids: string[], activity: string, isDone = (id: string) => isUnitDone(id, activity)) {
     return ids.map(id => {
       const label = openingCodes.get(id) ?? "Unknown unit";
@@ -327,10 +296,11 @@ function Planner({ project, account, latestSharedPlan }: {
     ?? "Assigned installer").replace(/\s*(?:[·–—-]\s*|\(\s*)(?:demo|automation)\b.*$/i, "").trim();
   const crewStyle = (id: string) => ({ "--crew-color": crewColors.get(id) ?? "var(--muted)" }) as CSSProperties;
   const crewChoices = [...new Set([...roster.map(person => person.id), ...(edit?.config.installerIds ?? []).filter(id => !id.startsWith("mock-"))])];
-  const overviewDates = Array.from({ length: 14 }, (_, index) => shiftPlanDate(today, index - 2))
+  const overviewDates = Array.from({ length: 14 }, (_, index) => shiftPlanDate(today, index))
     .filter(date => !isSunday(date));
   const dates = view === "day" ? [day] : overviewDates;
-  const visible = blocks.filter(block => dates.some(date => coversPlanSlot(block, date, "AM") || coversPlanSlot(block, date, "PM")));
+  const visible = calendarBlocks.filter(block => dates.some(date => (view === "day" || date >= today)
+    && (coversPlanSlot(block, date, "AM") || coversPlanSlot(block, date, "PM"))));
   const activityGroups = ACTIVITIES.map(group => ({
     ...group, choices: [...new Set([...group.names, ...blocks.filter(block => block.kind === group.kind).map(block => block.activity)])],
   }));
@@ -388,6 +358,17 @@ function Planner({ project, account, latestSharedPlan }: {
           const before = expectedById.get(id) ?? original.get(id);
           const remote = current.get(id);
           const replacement = proposed.get(id);
+          if (replacement?.kind === "unit") {
+            const retained = before?.activity === replacement.activity ? before.openingIds : [];
+            const conflict = replacement.openingIds.find(opening => !retained.includes(opening)
+              && scheduledUnit(opening, replacement.activity, [...current.values()], new Set([id])));
+            if (conflict) {
+              setSharedPlan(latest);
+              setBlocks(latest.blocks);
+              setError(`${openingCodes.get(conflict) ?? "A unit"} is already scheduled for ${replacement.activity}. Review the selection before saving.`);
+              return false;
+            }
+          }
           if (!before && replacement) {
             const baseline = builderBaseline.current ?? original;
             const duplicate = latest.blocks.find(block => !baseline.has(block.id)
@@ -459,11 +440,18 @@ function Planner({ project, account, latestSharedPlan }: {
     clearDraft();
     setBuildBy(null);
   }
+  function scheduledUnit(id: string, activity: string, source = blocks, exclude = new Set<string>()) {
+    return source.find(block => block.kind === "unit" && block.activity === activity
+      && !isUnitDone(id, activity) && !exclude.has(block.id) && block.openingIds.includes(id));
+  }
+
+  function availableUnits(ids: string[], activity: string) {
+    return ids.filter(id => !isUnitDone(id, activity) && !scheduledUnit(id, activity));
+  }
+
   async function schedule() {
-    if (!drafted) return;
-    const activities = buildBy === "unit" ? bundleActivities : [draft.activity];
-    const additions = activities.map(activity => ({ ...drafted, ...activityParts(activity), id: crypto.randomUUID() }));
-    if (!await save([...blocks, ...additions])) return;
+    if (!drafted || !additions.length) return;
+    if (!await save([...blocks, ...additions.map(block => ({ ...block, id: crypto.randomUUID() }))])) return;
     clearDraft();
     setBuildBy(null);
     setDay(drafted.start);
@@ -485,9 +473,10 @@ function Planner({ project, account, latestSharedPlan }: {
     setError("");
     const trigger = document.activeElement;
     returnFocus.current = trigger instanceof HTMLElement ? trigger : null;
+    const original = savedBlocks.get(block.id) ?? block;
     setEditUnit(block.openingIds[0] ?? "");
-    setEdit({ members, block: { ...block, startMinute: planBoundary(block, "start"), endMinute: planBoundary(block, "end") },
-      config: { activity: activityKey(block), installerIds: [...block.installerIds], openingIds: [...block.openingIds], openingCrew: block.openingCrew } });
+    setEdit({ members: savedMembers(members), block: { ...block, startMinute: planBoundary(block, "start"), endMinute: planBoundary(block, "end") },
+      config: { activity: activityKey(block), installerIds: [...block.installerIds], openingIds: [...original.openingIds], openingCrew: original.openingCrew } });
   }
   function closeDetails() {
     setUnitsCollapsed(false);
@@ -522,7 +511,7 @@ function Planner({ project, account, latestSharedPlan }: {
     const label = members.length === 1 ? members[0].activity : `${members.length} activities`;
     if (!window.confirm(`Delete ${label}?`)) return;
     const ids = new Set(members.map(block => block.id));
-    if (await save(blocks.filter(block => !ids.has(block.id)), members)) {
+    if (await save(blocks.filter(block => !ids.has(block.id)), savedMembers(members))) {
       if (edit?.members.some(block => ids.has(block.id))) closeDetails();
       setSelectedBlock("");
     }
@@ -557,7 +546,7 @@ function Planner({ project, account, latestSharedPlan }: {
   }
   const action = gesture.current;
   const projectedUpdates = preview && action ? gestureUpdates(preview, action) : null;
-  const projected = projectedUpdates ? layoutCards(blocks
+  const projected = projectedUpdates ? layoutCards(calendarBlocks
     .map(block => projectedUpdates.get(block.id) ?? block)
     .filter(block => dates.some(date => coversPlanSlot(block, date, "AM") || coversPlanSlot(block, date, "PM")))) : [];
   const projectedById = new Map(projected.flatMap(entry => entry.group.map(member => [member.id, entry] as const)));
@@ -596,7 +585,7 @@ function Planner({ project, account, latestSharedPlan }: {
   function begin(event: PointerEvent<HTMLElement>, block: PlanBlock, edge: Gesture["edge"], members = [block]) {
     if (event.button !== 0) return;
     const anchor = pointAt(event) ?? { date: today, minute: PLAN_OPEN };
-    gesture.current = { x: event.clientX, y: event.clientY, block, members, edge, anchor };
+    gesture.current = { x: event.clientX, y: event.clientY, block, members, expected: savedMembers(members), edge, anchor };
     event.currentTarget.setPointerCapture(event.pointerId);
     event.stopPropagation();
   }
@@ -662,11 +651,11 @@ function Planner({ project, account, latestSharedPlan }: {
     if (gesture.current && suppressClick.current) {
       const next = candidate(event);
       const action = gesture.current;
-      const { edge, members } = action;
+      const { edge } = action;
       cancelGesture();
       if (!next) return;
       const replacements = gestureUpdates(next, action);
-      if (await save(blocks.map(block => replacements.get(block.id) ?? block), members)) {
+      if (await save(blocks.map(block => replacements.get(block.id) ?? block), action.expected)) {
         if (edge === "move" && view === "overview") setDay(next.start);
         setEdit(current => {
           const updated = current && replacements.get(current.block.id);
@@ -732,6 +721,12 @@ function Planner({ project, account, latestSharedPlan }: {
     const isDone = (id: string) => unitFirst
       ? bundleActivities.length > 0 && bundleActivities.every(key => isUnitDone(id, activityParts(key).activity))
       : isUnitDone(id, activity);
+    const excluded = new Set(edit?.members.map(block => block.id));
+    const scheduled = (id: string) => unitFirst ? undefined
+      : (edit && edit.members.length > 1 ? edit.members.map(member => member.activity) : [activity])
+        .map(name => scheduledUnit(id, name, blocks, excluded)).find(Boolean);
+    const isDisplayedComplete = (id: string) => unitState.complete(id) || isDone(id);
+    const canPick = (id: string) => !scheduled(id) && (Boolean(edit) || unitFirst || !isDone(id));
     const queue = orderedUnits(ids, activity, isDone);
     const pending = queue.filter(unit => !unit.done);
     const draggedId = priorityDrag.current?.id;
@@ -808,11 +803,8 @@ function Planner({ project, account, latestSharedPlan }: {
       onChange({ ...config, openingCrew });
     }
     const floors = new Map<string, ProjectOpening[]>();
-    const detailsFor = (opening: ProjectOpening) => project === BUILDING_3_PROJECT && people.data?.isTest
-      ? building3ByMark.get(normalizeMarkCode(opening.opening_code))
-      : undefined;
     for (const opening of openings.data ?? []) {
-      const floor = detailsFor(opening)?.location.split(" · ")[0] ?? "Unspecified floor";
+      const floor = unitFloor(opening) ?? "Unspecified floor";
       const units = floors.get(floor) ?? [];
       units.push(opening);
       floors.set(floor, units);
@@ -866,67 +858,64 @@ function Planner({ project, account, latestSharedPlan }: {
       </div>}
       <small className="jp-assignment-notice" role="status">{assignmentNotice?.message}</small>
       <div id={unitTableId} hidden={unitsCollapsed}>
+      <button type="button" className="jp-add-unit" onClick={() => setCreateUnit(true)}>+ Add Unit</button>
       <FloorIndex floors={floorGroups.map(([floor]) => floor)}>
           {currentFloor => floorGroups.map(([floor, units], index) => <section key={floor} className="jp-unit-stage"
             aria-label={floor} data-current-floor={index === currentFloor}>
             <h3>{floor} <span>{units.length}</span>
-              {units.some(unit => isDone(unit.id)) && <span className="jp-floor-done">
-                <Check size={12} aria-hidden="true" />{units.filter(unit => isDone(unit.id)).length} done
+              {units.some(unit => isDisplayedComplete(unit.id)) && <span className="jp-floor-done">
+                <Check size={12} aria-hidden="true" />{units.filter(unit => isDisplayedComplete(unit.id)).length} done
               </span>}
               <button type="button" className="jp-select-floor" aria-label={`Select all on ${floor}`}
-                disabled={units.every(unit => ids.includes(unit.id))}
+                disabled={units.every(unit => ids.includes(unit.id) || !canPick(unit.id))}
                 onClick={() => {
-                  onChange({ ...config, openingIds: [...new Set([...ids, ...units.map(unit => unit.id)])] });
-                  selectForAssignment(units.find(unit => !ids.includes(unit.id))?.id ?? activeId);
+                  onChange({ ...config, openingIds: [...new Set([...ids, ...units.filter(unit => canPick(unit.id)).map(unit => unit.id)])] });
+                  selectForAssignment(units.find(unit => !ids.includes(unit.id) && canPick(unit.id))?.id ?? activeId);
                 }}>
                 <ListChecks size={13} aria-hidden="true" />
-                {units.every(unit => ids.includes(unit.id)) ? "All selected" : "Select all"}
+                {units.every(unit => ids.includes(unit.id) || !canPick(unit.id)) ? "All selected" : "Select all"}
               </button>
             </h3>
             <div className="jp-unit-options">{units.map(opening => {
-              const diagram = resolveMarkConfig(opening.opening_code, specIndex, byMark);
-              const details = detailsFor(opening);
+              const mark = unitSourceMark(opening);
+              const resolved = mark ? resolveMarkConfig(mark, specIndex, byMark) : null;
+              const diagram = unitPicture(opening.unit_details, resolved, 40, 38);
               const selected = ids.includes(opening.id);
-              const done = isDone(opening.id);
+              const unitComplete = unitState.complete(opening.id);
+              const done = isDisplayedComplete(opening.id);
+              const booking = scheduled(opening.id);
+              const bookingLabel = booking && (booking.end < today ? "Planned" : `Planned ${booking.start} · ${timeLabel(planBoundary(booking, "start"))}`);
               const expanded = active?.id === opening.id;
-              const assigned = rolesByUnit?.[opening.id];
+              const assigned = rolesByUnit?.[opening.id] ?? booking?.openingCrew?.[opening.id];
               const leadFirstName = assigned?.leadId ? crewName(assigned.leadId).split(/\s+/)[0] : "";
               const crewCount = assigned?.crewIds.length ?? 0;
-              const info = details
-                ? [details.location, details.material, details.catalog, ...details.sizes.map(size => `${details.sizeBasis} · ${size}`)]
-                : [opening.label || diagram?.kind || "Details unavailable"];
-              return <div className="jp-unit-card" key={opening.id} data-active-unit={expanded} data-selected-unit={selected} data-assigned={!!assigned} data-done={done}>
-                <div className="jp-unit-pick">
-                <button type="button" aria-pressed={selected} data-included={selected}
-                  aria-expanded={expanded} aria-controls={expanded ? popoverId + "-assignment" : undefined} aria-label={`${opening.opening_code}${selected ? " · in activity" : ""}${done ? " · Complete" : ""}`}
-                  onClick={() => {
+              return <UnitTile key={opening.id} code={opening.opening_code}
+                picture={diagram ? <img alt="" src={`data:image/svg+xml,${encodeURIComponent(diagram)}`} />
+                  : <UnitKindIcon kind={opening.unit_details?.kind ?? resolved?.kind} size={33} />}
+                lead={leadFirstName} crewCount={crewCount} done={done}
+                // The same words Workday's tiles use; "Open" here was Workday's "Unplanned".
+                status={done ? "Complete" : booking && booking.end < today ? "Pending" : booking ? "Planned" : "Unplanned"}
+                statusTitle={unitComplete ? "Unit complete" : done ? "Activity complete" : bookingLabel}
+                card={{ "data-active-unit": expanded, "data-selected-unit": selected, "data-assigned": !!assigned }}
+                pick={{ disabled: !selected && !canPick(opening.id), "aria-pressed": selected, "data-included": selected,
+                  "aria-expanded": expanded, "aria-controls": expanded ? popoverId + "-assignment" : undefined,
+                  "aria-label": `${opening.opening_code}${selected ? " · in activity" : ""}${done ? " · Complete" : booking ? " · Planned" : ""}`,
+                  onClick: () => {
                     if (!selected) onChange({ ...config, openingIds: [...ids, opening.id] });
                     selectForAssignment(expanded ? "" : opening.id);
-                  }}>
-                  <span className="jp-unit-visual" aria-hidden="true">
-                    {diagram ? <img alt="" src={`data:image/svg+xml,${encodeURIComponent(unitSvg(diagram, 40, 38))}`} />
-                      : <SquareDashed size={33} />}
-                  </span>
-                  <span className="jp-unit-caption">
-                    <strong>{opening.opening_code}</strong>
-                    {(leadFirstName || crewCount > 0) && <span className="jp-unit-member-summary"
-                      aria-label={[leadFirstName && `Lead: ${leadFirstName}`, crewCount > 0 && `${crewCount} crew`].filter(Boolean).join(", ")}>
-                      {leadFirstName && <span title={leadFirstName}>{leadFirstName}</span>}
-                      {crewCount > 0 && <span><Users size={10} aria-hidden="true" />{crewCount}</span>}
-                    </span>}
-                    <small className="jp-unit-status" data-done={done}>{done ? "Complete" : "Open"}</small>
-                  </span>
-                </button>
-                </div>
-                {selected && <button type="button" className="jp-unit-deselect" aria-label={`Deselect ${opening.opening_code}`}
+                  } }}
+                after={selected && <button type="button" className="jp-unit-deselect" aria-label={`Deselect ${opening.opening_code}`}
                   onClick={() => {
                     const openingIds = ids.filter(id => id !== opening.id);
                     const openingCrew = Object.fromEntries(Object.entries(rolesByUnit ?? {}).filter(([id]) => id !== opening.id));
                     onChange({ ...config, openingIds, openingCrew });
                     selectForAssignment(expanded ? "" : activeId);
                   }}><X size={14} /></button>}
-                <UnitInfo mark={opening.opening_code} lines={info} />
-              </div>;
+                info={{ "aria-haspopup": "dialog", "aria-label": `Details for ${opening.opening_code}`, onClick: () => setDetailUnit({
+                  id: opening.id, label: opening.opening_code, projectId: project,
+                  activity: config.activity.startsWith("unit:") ? config.activity.slice(5) : undefined,
+                  leadId: assigned?.leadId, crewIds: assigned?.crewIds ?? [],
+                }) }} />;
             })}</div>
           </section>)}
       </FloorIndex>
@@ -969,13 +958,18 @@ function Planner({ project, account, latestSharedPlan }: {
   }
   function workContent(block: PlanBlock, showTitle = true): ReactNode {
     const queue = orderedUnits(block.openingIds, block.activity);
-    const doneCount = queue.filter(unit => unit.done).length;
-    const unitDetails = queue.map(({ label, done }) => done ? `${label} (done)` : label);
+    const doneCount = queue.filter(unit => unit.done || unitState.complete(unit.id)).length;
+    const unitDetails = queue.map(({ id, label, done }) =>
+      [label, unitState.complete(id) ? "Unit complete" : done && "Activity done"].filter(Boolean).join(" · "));
     function unitChip({ id, label, done }: typeof queue[number], index: number) {
-      const diagram = resolveMarkConfig(label, specIndex, byMark);
-      return <span className="jp-scope-unit" key={id} title={unitDetails[index]} data-done={done}>
-        <span>{done && <Check size={11} aria-hidden="true" />}{label}</span>
-        {diagram ? <img alt="" src={`data:image/svg+xml,${encodeURIComponent(unitSvg(diagram, 36, 28))}`} /> : <SquareDashed size={22} aria-hidden="true" />}
+      const opening = openings.data?.find(row => row.id === id);
+      const mark = opening && unitSourceMark(opening);
+      const resolved = mark ? resolveMarkConfig(mark, specIndex, byMark) : null;
+      const diagram = unitPicture(opening?.unit_details, resolved, 36, 28);
+      const complete = done || unitState.complete(id);
+      return <span className="jp-scope-unit" key={id} title={unitDetails[index]} data-done={complete}>
+        <span>{complete && <Check size={11} aria-hidden="true" />}{label}</span>
+        {diagram ? <img alt="" src={`data:image/svg+xml,${encodeURIComponent(diagram)}`} /> : <UnitKindIcon kind={opening?.unit_details?.kind ?? resolved?.kind} size={22} />}
       </span>;
     }
     return <span className="jp-card-content">
@@ -1031,13 +1025,19 @@ function Planner({ project, account, latestSharedPlan }: {
   const endDate = endAt.slice(0, 10);
   const startMinute = dateTimeMinute(startAt);
   const endMinute = dateTimeMinute(endAt);
-  const validRange = startAt && endAt && endAt > startAt
+  const validRange = startAt && endAt && endAt > startAt && scheduleDate >= today
     && !isSunday(scheduleDate) && !isSunday(endDate)
     && startMinute >= PLAN_OPEN && startMinute < PLAN_CLOSE
     && endMinute > PLAN_OPEN && endMinute <= PLAN_CLOSE;
   const drafted = (unitFirst ? bundleActivities.length > 0 && draft.openingIds.length > 0 : draft.activity) && validRange ? {
     id: "draft", ...activityParts(bundle.activity), start: scheduleDate, end: endDate, startMinute, endMinute, ...draftAssignments,
   } : null;
+  const additions = drafted ? (unitFirst ? bundleActivities : [draft.activity]).flatMap(key => {
+    const activity = activityParts(key);
+    const openingIds = activity.kind === "unit" ? availableUnits(draft.openingIds, activity.activity) : [];
+    if (activity.kind === "unit" && !openingIds.length) return [];
+    return [{ ...drafted, ...activity, ...blockAssignments({ ...draft, activity: key, openingIds }) }];
+  }) : [];
   const columnCount = view === "day" ? DAY_STEPS : dates.length * 2;
   const times = Array.from({ length: DAY_STEPS }, (_, index) => PLAN_OPEN + index * PLAN_STEP);
   const slots = view === "day" ? times.map(minute => ({ date: day, minute })) : dates.flatMap(date => [
@@ -1048,6 +1048,20 @@ function Planner({ project, account, latestSharedPlan }: {
     onClick={event => { if (!(event.target instanceof Element && event.target.closest(".jp-event, .jp-composer"))) setSelectedBlock(""); }}
     onClickCapture={event => { if (event.detail && suppressClick.current) { event.stopPropagation(); suppressClick.current = false; } }}>
     <PlannerJobContext projectId={project} />
+    {detailUnit && <AgendaUnitDetails unit={detailUnit} profileId={account ?? ""}
+      openingRow={openings.data?.find(opening => opening.id === detailUnit.id)}
+      localSessions={workSessions.data?.filter(session => session.unit_id === workUnitByOpening.get(detailUnit.id)) ?? []}
+      localUnitComplete={unitState.complete(detailUnit.id) || undefined} onClose={() => setDetailUnit(undefined)}
+      markDone={detailUnit.activity && blocks.some(block => block.kind === "unit" && block.activity === detailUnit.activity
+        && block.openingIds.includes(detailUnit.id)) ? () => commands.command("plan_activity_done", {
+          project_id: project, opening_id: detailUnit.id, activity: detailUnit.activity,
+        }) : undefined}
+      queuedMark={commands.queue.find(command => command.action === "plan_activity_done"
+        && command.data.project_id === project && command.data.opening_id === detailUnit.id
+        && command.data.activity === detailUnit.activity)} />}
+    {createUnit && <UnitDetailsDialog title="Add placeholder unit" onClose={() => setCreateUnit(false)}>
+      <UnitDetailsPanel projectId={project} onCreated={() => setCreateUnit(false)} />
+    </UnitDetailsDialog>}
     {(error || loadError) && <p role="alert">{error || formatApiError(loadError)}</p>}
     {sharedBusy && <p role="status">Saving plan...</p>}
     <section className="jp-calendar" aria-label="Work calendar" inert={sharedBusy}>
@@ -1100,11 +1114,15 @@ function Planner({ project, account, latestSharedPlan }: {
           {unitFirst && draft.openingIds.length > 0 && <section className="jp-bundle-activities" aria-label="Activities for selected units">
             <strong>Activities <small role="status">{bundleActivities.length} selected</small></strong>
             <div>
-              {activityGroups.find(group => group.kind === "unit")?.choices.map(name => <button key={name}
-                type="button" aria-pressed={bundleActivities.includes("unit:" + name)}
-                onClick={() => setBundleActivities(current => toggle(current, "unit:" + name))}>
-                <ActivityIcon activity={name} />{name}
-              </button>)}
+              {activityGroups.find(group => group.kind === "unit")?.choices.map(name => {
+                const key = "unit:" + name;
+                const selected = bundleActivities.includes(key);
+                return <button key={name} type="button" aria-pressed={selected}
+                  disabled={!selected && !availableUnits(draft.openingIds, name).length}
+                  onClick={() => setBundleActivities(current => toggle(current, key))}>
+                  <ActivityIcon activity={name} />{name}
+                </button>;
+              })}
             </div>
           </section>}
           {edit ? <div className="jp-compose-footer jp-edit-footer">
@@ -1145,7 +1163,7 @@ function Planner({ project, account, latestSharedPlan }: {
               </div>
               <div className="jp-create-actions">
                 <button type="button" onClick={cancelSchedule}>Cancel</button>
-                <button className="jp-schedule" type="button" disabled={!drafted} onClick={schedule}>Schedule</button>
+                <button className="jp-schedule" type="button" disabled={!additions.length} onClick={schedule}>Schedule</button>
               </div>
               {startAt && endAt && !validRange && <small role="status">
                 Choose Monday through Saturday, between 7 AM and 7 PM, with the end after the start.

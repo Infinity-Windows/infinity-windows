@@ -1,0 +1,12 @@
+.unit-dimension-fields { grid-column:1/-1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.unit-dimension-modes { grid-column:1/-1; display:flex; gap:6px; }
+.unit-dimension-modes button { min-height:36px; }
+.unit-dimension-modes button[aria-pressed=true] { border-color:var(--accent); }
+.unit-dimension-side { display:grid; gap:4px; min-width:0; }
+.unit-dimension-entry { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px; align-items:end; }
+.unit-dimension-entry input { min-width:0; width:100%; }
+.unit-dimension-entry label { display:grid; gap:3px; min-width:0; font-size:12px; }
+.unit-dimension-entry select { min-width:0; width:100%; }
+.unit-dimension-name { font-size:inherit; }
+.unit-dimension-entry input[aria-invalid=true] { outline:1px solid var(--danger,#ef7272); }
+@media (max-width:420px) { .unit-dimension-fields { grid-template-columns:minmax(0,1fr); } }

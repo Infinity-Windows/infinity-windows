@@ -1,0 +1,53 @@
+/* The Plan's unit tile, outside the Plan. jobPlanner.css holds the tile's own
+   rules and scopes its layout to the Plan's composer; these give a
+   `.unit-tiles` grid the same layout. Change the tile there and here together. */
+.unit-tiles {
+  --unit-tile-height: 64px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 124px), 1fr)); gap: 6px;
+}
+.unit-tiles .jp-unit-card { display: grid; }
+.unit-tiles .jp-unit-pick > button:first-child {
+  display: grid; grid-template-columns: minmax(0, 40%) minmax(0, 1fr); align-items: stretch; justify-items: stretch; gap: 0;
+  width: 100%; height: 100%; min-height: var(--unit-tile-height); padding: 0; overflow: hidden; text-align: start;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text);
+}
+.unit-tiles .jp-unit-visual img { object-fit: contain; filter: brightness(0) invert(.85); }
+.unit-tiles .jp-unit-caption > strong { font-size: 12px; }
+.unit-tiles .jp-unit-card[data-selected-unit=true] .jp-unit-pick > button:first-child {
+  border-color: var(--accent); background: color-mix(in srgb, var(--surface), var(--accent) 15%);
+}
+.unit-tiles .jp-unit-card[data-done=true] .jp-unit-pick > button:first-child {
+  border-color: #589478; background: color-mix(in srgb, var(--surface), #85ddb0 12%);
+}
+.unit-tiles .jp-unit-card[data-running=true] .jp-unit-pick > button:first-child {
+  border-color: #fa843e; box-shadow: inset 0 0 0 1px #fa843e; background: #fa843e12;
+}
+.unit-tiles .jp-unit-card[data-running=true] .jp-unit-status { color: #ffad78; }
+.unit-tiles .jp-unit-status { display: flex; align-items: center; gap: 4px; }
+.unit-tiles .jp-unit-card .jp-unit-info-trigger {
+  position: absolute; top: auto; right: 0; bottom: 0; display: grid; place-items: center;
+  width: 28px; height: 28px; min-height: 0; padding: 0; border: 0; border-radius: 8px;
+  background: transparent; box-shadow: none; color: var(--muted);
+}
+.unit-tiles .jp-unit-card .jp-unit-info-trigger:is(:hover, [aria-expanded=true]) { color: var(--text); }
+.unit-tiles .jp-unit-caption > .jp-unit-status { padding-inline-end: 22px; }
+
+/* The same tile at working size: Workday's timers, tapped with a gloved thumb. */
+.unit-tiles[data-size=large] {
+  --unit-tile-height: 92px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 158px), 1fr)); gap: 8px;
+}
+.unit-tiles[data-size=large] .jp-unit-visual > :is(img, svg) { width: min(100%, 56px); height: 54px; }
+.unit-tiles[data-size=large] .jp-unit-caption {
+  grid-template-rows: none; grid-auto-rows: auto; align-content: space-between; gap: 4px; padding: 7px 6px 7px 8px;
+}
+.unit-tiles[data-size=large] .jp-unit-caption > strong { font-size: 16px; }
+.unit-tiles[data-size=large] .jp-unit-caption > .jp-unit-status { grid-row: auto; font-size: 12px; padding-inline-end: 34px; }
+.unit-tiles[data-size=large] .jp-unit-member-summary { font-size: 12px; }
+/* The icon sits by the unit number here (Matt, 2026-11-20); over the clock it
+   was in the way of the time. Mark-done takes the bottom corner instead. */
+.unit-tiles[data-size=large] .jp-unit-card .jp-unit-info-trigger { top: 0; bottom: auto; width: 40px; height: 40px; }
+.unit-tiles[data-size=large] .jp-unit-caption > strong { padding-inline-end: 34px; }
+.unit-tiles[data-size=large] .jp-unit-card .wd-unit-finish { top: auto; bottom: 4px; }
+.unit-tiles .jp-unit-card[data-running=true] .jp-unit-caption > strong { padding-inline-end: 34px; }
+.unit-tiles .wd-unit-clock { font-size: 15px; }

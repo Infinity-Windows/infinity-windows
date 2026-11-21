@@ -32,7 +32,7 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const srcRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -150,7 +150,8 @@ function isCameraOnlyPicture(attrs: string): boolean {
 }
 
 const files = walk(srcRoot).map((full) => ({
-  path: relative(srcRoot, full),
+  // Forward slashes on every machine: the lists below are written that way.
+  path: relative(srcRoot, full).split(sep).join("/"),
   source: readFileSync(full, "utf8"),
 }));
 

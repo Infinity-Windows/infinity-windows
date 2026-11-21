@@ -78,6 +78,8 @@ export interface ClockStripProps {
   clockKnown: boolean;
   /** Today's published job, to preselect (K1.3). */
   todayJobId: string | null;
+  fixedJob?: boolean;
+  hideWorkedTime?: boolean;
   /** The schedule has answered (or failed) — priming waits for it, so the
    * last job never wins over today's merely by arriving first. */
   scheduleSettled: boolean;
@@ -88,10 +90,13 @@ export interface ClockStripProps {
   onShiftChanged: () => void;
 }
 
-export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleSettled, talk, gate, toolboxDone, onShiftChanged }: ClockStripProps) {
+export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleSettled, fixedJob = false, hideWorkedTime = false, talk, gate, toolboxDone, onShiftChanged }: ClockStripProps) {
   const t = useT();
   const queryClient = useQueryClient();
   const onClock = isOnTheClock(shift);
+  const openShiftControls = () => openClockGlobally(fixedJob ? {
+    projectId: shift?.project_id ?? null, costCodeId: null, note: null, mode: null, stayOnPage: true,
+  } : undefined);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!onClock) return;
@@ -105,7 +110,7 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
     queryFn: () => listRecentJobs(profileId),
     enabled: !shift,
   });
-  const [pick, setPick] = useState<JobPick>({ projectId: "", costCodeId: "", mode: "data", note: "" });
+  const [pick, setPick] = useState<JobPick>({ projectId: fixedJob ? todayJobId ?? "" : "", costCodeId: "", mode: "data", note: "" });
   const costCodes = useQuery({
     queryKey: ["clockCostCodes", pick.projectId || "all"],
     queryFn: () => getClockCostCodesForProject(pick.projectId || null),
@@ -148,7 +153,7 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
 
   const project = useMemo(() => (projects.data ?? []).find((p) => p.id === pick.projectId), [projects.data, pick.projectId]);
   const costCode = (costCodes.data ?? []).find((c) => c.id === pick.costCodeId);
-  const canStart = Boolean(pick.projectId && pick.costCodeId);
+  const canStart = Boolean(pick.projectId && (fixedJob ? pick.projectId === todayJobId && costCode : pick.costCodeId));
   canStartRef.current = canStart;
   const plan = startDayPlan(gate);
 
@@ -220,8 +225,12 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
   });
 
   const onStartDay = () => {
-    if (!clockKnown || doStart.isPending) return;
+    if (!clockKnown || doStart.isPending || (fixedJob && costCodes.isPending)) return;
     if (!canStart) {
+      if (fixedJob) {
+        openClockGlobally({ projectId: todayJobId, costCodeId: null, mode: null, note: null, stayOnPage: true });
+        return;
+      }
       setPicking(true);
       return;
     }
@@ -269,24 +278,24 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
               {onBreak ? t("work.clock.onBreak") : t("work.clock.clockedIn", { time: clockInLabel(shift.clock_in_at) })}
               {shift.projects?.job_code ? ` · ${shift.projects.job_code}` : ""}
             </span>
-            <span className="ws-clock-timer" aria-label={t("clock.a11y.timeWorked")}>
+            {(!hideWorkedTime || guard.workedSeconds == null) && <span className="ws-clock-timer" aria-label={t("clock.a11y.timeWorked")}>
               {guard.workedSeconds == null ? t("clockBadge.finish") : formatClock(elapsedWorkSeconds(shift, now))}
-            </span>
+            </span>}
           </div>
           {pending && <p className="ws-meta">{t("work.clock.queued")}</p>}
           <ToolboxSignStatus done={toolboxDone} showSent={false} />
           <div className="ws-clock-actions">
-            <button type="button" className="ws-btn ws-btn--primary" onClick={() => openClockGlobally()}>
+            <button type="button" className="ws-btn ws-btn--primary" onClick={openShiftControls}>
               {onBreak ? <Play size={20} aria-hidden /> : <Coffee size={20} aria-hidden />}{" "}
               {onBreak ? t("work.clock.resume") : t("work.clock.break")}
             </button>
-            <button type="button" className="ws-btn" onClick={() => openClockGlobally()}>
+            <button type="button" className="ws-btn" onClick={openShiftControls}>
               <Square size={18} aria-hidden /> {t("work.clock.clockOut")}
             </button>
           </div>
         </section>
         {gate.talkExists === true && gate.signedToday === false && talk && (
-          <section className="ws-card ws-talk" aria-label={t("work.toolbox.finish")} data-testid="ws-finish-talk">
+          <section className="ws-card ws-talk" aria-label={t("work.toolbox.finish")} id="work-toolbox-signature" data-testid="ws-finish-talk" tabIndex={-1}>
             <h2 className="ws-h2">{t("work.toolbox.finish")}</h2>
             <p className="ws-meta">{t("work.toolbox.finishHelp")}</p>
             <ToolboxSignCard profileId={profileId} talk={talk} />
@@ -313,7 +322,7 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
   const busy = doStart.isPending;
   return (
     <section className="ws-card ws-clock ws-clock--off" aria-label={t("work.clock.a11y")} data-testid="ws-clock">
-      <div className="ws-clock-pick">
+      {(!fixedJob || project) && <div className="ws-clock-pick">
         <div className="ws-clock-pick-text">
           <span className="ws-label">{t("work.clock.job")}</span>
           <span className="ws-clock-pick-job">
@@ -325,10 +334,10 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
             </span>
           )}
         </div>
-        <button type="button" className="ws-btn ws-btn--ghost" onClick={() => setPicking(true)}>
+        {!fixedJob && <button type="button" className="ws-btn ws-btn--ghost" onClick={() => setPicking(true)}>
           {t("work.clock.change")}
-        </button>
-      </div>
+        </button>}
+      </div>}
 
       {showSign && talk && canStart ? (
         <div className="ws-talk" data-testid="ws-start-talk">
@@ -353,7 +362,7 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
           <button
             type="button"
             className="ws-btn ws-btn--primary ws-btn--start"
-            disabled={busy}
+            disabled={busy || (fixedJob && costCodes.isPending)}
             onClick={onStartDay}
             data-testid="ws-start-day"
           >
@@ -366,7 +375,7 @@ export function ClockStrip({ profileId, shift, clockKnown, todayJobId, scheduleS
 
       <ToolboxSignStatus done={toolboxDone} showSent={false} />
 
-      <button type="button" className="ws-link" onClick={() => openClockGlobally()}>
+      <button type="button" className="ws-link" onClick={() => openClockGlobally(fixedJob ? { projectId: todayJobId, costCodeId: costCode?.id ?? null, note: null, mode: null, stayOnPage: true } : undefined)}>
         {t("work.clock.moreOptions")}
       </button>
 

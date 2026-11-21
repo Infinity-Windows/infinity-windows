@@ -1,0 +1,183 @@
+/* Keep the work surface quiet. All evidence and completion controls are opt-in. */
+.native-installer-day .workday-simple { max-width:920px; margin-inline:auto; padding:24px; }
+.wd-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:24px; }
+.wd-heading strong { font-size:17px; }
+.wd-heading small { display:block; color:var(--muted,#aab6bf); font-size:12px; margin-top:4px; }
+.wd-heading-right { display:flex; gap:14px; align-items:center; }
+.native-installer-day .wd-language { padding:6px 8px; min-height:36px; background:transparent; border:0; font-size:13px; }
+.wd-current { display:grid; grid-template-columns:48px minmax(0,1fr) auto; align-items:center; gap:12px; border:1px solid var(--border,#435057); padding:12px; border-radius:14px; background:#232d34; margin-bottom:24px; }
+.wd-activity-symbol { color:#f79a61; display:grid; place-items:center; }
+.wd-activity-choice { min-width:0; }
+.native-installer-day .wd-activity-picker {
+  display:inline-flex; align-items:center; justify-content:space-between; gap:8px; width:fit-content; max-width:100%;
+  padding:6px 9px; min-height:40px; font-size:14px; font-weight:650; text-align:start;
+}
+.wd-activity-picker[aria-expanded=true] { border-color:var(--accent); }
+.wd-activity-picker svg { flex:none; }
+.wd-activity-tools {
+  display:grid; gap:12px; margin:-12px 0 18px; padding:12px; border:1px solid var(--border); border-radius:12px;
+}
+.wd-activity-tool-group h3 { margin:0 0 6px; color:var(--muted); font-size:12px; font-weight:650; }
+.wd-activity-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%, 120px),1fr)); gap:6px; }
+.native-installer-day .wd-activity-grid button {
+  display:flex; align-items:center; gap:6px; min-height:44px; min-width:0; padding:6px 8px;
+  font-size:12px; text-align:start; line-height:1.25;
+}
+.wd-activity-grid button svg, .wd-plan button svg { flex:none; width:15px; height:15px; }
+.wd-activity-grid button[aria-pressed=true] { border-color:var(--accent); }
+.wd-current-state { display:block; color:var(--muted,#aab6bf); font-size:13px; margin-top:3px; }
+.wd-timer { display:flex; align-items:center; gap:8px; }
+.wd-timer strong { font-size:16px; font-variant-numeric:tabular-nums; }
+.native-installer-day .wd-play { width:44px; height:44px; display:grid; place-items:center; padding:0; border-radius:50%; background:#fa843e; color:#151b20; border:0; }
+.wd-unit-clock { font-size:16px; font-weight:650; font-variant-numeric:tabular-nums; line-height:1; }
+.wd-unit[data-running=true] .wd-unit-clock { color:#ffad78; }
+.native-installer-day .workday-simple :is(select,button):focus-visible { outline:2px solid #ffad78; outline-offset:-2px; }
+
+.wd-running-dot { width:7px; height:7px; background:currentColor; border-radius:50%; }
+.native-installer-day .wd-details-link { display:flex; align-items:center; gap:8px; background:transparent; border:0; min-height:44px; padding:6px 0; }
+.native-installer-day .wd-finish { display:flex; align-items:center; gap:8px; width:100%; justify-content:center; margin:12px 0; min-height:44px; }
+.wd-detail-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.wd-complete-confirm { flex:1 0 100%; }
+.wd-complete-confirm > button { margin-inline-end:8px; }
+.native-installer-day .wd-detail-actions > .wd-finish { flex:1 1 155px; width:auto; margin:8px 0 0; }
+.wd-sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+@media(max-width:600px) {
+ .native-installer-day .workday-simple { padding:16px; }
+ .wd-heading { gap:8px; margin-bottom:16px; }
+ .wd-heading-right { flex-direction:column-reverse; gap:0; align-items:flex-end; }
+ .wd-current { grid-template-columns:36px minmax(0,1fr) auto; gap:8px; padding:12px; }
+ .wd-timer { flex-direction:column; gap:6px; }
+ .wd-timer strong { font-size:14px; }
+ .native-installer-day .wd-play { width:46px; height:46px; }
+}
+.wd-pilot-options { display:grid; gap:12px; margin:12px 0; }
+.wd-pilot-options:empty { display:none; }
+.wd-pilot-options > label { display:grid; gap:6px; font-size:14px; }
+.wd-pilot-options :is(select,input:not([type=checkbox]),textarea) { width:100%; min-width:0; margin:0; }
+.wd-unit-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px; }
+.wd-pilot-options input[type=checkbox] { width:20px; height:20px; min-height:20px; margin:0; flex:none; }
+.wd-pilot-options > :is(p,small) { margin:0; color:var(--muted,#aab6bf); font-size:12px; }
+.wd-unit-tools { display:flex; justify-content:flex-end; margin-bottom:8px; }
+.native-installer-day .wd-unit-tools select { width:auto; max-width:100%; min-height:40px; margin:0; font-size:13px; }
+
+.wd-plan { display: grid; gap: 6px; margin-bottom: 12px; }
+.wd-plan > span { color: var(--muted, #aab6bf); font-size: 13px; }
+.wd-plan > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.native-installer-day .wd-plan button { display:inline-flex; align-items:center; gap:5px; min-height: 40px; padding: 5px 10px; font-size: 13px; }
+.native-installer-day .wd-plan button[aria-pressed=true] { border-color: var(--accent, #fa843e); }
+
+.native-installer-day .wd-unit-finish {
+  position:absolute; top:4px; inset-inline-end:4px; display:grid; place-items:center;
+  width:34px; min-height:34px; padding:0; border:1px solid #568a70;
+  border-radius:8px; background:#234035; color:#c4f1d3;
+}
+.native-installer-day .wd-unit-finish:hover { background:#305544; }
+.wd-inventory { padding:12px; border:1px solid #4c606d; border-radius:12px; margin-bottom:12px; }
+.wd-inventory-floors { max-height:320px; overflow:auto; }
+.wd-inventory-floors h3 { margin:8px 0; font-size:13px; color:#d0d9df; }
+
+.wd-current { grid-template-areas:"icon choice timer" ". status timer"; row-gap:4px; }
+.wd-activity-symbol { grid-area:icon; }
+.wd-activity-choice { grid-area:choice; }
+.wd-current-state { grid-area:status; }
+.wd-timer { grid-area:timer; }
+.wd-unit-tools { align-items:center; justify-content:space-between; gap:12px; }
+.wd-unit-tools h2 { margin:0; font-size:16px; }
+.wd-inventory-search { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:8px; margin-bottom:12px; }
+.native-installer-day .wd-inventory-search input { min-width:0; margin:0; }
+.wd-inventory-search button { white-space:nowrap; }
+.wd-inventory-body { display:flex; align-items:flex-start; gap:8px; margin-bottom:10px; }
+.wd-inventory-floors { flex:1; min-width:0; scrollbar-width:thin; }
+.wd-inventory-floors h3 { margin:0 0 6px; padding:6px 8px; border-radius:6px; background:var(--surface); }
+.wd-inventory-floors section + section { margin-top:12px; }
+.wd-floor-nav { display:grid; gap:4px; flex:none; padding:3px; border:1px solid var(--border); border-radius:8px; }
+.native-installer-day .wd-floor-nav button { min-width:34px; min-height:34px; padding:3px; font-size:12px; }
+.native-installer-day .wd-floor-nav button[aria-current] { background:var(--border); color:var(--text); }
+.wd-unit-clock { display:inline-flex; align-items:center; gap:6px; }
+.wd-unit-clock > svg { color:var(--accent, #fa843e); flex:none; }
+.native-installer-day .native-day-unit-details {
+  position:static;
+  width:auto;
+  max-height:none;
+  overflow:visible;
+  margin-top:16px;
+  padding:clamp(12px, 3vw, 20px);
+  background:var(--surface, #151c20);
+  box-shadow:none;
+}
+.native-day-unit-details-header p { margin:3px 0 0; color:var(--muted); font-size:13px; }
+.native-installer-day .native-day-unit-details .native-day-activity-fields { border:0; margin:12px 0; padding:0; }
+.native-installer-day .native-day-unit-details .native-day-notes { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px 8px; }
+.native-installer-day .native-day-unit-details .native-day-notes textarea { grid-column:1 / -1; grid-row:2; margin:0; }
+.native-installer-day .native-day-unit-details .native-day-links { border-top:1px solid var(--border); padding-top:12px; margin:12px 0 0; }
+.native-installer-day .native-day-unit-details .native-day-notes .dictation-buttons { grid-area:1 / 2; justify-self:end; }
+.wd-detail-machinery { margin:8px 0; font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.wd-preview-clock-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
+.wd-preview-clock-actions > button { display:inline-flex; align-items:center; gap:5px; min-height:36px; padding:5px 9px; font-size:13px; }
+.wd-unit-complete { display:inline-flex; color:#92d9ad; margin-inline-start:4px; vertical-align:middle; }
+
+.native-installer-day .wd-preview-clock-actions > button {
+  min-height:44px; padding-inline:10px; font-weight:650; white-space:nowrap;
+}
+.wd-preview-clock-actions > button svg { color:var(--accent); }
+.native-installer-day .wd-preview-clock-actions > .wd-clock-out { border-color:var(--accent); }
+/* Break and clock-out, opened under the timer's heading instead of in the clock sheet. */
+.wd-shift-panel { display:grid; gap:10px; padding:12px; margin-bottom:12px; border:1px solid var(--accent, #fa843e); border-radius:12px; background:var(--surface); }
+.wd-shift-panel h3 { margin:0; font-size:16px; }
+.wd-shift-panel p { margin:0; font-size:13px; color:var(--muted); }
+.wd-shift-panel > label { display:flex; align-items:flex-start; gap:10px; min-height:44px; font-size:14px; }
+.native-installer-day .wd-shift-panel > label > input[type=checkbox] { flex:none; width:22px; height:22px; min-height:0; margin:0; }
+.wd-shift-panel > .wd-shift-note { display:grid; gap:6px; }
+.wd-shift-note strong { color:var(--danger, #ff8a80); }
+.wd-shift-note textarea { width:100%; }
+.wd-shift-choices { display:flex; flex-wrap:wrap; gap:8px; }
+.native-installer-day .wd-shift-choices > button { display:inline-flex; align-items:center; justify-content:center; gap:6px; flex:1 1 110px; min-height:48px; font-size:15px; }
+.native-installer-day .wd-shift-choices > .wd-shift-confirm { background:var(--accent, #fa843e); color:#151b20; border-color:transparent; font-weight:650; }
+.native-installer-day .wd-shift-choices > .wd-shift-cancel { flex:0 1 auto; background:transparent; }
+
+/* Machinery: only the machine, sitting on the card's top right corner. Grey
+   when idle, green with a slow wisp of smoke while it runs. */
+.wd-current { position:relative; }
+.native-installer-day .wd-machinery { position:absolute; top:-14px; right:-10px; display:inline-grid; place-items:center; width:34px; height:34px; min-height:34px; padding:0; border-radius:50%; background:#232d34; overflow:visible; }
+.wd-machinery > svg { width:18px; height:18px; color:var(--muted,#aab6bf); }
+.native-installer-day .wd-machinery[aria-checked="true"] { border-color:#3ecf8e; background:#1f3a31; }
+.wd-machinery[aria-checked="true"] > svg { color:#3ecf8e; }
+.wd-machinery > i { position:absolute; top:2px; right:7px; width:5px; height:5px; border-radius:50%; background:#c9d3d9; opacity:0; pointer-events:none; }
+.wd-machinery[aria-checked="true"] > i { animation:wd-puff 3.6s ease-out infinite; }
+.wd-machinery[aria-checked="true"] > i:nth-of-type(2) { animation-delay:1.8s; }
+@keyframes wd-puff {
+  0% { opacity:0; transform:translate(0,0) scale(.6); }
+  25% { opacity:.4; }
+  100% { opacity:0; transform:translate(5px,-14px) scale(1.6); }
+}
+@media (prefers-reduced-motion:reduce) { .wd-machinery[aria-checked="true"] > :is(i, svg) { animation:none; } }
+.wd-timer > svg { flex:none; color:var(--muted,#aab6bf); }
+/* A planned activity, in the same list as the rest: lightly lit. */
+.native-installer-day .wd-activity-grid button[data-planned] { border-color:color-mix(in srgb, var(--accent,#fa843e) 55%, transparent); background:color-mix(in srgb, var(--accent,#fa843e) 9%, transparent); }
+.wd-activity-grid button[data-planned] svg { color:var(--accent,#fa843e); }
+
+/* Break and clock out: the same width; break orange, clock out a soft red. */
+.native-installer-day .wd-preview-clock-actions > button { min-width:118px; justify-content:center; }
+.native-installer-day .wd-preview-clock-actions > .wd-break { border-color:var(--accent,#fa843e); color:var(--accent,#fa843e); }
+.native-installer-day .wd-preview-clock-actions > .wd-clock-out { border-color:#e0766c; color:#f0958c; background:rgba(224,118,108,.12); }
+.wd-preview-clock-actions > .wd-clock-out svg { color:#f0958c; }
+.wd-planned-legend { display:inline-flex; align-items:center; gap:6px; margin-inline-start:12px; font-size:12px; font-weight:400; color:var(--muted,#aab6bf); }
+.wd-planned-legend > i { width:12px; height:12px; border-radius:3px; border:1px solid color-mix(in srgb, var(--accent,#fa843e) 55%, transparent); background:color-mix(in srgb, var(--accent,#fa843e) 9%, transparent); }
+/* The activity card on one line: activity, then what is running, then the timer. */
+.wd-current { grid-template-areas:"icon choice timer"; }
+.wd-activity-choice { display:flex; align-items:center; flex-wrap:wrap; gap:6px 12px; }
+.native-installer-day .wd-activity-picker { min-width:min(100%, 170px); }
+.wd-current-state { grid-area:auto; display:inline-flex; align-items:center; gap:6px; margin:0; }
+.wd-current-state[data-running] { color:#3ecf8e; font-size:15px; font-weight:650; }
+.wd-current-state > i { width:9px; height:9px; border-radius:50%; background:#3ecf8e; box-shadow:0 0 0 3px rgba(62,207,142,.18); }
+/* Phone: the job and the language on one row, then Break and Clock out side
+   by side at equal widths, so the job's name is not squeezed onto three lines. */
+@media (max-width:600px) {
+  .wd-heading { flex-wrap:wrap; align-items:center; }
+  .wd-heading > div:first-child { flex:1 1 0; min-width:0; }
+  .wd-heading-right { display:contents; }
+  .wd-heading-right > .wd-language { order:1; }
+  .wd-heading-right > small { order:2; flex-basis:100%; }
+  .wd-heading-right > .wd-preview-clock-actions { order:3; flex:1 1 100%; flex-wrap:nowrap; }
+  .native-installer-day .wd-preview-clock-actions > button { flex:1 1 0; min-width:0; }
+}

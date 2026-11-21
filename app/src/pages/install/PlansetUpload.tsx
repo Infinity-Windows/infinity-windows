@@ -1,7 +1,8 @@
 import { BackChip } from "../../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { CadImportPreview } from "./CadImportPreview";
 import { listProjects, listWindowTypes } from "../../lib/api";
 import {
   ensureTypesFromSpecs,
@@ -72,6 +73,15 @@ function fileName(ps: Planset): string {
 }
 
 export function PlansetUpload() {
+  const { projectId = "" } = useParams();
+  const [search] = useSearchParams();
+  if (search.get("preview") === "cad") {
+    return <CadImportPreview key={projectId} projectId={projectId} />;
+  }
+  return <PlansetUploadForm />;
+}
+
+function PlansetUploadForm() {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -893,6 +903,8 @@ export function PlansetUpload() {
         that defines each mark (#14 → size, color, type). Tap a file to view it.
         Confirm drafts before they drive inventory.
       </p>
+
+      <p><Link to="?preview=cad">Unit Builder</Link></p>
 
       {slot(
         "building",

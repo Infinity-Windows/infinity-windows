@@ -38,11 +38,11 @@ import { recoverPhotoUpload, recoverTransportFailedPhoto } from "./recoverPhotoU
 import { PhotoUploadReceipts } from "./photoUploadProgress";
 import { migrateLegacyUploads } from "../install/legacyUploadQueue";
 import {
-  createShiftResolver,
   createSupabaseHandlers,
   pendingShiftRef,
   type ShiftResolver,
 } from "./outboxHandlers";
+import { clockShiftResolver } from "./shiftResolver";
 import {
   todaysPendingSignature,
   type PendingSignature,
@@ -107,7 +107,7 @@ if (SEND_DEADLINE_MS <= 6 * REQUEST_TIMEOUT_MS) {
 }
 
 const store: OutboxStore = createDefaultStore();
-const resolver: ShiftResolver = createShiftResolver();
+const resolver: ShiftResolver = clockShiftResolver;
 const photoReceipts = new PhotoUploadReceipts();
 
 // --- whose write goes out as whom (2026-09-25) ----------------------------
@@ -128,7 +128,18 @@ function handlersFor(token: string, userId: string): OpHandlers {
   if (boundHandlers?.token !== token) {
     boundHandlers = {
       token,
-      handlers: createSupabaseHandlers(resolver, clientWithToken(token), { userId }),
+      handlers: createSupabaseHandlers(resolver, clientWithToken(token), { userId }, async at => {
+        // Work replays before the paid-clock boundary at the same captured tap.
+        // Refused work remains for review; it must never prevent a paid punch.
+        try {
+          const saved = localStorage.getItem("forge-custom-work-v1:" + userId);
+          if (!saved || saved === "[]") return;
+          const { syncWork } = await import("../customWork/queue");
+          await syncWork(userId, at);
+        } catch {
+          logOfflineEvent({ type: "queue", scope: "workday", message: "Saved work needs review; the paid-clock punch is still being sent." });
+        }
+      }),
     };
   }
   return boundHandlers.handlers;
@@ -742,6 +753,8 @@ async function executeGeneralTurn(forceThisPass: boolean): Promise<void> {
       logOfflineEvent({ type: "timeout", scope: "outbox", message: abandonedSendMessage(entry, deadlineMs) }),
     onChange: () => void refresh(),
     onSent: (entry, result) => {
+      if (isClockOp(entry.op) || entry.op === "toolbox_sign")
+        resolver.record("workday-after:" + entry.id, "sent");
       photoReceipts.record(entry);
       recordSent(entry.op === "values_submit" ? { ...entry, payload: { assignmentId: entry.payload.assignmentId } } : entry, Date.now());
       if (entry.op === "toolbox_sign") {

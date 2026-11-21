@@ -12,7 +12,6 @@ function subscribeNetwork(onChange: () => void) {
   };
 }
 
-/** The Data route is restricted to real owners by RequireRealOwner. */
 export function WorkData() {
   const es = useLanguage().lang === "es";
   const generation = useSyncExternalStore(subscribeSignedIn, signInGeneration, signInGeneration);

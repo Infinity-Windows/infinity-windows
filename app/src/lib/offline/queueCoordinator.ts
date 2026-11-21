@@ -44,7 +44,13 @@ export function createQueueCoordinator(port: QueueCoordinatorPort) {
           try { await port.recoverSigner(); }
           catch (error) { signerRecovery = true; throw error; }
         }
-        if (epoch !== generation) continue;
+        if (epoch !== generation) {
+          // Recovery can overlap sign-in or StrictMode's stop/start. Offline,
+          // there may be no later wake, so publish the current owner's saved
+          // punches before ending this turn.
+          await port.publish();
+          continue;
+        }
         if (port.online()) {
           const progressed = await port.execute(forceThisTurn);
           if (progressed && epoch === generation) pending = true;

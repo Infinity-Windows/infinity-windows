@@ -15,6 +15,7 @@ import {
 import { listProjects } from "../../lib/api";
 import { listMyPublished } from "../../lib/schedule/api";
 import { captureGeoSoft } from "../../lib/geo";
+import { formatApiError } from "../../lib/errors";
 import { pushToast, toastError, toastSuccess } from "../../lib/toast";
 import { announceClockedOut } from "../../lib/dailyLogNudge";
 import { supabase } from "../../lib/supabase";
@@ -54,6 +55,7 @@ import {
   ClockRefusal,
   currentBreakSeconds,
   type ClockInPick,
+  type CostCode,
   elapsedWorkSeconds,
   endBreak,
   finishShiftAt,
@@ -67,6 +69,10 @@ import {
   type TimeShift,
 } from "../../lib/timeclock";
 import { getClockCostCodesForProject } from "../../lib/costCodes";
+import { readWorkQueue, stopWorkForClock } from "../../lib/customWork/queue";
+import type { WorkSession } from "../../lib/customWork/model";
+import { getCompanySettings } from "../../lib/companySettings";
+import { paidTimeRuleActive } from "../../lib/paidTimeRule";
 import {
   checkFinishTime,
   describeDuration,
@@ -131,6 +137,12 @@ export function ClockSheet({
   onChanged: () => void;
 }) {
   const queryClient = useQueryClient();
+  const prepareWorkPunch = (at: string) => {
+    if (!profileId) throw new Error("Sign in again before changing your work clock.");
+    const sessions = queryClient.getQueryData<WorkSession[]>(["customWorkSessions", profileId, "mine"]) ?? [];
+    if (!sessions.some(session => !session.ended_at) && !readWorkQueue(profileId).length) return Promise.resolve(false);
+    return stopWorkForClock(profileId, sessions, at, pending ? [pending.entryId] : []);
+  };
   const navigate = useNavigate();
   const t = useT();
   // Escape, Tab containment and focus-restore, through the same hook
@@ -146,9 +158,16 @@ export function ClockSheet({
   // in a ref for exactly the same reason, so a fresh callback each render is
   // fine.
   const sheetRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(sheetRef, true, onClose);
+  const autoClockInAttempted = useRef(false);
+  useEffect(() => {
+    if (initialPick?.workdayClockAction === "clock-out")
+      sheetRef.current?.querySelector(".clock-btn.out")?.scrollIntoView?.({ block: "nearest" });
+  }, [initialPick?.workdayClockAction]);
   const entryMode = askClockEntryMode(shift, initialPick);
-  const [mode, setMode] = useState<Mode>(entryMode);
+  const requestedMode = initialPick?.workdayClockAction === "break"
+    && shift?.status === "open" && !shift.break_started_at && shiftGuard(shift, Date.now()).state !== "over-cap"
+      ? "break-type" : entryMode;
+  const [mode, setMode] = useState<Mode>(requestedMode);
   const appliedEntryRef = useRef<string | null>(null);
   const [pickProjectId, setPickProjectId] = useState<string>(initialPick?.projectId ?? "");
   const [pickCostCodeId, setPickCostCodeId] = useState<string>(initialPick?.costCodeId ?? "");
@@ -174,9 +193,9 @@ export function ClockSheet({
   // below runs when those queries land, which is AFTER this mount, and it
   // would otherwise overwrite the job the person just chose on the landing
   // with yesterday's — the exact double-pick this hand-off exists to end.
-  const primedRef = useRef(Boolean(initialPick?.projectId));
+  const primedRef = useRef(Boolean(initialPick?.projectId || initialPick?.companyWork));
 
-  const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects, enabled: !initialPick?.workdaySwitch });
   // Cost codes scoped to the job in play (slice 3): while picking or switching,
   // the job being picked; on the clock, the job of the current shift. A job with
   // its own subset shows only those codes (plus the general fallback); a job with
@@ -188,17 +207,31 @@ export function ClockSheet({
   const costCodes = useQuery({
     queryKey: ["clockCostCodes", clockScopeProjectId ?? "all"],
     queryFn: () => getClockCostCodesForProject(clockScopeProjectId),
+    // Cost codes are company-wide. A saved list from another job also works
+    // when switching jobs/company work without signal.
+    initialData: () => queryClient.getQueriesData<CostCode[]>({ queryKey: ["clockCostCodes"] })
+      .map(([, codes]) => codes).find(codes => codes && codes.length > 0),
+    initialDataUpdatedAt: 0,
   });
+  const workdayStart = initialPick?.workdayStart;
+  const selectedCostCodeId = workdayStart
+    ? (costCodes.data?.find(code => code.is_general) ?? costCodes.data?.[0])?.id
+    : pickCostCodeId;
   const recents = useQuery({
     queryKey: ["recentJobs", profileId],
     queryFn: () => listRecentJobs(profileId!),
-    enabled: Boolean(profileId),
+    enabled: Boolean(profileId) && !initialPick?.workdaySwitch,
   });
   const todayISO = todayLocalISO();
+  const companySettings = useQuery({
+    queryKey: ["companySettings"],
+    queryFn: getCompanySettings,
+    enabled: Boolean(workdayStart) && !shift,
+  });
   const scheduledToday = useQuery({
     queryKey: ["mySchedule", profileId, todayISO, todayISO],
     queryFn: () => listMyPublished(profileId!, todayISO, todayISO),
-    enabled: Boolean(profileId) && !shift,
+    enabled: Boolean(profileId) && !shift && !workdayStart,
   });
   const scheduled = scheduledToday.data?.[0] ?? null;
 
@@ -219,7 +252,7 @@ export function ClockSheet({
   const myOpenings = useQuery({
     queryKey: ["myOpenings", profileId],
     queryFn: () => listMyOpeningsAllJobs(profileId!),
-    enabled: Boolean(profileId) && !shift,
+    enabled: Boolean(profileId) && !shift && !workdayStart,
   });
   // Signed, or no talk exists today: nothing to sign either way.
   const toolboxOk = Boolean(toolboxDone.data) || todayTalk.data === null;
@@ -238,10 +271,10 @@ export function ClockSheet({
     const key = `${shift?.id ?? "off"}:${initialPick?.returnToAsk ? "ask" : "plain"}:${initialPick?.projectId ?? ""}`;
     if (appliedEntryRef.current === key) return;
     appliedEntryRef.current = key;
-    setMode(askClockEntryMode(shift, initialPick));
+    setMode(requestedMode);
     setPickProjectId(initialPick?.projectId ?? "");
     setPickCostCodeId(initialPick?.costCodeId ?? "");
-  }, [shift, initialPick]);
+  }, [shift, initialPick, requestedMode]);
 
   // 1s tick drives the live timers.
   useEffect(() => {
@@ -287,6 +320,7 @@ export function ClockSheet({
     /** Opening whose install clock started in the same tap, when one did. */
     startedOpening?: string | null;
     startFailed?: boolean;
+    startedShift?: TimeShift;
   };
 
   // `isNetworkError` opens with the same `navigator.onLine === false` check
@@ -336,10 +370,11 @@ export function ClockSheet({
     projectId: string | null,
     costCodeId: string | null,
     noteText: string | null = null,
+    at: string = new Date().toISOString(),
   ): TimeShift => {
     const proj = (projects.data ?? []).find((p) => p.id === projectId);
     const cc = (costCodes.data ?? []).find((c) => c.id === costCodeId);
-    const nowIso = new Date().toISOString();
+    const nowIso = at;
     return {
       id: pendingRefForShift(entryId),
       profile_id: profileId ?? "",
@@ -385,7 +420,7 @@ export function ClockSheet({
   const doStart = useMutation<PunchResult>({
     mutationFn: async () => {
       const projectId = pickProjectId || null;
-      const costCodeId = pickCostCodeId || null;
+      const costCodeId = selectedCostCodeId || null;
       const noteText = note.trim() || null;
       // The mode the shift records (standard-tracking-jobs slice 2). The
       // landing block is where a both-mode job gets asked, so a carried pick
@@ -422,11 +457,12 @@ export function ClockSheet({
       const carried =
         initialPick?.punch && initialPick.projectId === projectId ? initialPick.punch : null;
       const punch = carried ? carriedPunch(carried, toolboxDone.data?.signed_at) : mintPunch();
-      const geo = await captureGeoSoft();
+      const waitsForWork = await prepareWorkPunch(punch.tappedAt);
+      const geo = navigator.onLine && !waitsForWork ? await captureGeoSoft() : {};
       const behindSignature = signatureOnPhone();
-      if (!behindSignature) {
+      if (navigator.onLine && !waitsForWork && !behindSignature) {
         try {
-          await clockIn(projectId, costCodeId, geo, noteText, jobMode, punch);
+          const startedShift = await clockIn(projectId, costCodeId, geo, noteText, jobMode, punch);
           // Same tap starts the first window when one was picked. The clock-in
           // stands even if this part fails — a refused start must never un-ring
           // that bell, so the failure becomes a toast, not an error.
@@ -440,7 +476,7 @@ export function ClockSheet({
               startFailed = true;
             }
           }
-          return { queued: false, startedOpening, startFailed };
+          return { queued: false, startedOpening, startFailed, startedShift };
         } catch (e) {
           if (!shouldQueue(e)) throw e;
         }
@@ -455,13 +491,14 @@ export function ClockSheet({
         punch,
         profileId,
       });
-      setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId, noteText));
+      const startedShift = synthOpenShift(entryId, projectId, costCodeId, noteText, punch.tappedAt);
+      setOptimisticShift(startedShift);
       // Queued (no signal, or behind today's signature): a unit start can't
       // be confirmed against the server gate — they start it from My Work
       // once the clock-in is in.
-      return { queued: true, behindSignature };
+      return { queued: true, behindSignature, startedShift };
     },
-    onSuccess: (r) => {
+    onSuccess: async (r) => {
       if (r.startedOpening && pickedOpening) {
         toastSuccess(
           t("clock.toast.clockedInOnUnit", { code: pickedOpening.opening_code }),
@@ -482,11 +519,18 @@ export function ClockSheet({
         );
       }
       if (!r.queued) refresh();
+      if (r.startedShift && workdayStart?.onClockIn && !toolboxKnownUnsigned && !toolboxDone.refused) {
+        try {
+          await workdayStart.onClockIn(r.startedShift);
+        } catch (error) {
+          pushToast(`Clocked in. Activity didn't start: ${formatApiError(error)}`, "error");
+        }
+      } else workdayStart?.onReady();
       if (initialPick?.returnToAsk) {
         navigate("/ask");
       } else if (r.startedOpening && pickedOpening) {
         navigate(`/current-work?job=${pickedOpening.project_id}&opening=${r.startedOpening}`);
-      } else if (!r.startedOpening) navigate("/current-work");
+      } else if (!r.startedOpening && !initialPick?.stayOnPage) navigate("/current-work");
       onClose();
     },
     onError: (e) => toastPunchError(e),
@@ -501,11 +545,12 @@ export function ClockSheet({
   const doSwitch = useMutation<PunchResult>({
     mutationFn: async () => {
       const punch = mintPunch();
-      const geo = await captureGeoSoft();
+      const waitsForWork = await prepareWorkPunch(punch.tappedAt);
+      const geo = navigator.onLine && !waitsForWork && !initialPick?.workdaySwitch ? await captureGeoSoft() : {};
       const projectId = pickProjectId || null;
-      const costCodeId = pickCostCodeId || null;
+      const costCodeId = selectedCostCodeId || null;
       const noteText = note.trim() || null;
-      if (!shiftIsPending() && !signatureOnPhone()) {
+      if (!initialPick?.workdaySwitch && navigator.onLine && !waitsForWork && !shiftIsPending() && !signatureOnPhone()) {
         try {
           // clock_in auto-closes the prior open shift, so switching leaves no gap.
           await clockIn(projectId, costCodeId, geo, noteText, null, punch);
@@ -524,13 +569,14 @@ export function ClockSheet({
         afterShiftRef: shiftIsPending() ? shift!.id : null,
         profileId,
       });
-      setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId, noteText));
+      setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId, noteText, punch.tappedAt));
       return { queued: true };
     },
     onSuccess: (r) => {
       toastSuccess(r.queued ? t("clock.toast.switchedQueued") : t("clock.toast.switched"));
-      navigate(initialPick?.returnToAsk ? "/ask" : "/current-work");
+      if (!initialPick?.stayOnPage) navigate(initialPick?.returnToAsk ? "/ask" : "/current-work");
       if (!r.queued) refresh();
+      workdayStart?.onReady();
       onClose();
     },
     onError: (e) => toastPunchError(e),
@@ -539,9 +585,10 @@ export function ClockSheet({
   const doPhaseSwitch = useMutation<PunchResult, Error, string>({
     mutationFn: async (costCodeId: string) => {
       const punch = mintPunch();
-      const geo = await captureGeoSoft();
+      const waitsForWork = await prepareWorkPunch(punch.tappedAt);
+      const geo = navigator.onLine && !waitsForWork ? await captureGeoSoft() : {};
       const projectId = shift?.project_id ?? null;
-      if (!shiftIsPending() && !signatureOnPhone()) {
+      if (navigator.onLine && !waitsForWork && !shiftIsPending() && !signatureOnPhone()) {
         try {
           await clockIn(projectId, costCodeId, geo, null, null, punch);
           return { queued: false };
@@ -558,7 +605,7 @@ export function ClockSheet({
         afterShiftRef: shiftIsPending() ? shift!.id : null,
         profileId,
       });
-      setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId));
+      setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId, null, punch.tappedAt));
       return { queued: true };
     },
     onSuccess: (r) => {
@@ -571,7 +618,8 @@ export function ClockSheet({
   const doBreakStart = useMutation<PunchResult, Error, BreakType>({
     mutationFn: async (type: BreakType) => {
       const punch = mintPunch();
-      if (!shiftIsPending()) {
+      const waitsForWork = await prepareWorkPunch(punch.tappedAt);
+      if (navigator.onLine && !waitsForWork && !shiftIsPending()) {
         try {
           await startBreak(shift!.id, type, punch);
           return { queued: false };
@@ -583,7 +631,7 @@ export function ClockSheet({
       if (shift) {
         setOptimisticShift({
           ...shift,
-          break_started_at: new Date().toISOString(),
+          break_started_at: punch.tappedAt,
           break_type: type,
         });
       }
@@ -608,7 +656,7 @@ export function ClockSheet({
   const doBreakEnd = useMutation<PunchResult>({
     mutationFn: async () => {
       const punch = mintPunch();
-      if (!shiftIsPending()) {
+      if (navigator.onLine && !shiftIsPending()) {
         try {
           await endBreak(shift!.id, punch);
           return { queued: false };
@@ -620,7 +668,7 @@ export function ClockSheet({
       if (shift) {
         setOptimisticShift({
           ...shift,
-          break_seconds: currentBreakSeconds(shift, Date.now()),
+          break_seconds: currentBreakSeconds(shift, Date.parse(punch.tappedAt)),
           break_started_at: null,
           break_type: null,
         });
@@ -630,6 +678,10 @@ export function ClockSheet({
     onSuccess: (r) => {
       toastSuccess(r.queued ? t("clock.toast.backOnClockQueued") : t("clock.toast.backOnClock"));
       if (!r.queued) refresh();
+      if (workdayStart && shift?.project_id === initialPick?.projectId) {
+        workdayStart.onReady();
+        onClose();
+      }
       // The held unit auto-resumed server-side (sessions trigger, owner
       // call): tell them which window they're back on.
       if (!r.queued) {
@@ -662,8 +714,9 @@ export function ClockSheet({
       const tapMs = Date.now();
       const punch = mintPunch(null, tapMs);
       const breakSeconds = currentBreakSeconds(shift!, tapMs);
-      const geo = await captureGeoSoft();
-      if (!shiftIsPending()) {
+      const waitsForWork = await prepareWorkPunch(punch.tappedAt);
+      const geo = navigator.onLine && !waitsForWork ? await captureGeoSoft() : {};
+      if (navigator.onLine && !waitsForWork && !shiftIsPending()) {
         try {
           await clockOut(
             shift!.id,
@@ -702,7 +755,7 @@ export function ClockSheet({
       // the punch is already saved, the sheet is already closed, and nothing
       // downstream of this line can undo either. Queued punches count too — a
       // log written offline queues the same way the punch did.
-      announceClockedOut(shift?.project_id ?? null);
+      announceClockedOut(shift?.project_id ?? null, shift?.projects);
     },
     onError: (e) => toastPunchError(e),
   });
@@ -753,11 +806,24 @@ export function ClockSheet({
     todayTalk.data !== null &&
     toolboxDone.isSuccess &&
     !toolboxDone.data;
-  const clockInBlockedByToolbox = mode === "pick" && toolboxKnownUnsigned;
+  const startPaidToolbox = Boolean(workdayStart) && mode === "pick" && toolboxKnownUnsigned
+    && paidTimeRuleActive(companySettings.data, todayISO);
+  const clockInBlockedByToolbox = mode === "pick" && toolboxKnownUnsigned && !startPaidToolbox;
   const canStart =
-    Boolean(pickProjectId && pickCostCodeId) &&
+    Boolean((pickProjectId || initialPick?.companyWork) && selectedCostCodeId) &&
     !(pickedOpening && !toolboxOk) &&
     !clockInBlockedByToolbox;
+
+  const directClockIn = Boolean(workdayStart?.autoClockIn) && !shift && mode === "pick" &&
+    !toolboxKnownUnsigned && !toolboxDone.refused && !doStart.isError &&
+    (canStart || (costCodes.isPending && costCodes.fetchStatus === "fetching"));
+  const startClock = doStart.mutate;
+  useEffect(() => {
+    if (!directClockIn || !canStart || autoClockInAttempted.current) return;
+    autoClockInAttempted.current = true;
+    startClock();
+  }, [directClockIn, canStart, startClock]);
+  useFocusTrap(sheetRef, !directClockIn, onClose);
 
   const busy =
     doStart.isPending ||
@@ -806,6 +872,8 @@ export function ClockSheet({
           : t("clock.title.pick");
 
   const stop = (e: React.MouseEvent) => e.stopPropagation();
+
+  if (directClockIn) return <p className="sr-only" role="status">{t("clock.action.clockingIn")}</p>;
 
   return (
     <div className="clock-sheet-backdrop" onClick={onClose} role="presentation">
@@ -889,7 +957,7 @@ export function ClockSheet({
               className="clock-job-chip"
               disabled={busy || onBreak || needsRealFinish}
               onClick={() => {
-                const requested = (initialPick?.returnToAsk || initialPick?.switchToProject) && initialPick.projectId && initialPick.projectId.toLowerCase() !== shift.project_id?.toLowerCase()
+                const requested = initialPick?.companyWork ? "" : (initialPick?.returnToAsk || initialPick?.switchToProject) && initialPick.projectId && initialPick.projectId.toLowerCase() !== shift.project_id?.toLowerCase()
                   ? initialPick.projectId : shift.project_id ?? "";
                 setPickProjectId(requested);
                 setPickCostCodeId(requested === shift.project_id ? shift.cost_code_id ?? "" : "");
@@ -1170,6 +1238,8 @@ export function ClockSheet({
                   </p>
                 )}
 
+                {workdayStart ? <p className="clock-pick-summary"><strong>{workdayStart.label}</strong></p> : <>
+                {initialPick?.companyWork && <button type="button" className={pickProjectId ? "clock-chip" : "clock-chip current"} onClick={() => setPickProjectId("")}>Company work - no job</button>}
                 {/* Scheduled today — pre-selects the right job for clock-in */}
                 {!shift && scheduled && (
                   <div className="clock-chip-row-wrap">
@@ -1310,11 +1380,12 @@ export function ClockSheet({
                     </div>
                   </div>
                 )}
+                </>}
 
                 {/* Sign today's toolbox talk right here — the whole morning
                     checklist in one sheet. Hidden once signed (or when no talk
                     exists today). */}
-                {!shift && profileId && todayTalk.data && toolboxDone.isSuccess &&
+                {!shift && !startPaidToolbox && profileId && todayTalk.data && toolboxDone.isSuccess &&
                   !toolboxDone.data && (
                     <ToolboxSignCard
                       key={`${todayTalk.data.id}:${todayTalk.data.for_day ?? ""}`}
@@ -1328,7 +1399,7 @@ export function ClockSheet({
                     <ToolboxSignStatus done={toolboxDone} />
                   ) : (
                     /* SAFETY / toolbox — Spanish flagged for bilingual review. */
-                    <p className="clock-pick-summary">{t("clock.toolbox.signed")}</p>
+                    !workdayStart && <p className="clock-pick-summary">{t("clock.toolbox.signed")}</p>
                   ))}
 
                 {/* Optional note the worker can add for the office. */}
@@ -1345,11 +1416,11 @@ export function ClockSheet({
                   onChange={(e) => setNote(e.target.value)}
                 />
 
-                {pickedProject && (
+                {pickedProject && !initialPick?.workdaySwitch && (
                   <p className="clock-pick-summary">
                     {mode === "switch" ? t("clock.summaryTo") : t("clock.summaryOn")}
                     <strong>{pickedProject.job_code}</strong> · {pickedProject.name}
-                    {pickCostCodeId &&
+                    {!workdayStart && pickCostCodeId &&
                       (() => {
                         const cc = (costCodes.data ?? []).find(
                           (c) => c.id === pickCostCodeId,
@@ -1372,6 +1443,9 @@ export function ClockSheet({
                     {t("clock.toolbox.signToClockIn")}
                   </p>
                 )}
+                {workdayStart && !selectedCostCodeId && !costCodes.isPending && (
+                  <p role="alert">{costCodes.isError ? formatApiError(costCodes.error) : t("clock.error.noCostCodes")}</p>
+                )}
                 <button
                   type="button"
                   className="clock-btn primary big"
@@ -1391,7 +1465,7 @@ export function ClockSheet({
                   ) : (
                     <>
                       <Play size={18} aria-hidden />{" "}
-                      {pickedOpening && toolboxOk
+                      {startPaidToolbox ? t("clock.action.startToolboxTalk") : pickedOpening && toolboxOk
                         ? t("clock.action.startOn", { code: pickedOpening.opening_code })
                         : canResume
                           ? t("clock.action.resumeOn", {
@@ -1402,7 +1476,7 @@ export function ClockSheet({
                   )}
                 </button>
                 {mode === "switch" && (
-                  <button type="button" className="clock-cancel" onClick={() => setMode("main")}>
+                  <button type="button" className="clock-cancel" onClick={() => initialPick?.workdaySwitch ? onClose() : setMode("main")}>
                     {t("clock.action.cancel")}
                   </button>
                 )}

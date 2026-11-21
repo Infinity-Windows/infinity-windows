@@ -1,6 +1,6 @@
 import { clientWithToken, supabase } from "../supabase";
 import { signInMark, stillSignedInAs } from "../signedIn";
-import { isMissingColumn } from "../schemaErrors";
+import { isMissingColumn, isMissingFunction } from "../schemaErrors";
 import type {
   CrewPerson,
   CrewWorkRecord,
@@ -22,7 +22,7 @@ async function allRows<T>(
   projectId?: string | null,
   profileId?: string,
   unitId?: string,
-  scope?: { projectIds?: string[]; from?: number; until?: number; signal?: AbortSignal; isTest?: boolean },
+  scope?: { projectIds?: string[]; from?: number; until?: number; includeOpen?: boolean; signal?: AbortSignal; isTest?: boolean; entityId?: string },
 ): Promise<T[]> {
   if (scope?.projectIds?.length === 0) return [];
   const result: T[] = [];
@@ -35,11 +35,15 @@ async function allRows<T>(
       .range(from, from + 499);
     if (profileId) q = q.eq("profile_id", profileId);
     if (unitId) q = q.eq("unit_id", unitId);
+    if (scope?.entityId) q = q.eq("entity_id", scope.entityId);
     if (projectId === null) q = q.is("project_id", null);
     else if (projectId) q = q.eq("project_id", projectId);
     if (scope?.isTest !== undefined) q = q.eq("is_test", scope.isTest);
     if (scope?.projectIds) q = q.in("project_id", scope.projectIds);
-    if (Number.isFinite(scope?.from)) q = q.gt("ended_at", new Date(scope!.from!).toISOString());
+    if (scope?.from !== undefined && Number.isFinite(scope.from)) {
+      const from = new Date(scope.from).toISOString();
+      q = scope.includeOpen ? q.or("ended_at.is.null,ended_at.gt." + from) : q.gt("ended_at", from);
+    }
     if (Number.isFinite(scope?.until)) q = q.lt("started_at", new Date(scope!.until!).toISOString());
     if (scope?.signal) q = q.abortSignal(scope.signal);
     const { data, error, count } = await q;
@@ -84,15 +88,33 @@ export async function getWorkUnit(id: string): Promise<WorkUnit | null> {
   if (error) throw error;
   return (data as WorkUnit | null) ?? null;
 }
-export const listWorkSessions = (job?: string | null, profileId?: string, scope?: { projectIds?: string[]; from?: number; until?: number; signal?: AbortSignal }) =>
-  allRows<WorkSession>("custom_work_sessions", SESSION_COLS, job, profileId, undefined, scope);
+export async function listWorkSessions(job?: string | null, profileId?: string, scope?: { projectIds?: string[]; from?: number; until?: number; includeOpen?: boolean; signal?: AbortSignal }, unitId?: string) {
+  const read = (columns: string) => allRows<WorkSession>("custom_work_sessions", columns, job, profileId, unitId, scope);
+  // Newest columns first; each step back is a database one migration behind.
+  const workday = SESSION_COLS + ",workday_done_at,workday_machinery_ms,workday_machinery_started_at";
+  for (const columns of [workday + ",workday_machinery_spans", workday]) {
+    try {
+      return await read(columns);
+    } catch (error) {
+      if (!isMissingColumn(error)) throw error;
+    }
+  }
+  return read(SESSION_COLS);
+}
+export async function listOpeningWorkProgress(projectId: string, openingId: string) {
+  const { data: units, error } = await supabase.from("custom_work_units").select("id,facts")
+    .eq("project_id", projectId).eq("opening_id", openingId);
+  if (error) throw error;
+  const sessions = (await Promise.all(units.map(unit => listWorkSessions(projectId, undefined, undefined, unit.id)))).flat();
+  return { units, sessions };
+}
 export const listWorkTypes = () =>
   allRows<WorkType>("custom_work_types", "id,label,archived,revision");
-export const listWorkHistory = (job?: string | null) =>
+export const listWorkHistory = (job?: string | null, entityId?: string) =>
   allRows<WorkHistory>(
     "custom_work_history",
     "id,project_id,actor_id,entity_id,action,reason,before_value,after_value,created_at",
-    job,
+    job, undefined, undefined, { entityId },
   );
 const CREW_PERSON_COLS = "id,display_name,active,role,is_partner,retired_at,access_revoked_at";
 export const listCrewRecordPeople = () => allRows<CrewPerson>("profiles", CREW_PERSON_COLS);
@@ -122,6 +144,10 @@ export async function getStageContributorSummary(unitId: string): Promise<StageC
   return (data ?? []) as StageContributorSummaryRow[];
 }
 const DIRECT_RPC_ACTIONS: Partial<Record<WorkCommand["action"], string>> = {
+  workday_activity: "save_workday_activity",
+  machinery_correction: "correct_workday_machinery",
+  plan_activity_done: "mark_plan_activity_done",
+  plan_unit_lead: "take_plan_unit_lead",
   crew_record: "record_crew_work",
   stage_contributors: "record_stage_contributors",
   correct_stage_contributors: "correct_stage_contributors",
@@ -136,6 +162,21 @@ export async function sendWorkCommand(c: WorkCommand): Promise<string> {
   if (authError) throw authError;
   if (auth.session?.user.id !== c.userId || !stillSignedInAs(mark, c.userId))
     throw wrongAccount();
+  // A unit created on the phone (see installerWorkflow/queuedUnits.ts). It
+  // goes to save_unit_details, which has its own arguments, under the same
+  // verified account as every other queued change.
+  if (c.action === "unit_create") {
+    const write = c.data as unknown as import("../install/unitDetails").UnitDetailsWrite;
+    const { error } = await clientWithToken(auth.session.access_token).rpc("save_unit_details", {
+      p_project: write.projectId, p_opening: write.id, p_create: true, p_code: write.code,
+      p_details: write.details, p_previous_code: write.previousCode, p_previous_details: write.previousDetails,
+      p_edit_id: write.editId, p_reason: write.reason ?? null,
+    });
+    if (!stillSignedInAs(mark, c.userId)) throw wrongAccount();
+    if (error?.code === "23505") throw { ...error, message: "This job already has a unit with that number." };
+    if (error) throw error;
+    return write.id;
+  }
   const direct = DIRECT_RPC_ACTIONS[c.action];
   // A mutable shared client could switch accounts between getSession and send.
   // Bind this request to the verified account's token for its entire lifetime.
@@ -147,6 +188,8 @@ export async function sendWorkCommand(c: WorkCommand): Promise<string> {
   // A committed request whose reply arrives after sign-out stays queued under
   // its original id. That owner can retry it against the server's receipt.
   if (!stillSignedInAs(mark, c.userId)) throw wrongAccount();
+  if ((c.action === "workday_activity" || c.action === "plan_activity_done" || c.action === "plan_unit_lead") && isMissingFunction(error))
+    throw new Error("This Workday update is saved on this device. Forge needs a server update before it can sync.");
   if (error) throw error;
   return data as string;
 }

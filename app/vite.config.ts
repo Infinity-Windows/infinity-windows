@@ -7,6 +7,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 // Explicit .ts extension: this config is checked under `module: nodenext`
 // (tsconfig.node.json), which requires one.
 import { renderWebManifest, withBase } from './src/lib/pwa/basePaths.ts'
+import { localCadReviewPlugin } from './scripts/localCadReview.ts'
 
 // VITE_BASE is set for GitHub Pages (`/infinity-windows/`). Local/root hosts keep `/`.
 const base = process.env.VITE_BASE || '/'
@@ -232,6 +233,7 @@ export default defineConfig({
     buildVersionPlugin(),
     webManifestPlugin(),
     spaFallbackPlugin(),
+    localCadReviewPlugin(),
     VitePWA({
       // 'prompt' (not autoUpdate) so a new deploy shows an "update available —
       // Refresh" banner instead of silently reloading mid-task. The register

@@ -56,6 +56,20 @@ it("hydrates retained work offline without executing it, then recovers only once
   expect(port.recover).toHaveBeenCalledTimes(1);
 });
 
+it("publishes saved punches when sign-in changes during an offline recovery", async () => {
+  const recovery = gate();
+  let authChanged!: () => void;
+  const port = fixture({ online: () => false, recover: vi.fn(() => recovery.promise),
+    subscribeAuth: (cb: () => void) => { authChanged = cb; return () => {}; } });
+  coordinator.start();
+  authChanged();
+  recovery.resolve();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(port.publish).toHaveBeenCalled();
+  expect(port.execute).not.toHaveBeenCalled();
+  expect(coordinator.isRunning()).toBe(false);
+});
+
 it("an auth generation change retires a queued manual override", async () => {
   let authChanged!: () => void;
   const sending = gate();

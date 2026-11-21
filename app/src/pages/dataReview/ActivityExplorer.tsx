@@ -45,7 +45,11 @@ function ActivityWorkspace({ active }: { active: boolean }) {
   const rangeUntil = until ? midnight(new Date(Date.parse(`${until}T12:00:00Z`) + 86400000).toISOString().slice(0, 10)) : Infinity;
   const recentRefresh=active&&Number.isFinite(rangeFrom)&&Number.isFinite(rangeUntil)&&rangeUntil-rangeFrom<=45*86400000?5*60000:false;
   const available = useQuery({...reportQueryPolicy,refetchInterval:recentRefresh,refetchIntervalInBackground:false,queryKey:["dataReview",owner,"availableJobs",from,until],queryFn:({signal})=>readAvailableJobs(rangeFrom,rangeUntil,signal),enabled:active && rangeFrom<rangeUntil});
-  const selectedJobIds = includedJobs(available.data ?? [],pageJobs);
+  // Practice jobs and the timers run on them stay off the dashboard (Matt,
+  // 2026-11-20): they are not real work and would count in every total.
+  const testJobs = useMemo(()=>new Set((projects.data ?? []).filter(p => p.is_test).map(p => p.id)),[projects.data]);
+  const realJobs = useMemo(()=>(available.data ?? []).filter(id => !testJobs.has(id)),[available.data,testJobs]);
+  const selectedJobIds = includedJobs(realJobs,pageJobs);
   const effectiveJobs = selectedJobIds;
   useEffect(()=>{setPageJobs(null);},[from,until]);
   const datesValid = rangeFrom < rangeUntil;
@@ -73,7 +77,7 @@ function ActivityWorkspace({ active }: { active: boolean }) {
   const laborRows = reportRows;
   const pageRows = laborRows.map(r => ({ ...r, job: jobNames.get(r.jobId ?? "") ?? r.job })).filter(row => pageJobs === null || pageJobs.includes(row.jobId ?? ""));
   const inspectedRows=pageRows;
-  const jobOptions=(available.data??[]).map(id=>({key:id,label:jobNames.get(id)??id})).sort((a,b)=>a.label.localeCompare(b.label));
+  const jobOptions=realJobs.map(id=>({key:id,label:jobNames.get(id)??id})).sort((a,b)=>a.label.localeCompare(b.label));
   const activityQueries = [sessions, historical, units, people, ...(openingIds.length ? [openingContext] : [])];
   const activityLoading = scoped && activityQueries.some(query => query.isPending);
   const activityError = scoped && activityQueries.some(query => query.isLoadingError);

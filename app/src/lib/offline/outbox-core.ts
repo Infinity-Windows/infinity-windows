@@ -27,6 +27,7 @@ export type OutboxOp =
   | "pin_undo"
   | "pin_reset_project"
   | "pin_reset_opening"
+  | "save_unit_details"
   // Warehouse ticket 10: a conex is a metal box with no bars. Nobody walks
   // outside to make the app happy — they do the work and skip the scan, and
   // then the record is gone forever. These queue instead.
@@ -762,6 +763,7 @@ const OP_REGISTRY = {
   pin_undo: true,
   pin_reset_project: true,
   pin_reset_opening: true,
+  save_unit_details: true,
   store_packages: true,
   checkout_packages: true,
   take_supply: true,

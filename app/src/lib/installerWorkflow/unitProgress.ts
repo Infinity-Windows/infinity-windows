@@ -17,15 +17,51 @@ export const building3ProgressBlocks: PlanBlock[] = [
   },
 ];
 
-export function finishedUnitActivities(sessions: readonly WorkSession[]) {
-  const latest = new Map<string, WorkSession>();
+export type ActivityDoneMark = { opening_id: string; activity: string; done_at: string };
+
+/** The latest word on each activity of each unit: finished, or sent back for rework. */
+function latestActivityMarks(sessions: readonly WorkSession[],
+  marks: readonly ActivityDoneMark[] = [], openingByUnit?: ReadonlyMap<string, string>) {
+  const latest = new Map<string, { at: number; done: boolean }>();
+  const record = (id: string, activity: string, at: string, done: boolean) => {
+    const key = JSON.stringify([id, activity]);
+    const time = Date.parse(at);
+    const previous = latest.get(key);
+    if (!previous || previous.at < time || (previous.at === time && !done)) latest.set(key, { at: time, done });
+  };
   for (const session of sessions) {
-    if (!session.unit_id || !session.ended_at || (session.outcome !== "finished" && session.outcome !== "rework")) continue;
-    const key = JSON.stringify([session.unit_id, session.stage]);
-    if ((latest.get(key)?.ended_at ?? "") <= session.ended_at) latest.set(key, session);
+    const at = session.ended_at ?? session.workday_done_at;
+    if (!session.unit_id || !at || (!session.workday_done_at && session.outcome !== "finished" && session.outcome !== "rework")) continue;
+    record(openingByUnit?.get(session.unit_id) ?? session.unit_id, session.stage, at,
+      session.outcome !== "rework");
   }
-  return (unitId: string | undefined, activity: string) =>
-    !!unitId && latest.get(JSON.stringify([unitId, activity]))?.outcome === "finished";
+  for (const mark of marks) record(mark.opening_id, mark.activity, mark.done_at, true);
+  return latest;
+}
+
+export function finishedUnitActivities(sessions: readonly WorkSession[],
+  marks: readonly ActivityDoneMark[] = [], openingByUnit?: ReadonlyMap<string, string>) {
+  const latest = latestActivityMarks(sessions, marks, openingByUnit);
+  return (id: string | undefined, activity: string) =>
+    !!id && latest.get(JSON.stringify([id, activity]))?.done === true;
+}
+
+export type LastFinishedActivity = { activity: string; at: string };
+
+/** The activity most recently finished on each unit and still standing: one
+ * later sent back for rework no longer counts as finished. */
+export function lastFinishedUnitActivity(sessions: readonly WorkSession[],
+  marks: readonly ActivityDoneMark[] = [], openingByUnit?: ReadonlyMap<string, string>) {
+  const last = new Map<string, { activity: string; at: number }>();
+  for (const [key, value] of latestActivityMarks(sessions, marks, openingByUnit)) {
+    if (!value.done) continue;
+    const [id, activity] = JSON.parse(key) as [string, string];
+    if ((last.get(id)?.at ?? -Infinity) < value.at) last.set(id, { activity, at: value.at });
+  }
+  return (id: string | undefined): LastFinishedActivity | undefined => {
+    const found = id ? last.get(id) : undefined;
+    return found && { activity: found.activity, at: new Date(found.at).toISOString() };
+  };
 }
 
 export function building3PreviewDone(project: string, activity: string, openingCode: string) {

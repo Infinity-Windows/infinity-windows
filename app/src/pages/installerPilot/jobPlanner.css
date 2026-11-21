@@ -277,6 +277,7 @@
 }
 .jp-floor-list { max-height: 175px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
 .jp-floor-list .jp-unit-stage:first-child h3 { margin-top: 0; }
+.job-planner .jp-add-unit { margin-block: 4px 8px; }
 .jp-unit-status { font-size: 10px; color: var(--muted); }
 @media (max-width: 600px) {
   .jp-floor-list { max-height: min(21dvh, 145px); }
@@ -536,3 +537,11 @@
 }
 .jp-unit-table-actions button[aria-expanded=true] > svg { transform: rotate(180deg); }
 @media (pointer: coarse) { .job-planner .jp-unit-table-actions button { min-height: 44px; } }
+
+/* Fingers, not a mouse: the compact floor jumps, "Select all" and stacked card
+   titles were 26-28px tall, under the 44px a thumb needs (phone pass, 2026-11-20). */
+@media (pointer: coarse) {
+  .job-planner .jp-floor-index button,
+  .job-planner .jp-select-floor,
+  .job-planner .jp-stack-title { min-height: 44px; }
+}

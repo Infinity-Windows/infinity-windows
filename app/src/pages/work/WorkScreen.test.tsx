@@ -45,6 +45,7 @@ const navigateSpy = vi.fn();
 
 // The screen's two ways of speaking a refusal: a toast, and leaving for the
 // unit sheet. Both are spied so a test can say which one happened.
+import { WorkdayPreviewProvider } from "../installerPilot/workdayPreview";
 vi.mock("../../lib/toast", async (orig) => ({
   ...(await orig<typeof import("../../lib/toast")>()),
   pushToast: vi.fn(),
@@ -81,7 +82,8 @@ vi.mock("../../lib/useToolboxGate", () => ({
   useTodayTalk: () => ({ data: talk, isSuccess: true }),
   useToolboxToday: () => ({ data: signed, isSuccess: true, pending: pendingSign, refused: refusedSign }),
 }));
-vi.mock("../../lib/signedIn", () => ({ signedInUserId: () => signedInId }));
+// queueRuntime subscribes to sign-in changes as it loads; the mock had only the id.
+vi.mock("../../lib/signedIn", () => ({ signedInUserId: () => signedInId, subscribeSignedIn: () => () => undefined }));
 vi.mock("../../lib/supabase", () => ({
   supabase: {
     auth: {
@@ -148,8 +150,10 @@ vi.mock("../../lib/customWork/useWork", () => ({
     active: sessions.find((s) => s.profile_id === ME && !s.ended_at) ?? null,
   }),
 }));
+// A foreman: an installer on the new design gets Workday on this screen instead
+// (the ws-installer layout), which these tests do not cover.
 vi.mock("../../lib/useEffectiveRole", () => ({
-  useEffectiveRole: () => ({ realRole: "installer", effectiveRole: "installer", isPreviewing: false, isLoading: false, grants: {} }),
+  useEffectiveRole: () => ({ realRole: "foreman", effectiveRole: "foreman", isPreviewing: false, isLoading: false, grants: {} }),
 }));
 vi.mock("../../components/install/LiveSummonsStrip", () => ({ LiveSummonsStrip: () => null }));
 vi.mock("../../components/clock/ToolboxSignCard", () => ({
@@ -253,7 +257,7 @@ const tree = () => (
   <QueryClientProvider client={qc!}>
     <IsRestoringProvider value={restoring}>
       <MemoryRouter>
-        <WorkScreen />
+        <WorkdayPreviewProvider><WorkScreen /></WorkdayPreviewProvider>
       </MemoryRouter>
     </IsRestoringProvider>
   </QueryClientProvider>

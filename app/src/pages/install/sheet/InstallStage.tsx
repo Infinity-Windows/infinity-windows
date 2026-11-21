@@ -13,8 +13,7 @@ export interface InstallStageProps {
   startedAt: string | null;
   tips: string[];
   onOpenClock: () => void;
-  beginInstallPending: boolean;
-  onBeginInstall: () => void;
+  onReviewChecks: () => void;
 
   summon: {
     projectId: string;
@@ -35,8 +34,7 @@ export function InstallStage({
   startedAt,
   tips,
   onOpenClock,
-  beginInstallPending,
-  onBeginInstall,
+  onReviewChecks,
   summon,
   more,
 }: InstallStageProps) {
@@ -112,11 +110,11 @@ export function InstallStage({
         <>
           <p className="next-label" style={{ margin: 0 }}>Ready when you are</p>
           <p className="muted" style={{ margin: 0 }}>
-            Nothing is being timed yet. Tap start when you actually begin
-            fitting this one.
+            Nothing is being timed yet. Review this unit's checks, then start
+            when you actually begin fitting it.
           </p>
-          <button className="primary big" disabled={beginInstallPending} onClick={onBeginInstall}>
-            {beginInstallPending ? t("opening.action.starting") : t("opening.action.startTimer")}
+          <button className="primary big" onClick={onReviewChecks}>
+            {t("opening.action.reviewChecks")}
           </button>
         </>
       )}
