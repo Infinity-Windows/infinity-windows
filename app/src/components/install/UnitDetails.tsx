@@ -242,9 +242,6 @@ export function UnitDetailsPanel({ projectId, opening, onCreated, createOffline 
   if (rough && (!hasSizeEdit || details.basis !== "rough")) sizes.push(`${rough} · ${basisLabel("rough")}`);
   const number = pending?.code ?? opening?.opening_code ?? "";
   const form = draft ?? (!opening ? { code: "", details: { placeholder: true } as Details } : undefined);
-  // A placeholder is the only record of where a field-found unit is, so it
-  // carries its floor from the start; save_unit_details refuses one without it.
-  const needsFloor = !opening || form?.details.placeholder === true;
   const update = (patch: Details) => form && setDraft({ ...form, details: { ...form.details, ...patch } });
   const startEdit = () => {
     if (!opening) return;
@@ -363,7 +360,7 @@ export function UnitDetailsPanel({ projectId, opening, onCreated, createOffline 
           {UNIT_KINDS.map(value => <option key={value} value={value}>{unitKindLabel(value, lang === "es")}</option>)}
         </select></div>
         <label>{text("Floor number", "Número de piso")}<input type="number" step="1" min="-999" max="999"
-          required={needsFloor} placeholder={floor?.replace(/^Level /, "") ?? (needsFloor ? undefined : text("Optional", "Opcional"))} value={form.details.floor ?? ""} onChange={event => update({ floor: event.target.value ? String(event.target.valueAsNumber) : null })} /></label>
+          placeholder={floor?.replace(/^Level /, "") ?? text("Optional", "Opcional")} value={form.details.floor ?? ""} onChange={event => update({ floor: event.target.value ? String(event.target.valueAsNumber) : null })} /></label>
         <label>{text("Inset/outset", "Retranqueo/saliente")}<select value={form.details.inset ?? ""} onChange={event => {
           const value = SET_DEPTHS.find(depth => depth === event.target.value);
           update({ inset: value ?? null });

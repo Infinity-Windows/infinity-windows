@@ -134,3 +134,9 @@ $$;
 
 revoke all on function public.save_unit_details(uuid, uuid, boolean, text, jsonb, text, jsonb, uuid, text) from public, anon;
 grant execute on function public.save_unit_details(uuid, uuid, boolean, text, jsonb, text, jsonb, uuid, text) to authenticated;
+
+-- A QA test login may only write on a sandbox job; arm that fence for the
+-- table this file adds (scripts/test_sandbox_guard.py requires it here, in the
+-- declaring migration). Idempotent, so 20261130180000 can run it again for
+-- databases that applied this file before the line was added.
+select public.attach_sandbox_guards();

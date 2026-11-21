@@ -132,3 +132,9 @@ revoke all on function public.get_installer_plan(uuid),
   public.save_installer_plan(uuid, integer, jsonb) from public, anon;
 grant execute on function public.get_installer_plan(uuid),
   public.save_installer_plan(uuid, integer, jsonb) to authenticated;
+
+-- A QA test login may only write on a sandbox job; arm that fence for the
+-- table this file adds (scripts/test_sandbox_guard.py requires it here, in the
+-- declaring migration). Idempotent, so 20261130180000 can run it again for
+-- databases that applied this file before the line was added.
+select public.attach_sandbox_guards();
