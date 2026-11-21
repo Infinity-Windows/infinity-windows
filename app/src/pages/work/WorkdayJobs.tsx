@@ -53,8 +53,10 @@ export function WorkdayJobs({ profileId, currentJob, previewDate, onChoose, jobN
         .is("deleted_at", null).eq("is_test", profile.data!)
         .order("created_at", { ascending: false }).order("id")
         .range(pageParam, pageParam + PAGE_SIZE - 1).abortSignal(signal);
-      if (search) {
-        const pattern = ("%" + search.replace(/[\\%_]/g, "\\$&") + "%")
+      // Each word has to appear in the code or the name, in any order, so
+      // "pecan 46" finds "Pecan valley 46" (one whole-phrase match did not).
+      for (const word of search.split(/\s+/).filter(Boolean)) {
+        const pattern = ("%" + word.replace(/[\\%_]/g, "\\$&") + "%")
           .replace(/[\\"]/g, "\\$&");
         query = query.or(`job_code.ilike."${pattern}",name.ilike."${pattern}"`);
       }
