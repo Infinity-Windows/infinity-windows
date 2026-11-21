@@ -545,3 +545,18 @@
   .job-planner .jp-select-floor,
   .job-planner .jp-stack-title { min-height: 44px; }
 }
+
+/* A phone fits one unit to a row in the Plan's picker, so three rows showed
+   three units. Six rows keeps picking workable there (phone pass, 2026-11-20). */
+@media (max-width: 600px) {
+  .jp-compose-tools .jp-floor-list {
+    max-height: calc(var(--jp-floor-header-height) + 6 * var(--jp-unit-row-height) + 6 * var(--jp-unit-row-gap));
+  }
+}
+
+/* Two units to a row on a phone, in the Plan's picker as in Workday (Matt,
+   2026-11-20). The picture gives up width so the number and status still fit. */
+@media (max-width: 600px) {
+  .jp-compose-tools .jp-unit-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .job-planner .jp-compose-tools .jp-unit-pick > button:first-child { grid-template-columns: minmax(0, 34%) minmax(0, 1fr); }
+}

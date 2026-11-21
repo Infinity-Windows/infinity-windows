@@ -37,6 +37,14 @@
   --unit-tile-height: 92px;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 158px), 1fr)); gap: 8px;
 }
+/* A phone shows two units to a row, timers and the add-unit list alike (Matt, 2026-11-20); at one a row only four
+   fit on a screen. The picture gives up width so the clock still fits. */
+@media (max-width: 520px) {
+  .unit-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .unit-tiles .jp-unit-pick > button:first-child { grid-template-columns: minmax(0, 32%) minmax(0, 1fr); }
+  .unit-tiles[data-size=large] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .unit-tiles[data-size=large] .jp-unit-pick > button:first-child { grid-template-columns: minmax(0, 32%) minmax(0, 1fr); }
+}
 .unit-tiles[data-size=large] .jp-unit-visual > :is(img, svg) { width: min(100%, 56px); height: 54px; }
 .unit-tiles[data-size=large] .jp-unit-caption {
   grid-template-rows: none; grid-auto-rows: auto; align-content: space-between; gap: 4px; padding: 7px 6px 7px 8px;

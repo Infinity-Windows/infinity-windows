@@ -268,7 +268,6 @@ for (const role of ["installer", "foreman"] as const) {
 test("activity-first preview simulates unit and company work without writes", async ({ page }) => {
  const { commands } = await setup(page, false);
  await page.goto(`/installer-day?project=${job.id}`);
- await expect(page.getByText("Preview · local timers only")).toBeVisible();
  await pickWorkdayActivity(page, "unit:Flashing");
  await page.getByRole("button", { name: "Start unit 12 Flashing", exact: true }).click();
  await expect(page.getByRole("button", { name: "Running unit 12 Flashing", exact: true })).toBeVisible();

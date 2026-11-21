@@ -370,7 +370,6 @@ function DayView({ sandbox, person, day, actions, preview, planBlock, planName, 
         try { return JSON.parse(localStorage.getItem(leadStorageKey) ?? "{}") ?? {}; }
         catch { return {}; }
     }, [leadStorageKey, leadChange]);
-    const [focusUnit, setFocusUnit] = useState<string | undefined>();
     const [confirmUnit, setConfirmUnit] = useState<string | null>(null);
     // The unit whose details are open in the popup, from the add-unit list.
     const [infoUnit, setInfoUnit] = useState<string>();
@@ -546,7 +545,7 @@ function DayView({ sandbox, person, day, actions, preview, planBlock, planName, 
             active.unit_id ? "unit" : active.project_id ? "job" : "company")
         : undefined;
     const start = (id?: string) => {
-        setChoice(picked); setFocusUnit(id);
+        setChoice(picked);
         if (running(id)) { setSelected(id ?? "activity"); return; }
         void actions.start(picked, id, activeNote());
     };
@@ -571,13 +570,11 @@ function DayView({ sandbox, person, day, actions, preview, planBlock, planName, 
         setUnitSearch("");
         setPendingUnits([]);
         setSelected(null);
-        setFocusUnit(undefined);
         setLeadError("");
     };
     const clock = useClock(), shift = clock.shift, scope = picked.scope === "company" ? null : sandbox.id;
     const activeOpening = active?.unit_id ? ordered.find(o => unitId(o.id) === active.unit_id) : undefined;
     const activeMatches = !!active && matchesActivity(active);
-    const resumeUnit = focusUnit ?? (activeMatches ? activeOpening?.id : undefined);
     const detailOpening = opening;
     const wholeUnitComplete = unitState.complete;
     const detailUnit = detailOpening && allUnits.find(unit => unit.opening_id === detailOpening.id);
@@ -654,9 +651,12 @@ function DayView({ sandbox, person, day, actions, preview, planBlock, planName, 
           leadId: leadFor(infoOpening.id), crewIds: unitState.crew(infoOpening.id, picked.activity).crewIds }}
         localSessions={jobSessions.filter(session => !!session.unit_id && unitState.openingOf(session) === infoOpening.id)}
         localUnitComplete={unitState.complete(infoOpening.id) || undefined} />}
-      <header className="wd-heading"><div>{jobPicker ? jobPicker(sandbox.job_code) : <strong>{scope ? sandbox.job_code : text("Company work", "Trabajo de la empresa")}</strong>}{preview && previewLabel && <small>{previewLabel}</small>}{preview && !embedded && <small>{text("Preview · local timers only", "Vista previa · tiempos locales")}</small>}</div><div className="wd-heading-right">{clockControls}{!embedded && !preview && shift?.project_id === scope && shift.status === "open" && <small>{text("Clocked in", "Entrada registrada")}</small>}<button className="wd-language" onClick={() => setLang(es ? "en" : "es")} aria-label={es ? "Change language to English" : "Cambiar idioma a español"}>{es ? "English" : "Español"}</button></div></header>
-      {!embedded && (!preview || params.has("planAs")) && <WorkdayJobs key={sandbox.id}
-        profileId={person} currentJob={sandbox.id} previewDate={preview ? day : undefined} />}
+      <header className="wd-heading"><div>{/* The job's name is the switch everywhere Workday shows one, this
+          page included; it used to keep a separate "Switch job" button under the name (Matt, 2026-11-20). */}
+        {jobPicker ? jobPicker(sandbox.job_code)
+          : !embedded && (!preview || params.has("planAs")) ? <WorkdayJobs key={sandbox.id} profileId={person} currentJob={sandbox.id}
+              previewDate={preview ? day : undefined} jobName={scope ? sandbox.job_code : text("Company work", "Trabajo de la empresa")} />
+          : <strong>{scope ? sandbox.job_code : text("Company work", "Trabajo de la empresa")}</strong>}{preview && previewLabel && <small>{previewLabel}</small>}</div><div className="wd-heading-right">{clockControls}{!embedded && !preview && shift?.project_id === scope && shift.status === "open" && <small>{text("Clocked in", "Entrada registrada")}</small>}<button className="wd-language" onClick={() => setLang(es ? "en" : "es")} aria-label={es ? "Change language to English" : "Cambiar idioma a español"}>{es ? "English" : "Español"}</button></div></header>
       {toolbox}
       {published.isPending && <p role="status">{text("Loading today’s plan…", "Cargando el plan de hoy…")}</p>}
       {published.isError && <p role="alert">{formatApiError(published.error)}</p>}
@@ -671,11 +671,12 @@ function DayView({ sandbox, person, day, actions, preview, planBlock, planName, 
             onKeyDown={event => { if (event.key === "Escape" && showActivities) closeActivityPicker(); }}>
             <span>{activityLabel(picked.activity, es)}</span><ChevronDown size={16} aria-hidden="true"/>
           </button>
-          {/* Beside the activity, not under it. While this activity runs there
-              is only a green dot and the unit's number; "Running" is kept
+          {/* Beside the activity, not under it. While unit work runs there is
+              a green dot and the unit's number; a general activity shows no
+              dot, its clock is enough (Matt, 2026-11-20). "Running" is kept
               for screen readers. */}
           <span className="wd-current-state" role="status" data-running={!!active && activeMatches || undefined}>{active ? activeMatches
-            ? <><i aria-hidden="true" /><span className="wd-sr-only">{text("Running", "En curso")}</span>{activeOpening && <b>{activeOpening.opening_code}</b>}</>
+            ? <>{active.unit_id && <i aria-hidden="true" />}<span className="wd-sr-only">{text("Running", "En curso")}</span>{activeOpening && <b>{activeOpening.opening_code}</b>}</>
             : `${text("Still running", "Sigue en curso")}: ${activityLabel(active.unit_id ? active.stage : active.description.split(" — ", 1)[0], es)}${activeOpening ? ` · ${activeOpening.opening_code}` : ""}`
             : picked.scope === "unit" ? text("Tap a unit to start", "Toca una unidad para empezar") : text("Ready to start", "Listo para empezar")}</span>
         </div>
@@ -696,9 +697,14 @@ function DayView({ sandbox, person, day, actions, preview, planBlock, planName, 
         </button>
         <div className="wd-timer"><Clock size={18} aria-hidden="true" /><strong>{elapsed()}</strong>
 
-          {!activeMatches && <button className="wd-play" disabled={disabled || (picked.scope === "unit" && !resumeUnit)}
+          {/* Unit work starts by tapping a unit, and choosing a general
+              activity starts it. The one case left for a start button is a
+              general activity as the first thing of the day, before the clock
+              and Toolbox Talk (Matt, 2026-11-20). */}
+          {picked.scope !== "unit" && !activeMatches && (preview || shift?.status !== "open")
+            && <button className="wd-play" disabled={disabled}
             aria-label={text("Start", "Iniciar") + " " + activityLabel(picked.activity, es)}
-            onClick={() => start(picked.scope === "unit" ? resumeUnit : undefined)}><Play size={20}/></button>}
+            onClick={() => start(undefined)}><Play size={20}/></button>}
         </div>
       </section>
       {askMachinery && <section className="wd-shift-panel" role="alertdialog" aria-label={text("Operating machinery", "Operando maquinaria")}>
