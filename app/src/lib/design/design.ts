@@ -22,9 +22,11 @@ export type UiDesign = "classic" | "new";
 /** localStorage key for the last resolved design on this device. */
 export const DESIGN_CACHE_KEY = "forge.design";
 
-/** Only the two words the database accepts; anything else reads as classic. */
+/** Only the two words the database accepts. Classic only when a person's
+ * profile says so; anything else (a profile read without the column, say)
+ * reads as the new design, which is everyone's default since 20261130190000. */
 export function normalizeDesign(value: unknown): UiDesign {
-  return value === "new" ? "new" : "classic";
+  return value === "classic" ? "classic" : "new";
 }
 
 export interface ResolveDesignInput {

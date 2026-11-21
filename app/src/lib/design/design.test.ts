@@ -47,9 +47,10 @@ describe("normalizeDesign", () => {
   it("accepts only the two words the database accepts", () => {
     expect(normalizeDesign("new")).toBe("new");
     expect(normalizeDesign("classic")).toBe("classic");
-    expect(normalizeDesign("NEW")).toBe("classic");
-    expect(normalizeDesign(undefined)).toBe("classic");
-    expect(normalizeDesign(42)).toBe("classic");
+    // Anything that is not a clear "classic" is the new design, the default.
+    expect(normalizeDesign("NEW")).toBe("new");
+    expect(normalizeDesign(undefined)).toBe("new");
+    expect(normalizeDesign(42)).toBe("new");
   });
 });
 
