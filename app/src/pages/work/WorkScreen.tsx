@@ -90,7 +90,10 @@ export function WorkScreen() {
   const queryClient = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
   const { previewPerson, previewRole } = useViewAsRole();
-  const installer = effectiveRole === "installer";
+  // Foremen do the same work as installers, so they get the same Workday:
+  // its timer, break and clock out, and their own planned units (Matt,
+  // 2026-11-21). `installer` here means "works units", not the role alone.
+  const installer = effectiveRole === "installer" || effectiveRole === "foreman";
   const preview = Boolean(previewPerson || previewRole);
   const simulator = useWorkdayPreview(`work:${previewPerson?.id ?? previewRole ?? "self"}`);
   const [switchError, setSwitchError] = useState("");
@@ -415,6 +418,9 @@ export function WorkScreen() {
           previewUnitCompletion={preview ? simulator.unitCompletion : undefined}
           liveWork={preview ? undefined : work} /></div>
         <HeadsUps items={notices} />
+        {/* What a foreman had on the old Work screen and still needs. */}
+        {lead && <LeadRow role={effectiveRole} />}
+        {lead && <Link className="ws-btn" to="/activities">{es ? "Actividades recientes" : "Recent activities"}</Link>}
       </> : <>
       <TodayCard
         meId={profileId}

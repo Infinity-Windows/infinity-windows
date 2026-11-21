@@ -161,10 +161,10 @@ vi.mock("../../lib/customWork/useWork", () => ({
     active: sessions.find((s) => s.profile_id === ME && !s.ended_at) ?? null,
   }),
 }));
-// A foreman: an installer on the new design gets Workday on this screen instead
+// A supervisor: installers and foremen on the new design get Workday on this screen instead
 // (the ws-installer layout), which these tests do not cover.
 vi.mock("../../lib/useEffectiveRole", () => ({
-  useEffectiveRole: () => ({ realRole: "foreman", effectiveRole: "foreman", isPreviewing: false, isLoading: false, grants: {} }),
+  useEffectiveRole: () => ({ realRole: "supervisor", effectiveRole: "supervisor", isPreviewing: false, isLoading: false, grants: {} }),
 }));
 vi.mock("../../components/install/LiveSummonsStrip", () => ({ LiveSummonsStrip: () => null }));
 vi.mock("../../components/clock/ToolboxSignCard", () => ({
