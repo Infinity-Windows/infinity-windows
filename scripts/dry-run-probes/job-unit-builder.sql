@@ -21,7 +21,7 @@ declare
   placeholder_code text := 'PH-QA-' || left(placeholder::text, 8);
   defined jsonb := '{"placeholder":false,"kind":"window","floor":"2","width":40,"height":60,"basis":"drawing","configuration":"Fixed","material":"Aluminum"}';
   field jsonb := '{"placeholder":true,"floor":"2","kind":"door"}';
-  confirmed jsonb := '{"placeholder":false,"floor":"2","kind":"door","configuration":"Swing door"}';
+  confirmed_details jsonb := '{"placeholder":false,"floor":"2","kind":"door","configuration":"Swing door"}';
   set_aside jsonb := '{"placeholder":true,"floor":"2","kind":"door","builderDeferred":true}';
   created boolean;
 begin
@@ -69,7 +69,7 @@ begin
     'expected true, got ' || coalesce(created::text, 'null'));
   perform pg_temp.dry_run_expect_error('an installer cannot confirm a placeholder',
     format('select public.save_unit_details(%L, %L, false, %L, %L, %L, %L, %L)',
-      job, placeholder, placeholder_code, confirmed, placeholder_code, field, gen_random_uuid()),
+      job, placeholder, placeholder_code, confirmed_details, placeholder_code, field, gen_random_uuid()),
     'Only a foreman');
   perform pg_temp.dry_run_expect_error('an installer cannot set a placeholder aside',
     format('select public.save_unit_details(%L, %L, false, %L, %L, %L, %L, %L)',
@@ -82,7 +82,7 @@ begin
     gen_random_uuid(), 'Disregarded in Unit Builder review');
   perform public.save_unit_details(job, placeholder, false, placeholder_code, field, placeholder_code, set_aside,
     gen_random_uuid(), 'Returned to Unit Builder review');
-  perform public.save_unit_details(job, placeholder, false, placeholder_code, confirmed, placeholder_code, field,
+  perform public.save_unit_details(job, placeholder, false, placeholder_code, confirmed_details, placeholder_code, field,
     gen_random_uuid(), 'Defined field placeholder');
 
   perform pg_temp.dry_run_as_system();
@@ -95,7 +95,7 @@ begin
     (select count(*) from public.unit_detail_edit_history where opening_id = defined_unit) || ' row(s), expected 1');
   perform pg_temp.dry_run_check('confirming kept the placeholder''s own row',
     exists (select 1 from public.project_openings
-      where id = placeholder and project_id = job and opening_code = placeholder_code and unit_details = confirmed),
+      where id = placeholder and project_id = job and opening_code = placeholder_code and unit_details = confirmed_details),
     placeholder::text);
   perform pg_temp.dry_run_check('placeholder history: create, set aside, return, confirm',
     (select count(*) from public.unit_detail_edit_history where opening_id = placeholder) = 4,
