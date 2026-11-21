@@ -314,7 +314,7 @@ test("planner tab shows current and next job stages", async ({ page }) => {
 });
 
 
-test("foreman can plan on a normal project with the active installer roster", async ({ page }) => {
+test("foreman can plan on a normal project with the active installers and foremen", async ({ page }) => {
   await setup(page, false, true, true, "foreman");
   await page.route("**/rest/v1/projects?*", route => {
     const project = { ...job, job_code: "FORGE-101", name: "Normal job", is_test: false };
@@ -323,19 +323,21 @@ test("foreman can plan on a normal project with the active installer roster", as
   const roster = [
     { id: TEST_USER.id, display_name: "Active installer", role: "installer", active: true },
     { id: "11111111-1111-4111-8111-111111111112", display_name: "Inactive installer", role: "installer", active: false },
-    { id: "11111111-1111-4111-8111-111111111113", display_name: "Office foreman", role: "foreman", active: true },
+    { id: "11111111-1111-4111-8111-111111111113", display_name: "Site foreman", role: "foreman", active: true },
+    { id: "11111111-1111-4111-8111-111111111114", display_name: "Office supervisor", role: "supervisor", active: true },
   ];
   await page.route("**/rest/v1/profiles?*", route => {
     if (!route.request().headers().prefer?.includes("count=exact") || !new URL(route.request().url()).searchParams.get("select")?.includes("retired_at")) return route.fallback();
     expect(new URL(route.request().url()).searchParams.get("is_test")).toBe("eq.false");
-    return route.fulfill({ json: roster, headers: { "content-range": "0-2/3", "access-control-expose-headers": "content-range" } });
+    return route.fulfill({ json: roster, headers: { "content-range": "0-3/4", "access-control-expose-headers": "content-range" } });
   });
   await page.goto(`/projects/${job.id}?tab=planner`);
   const composer = page.getByRole("region", { name: "Plan an activity" });
   await composer.getByRole("button", { name: "Activity", exact: true }).click();
   await choosePlannerActivity(composer, "Travel");
   const crew = composer.getByRole("region", { name: "Crew", exact: true });
-  await expect(crew.getByRole("button")).toHaveText(["Active installer"]);
+  // Foremen work units too, so they are offered; supervisors are not.
+  await expect(crew.getByRole("button")).toHaveText(["Active installer", "Site foreman"]);
   await crew.getByRole("button", { name: "Active installer" }).click();
   await composer.getByRole("button", { name: "Schedule", exact: true }).click();
   await expect(page.locator(".jp-event-body")).toContainText("Active installer");

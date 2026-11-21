@@ -287,7 +287,9 @@ function Planner({ project, account, latestSharedPlan }: {
     },
   });
   const roster = people.data?.people.filter(person =>
-    (person.active || people.data.isTest) && crewRecordEligible(person) && person.role === "installer",
+    (person.active || people.data.isTest) && crewRecordEligible(person)
+    // Foremen work units like installers, so the Plan can name them too (20261130200000).
+    && (person.role === "installer" || person.role === "foreman"),
   ) ?? [];
   const rosterIds = [...new Set([...roster.map(person => person.id).sort(), ...blocks.flatMap(block => block.installerIds).sort()])];
   const crewColors = new Map(rosterIds.map((id, index) => [id, CREW_COLORS[index % CREW_COLORS.length]]));
