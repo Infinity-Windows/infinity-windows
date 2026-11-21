@@ -1,0 +1,20 @@
+/* The screens before sign-in, in the new design (SignedOutBrand stamps it). */
+.signed-out-brand img { width: 212px; height: 114px; object-fit: cover; mix-blend-mode: screen; }
+html[data-design="new"] :is(.signin, .landing) { background: transparent; }
+html[data-design="new"] :is(.signin, .landing) button.primary {
+  background: var(--steel-button); color: #101418; border: 1px solid #ff955d;
+  box-shadow: var(--steel-button-shadow); border-radius: 12px;
+  font-size: 16px; font-weight: 700; letter-spacing: 0; text-transform: none;
+}
+html[data-design="new"] :is(.signin, .landing) button.primary:hover:not(:disabled) { filter: brightness(1.06); }
+html[data-design="new"] :is(.signin, .landing) button.secondary {
+  background: var(--card); border: 1px solid var(--accent-line); color: var(--accent-hover); border-radius: 12px;
+  font-size: 16px; font-weight: 700; letter-spacing: 0; text-transform: none;
+}
+html[data-design="new"] :is(.signin, .landing) button.secondary:hover { background: var(--card-raised); }
+html[data-design="new"] .signin-kicker { font-size: 13px; letter-spacing: .08em; }
+html[data-design="new"] :is(.signin, .landing) :is(input, select, textarea) {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text);
+}
+html[data-design="new"] :is(.signin, .landing) .button-like { border-radius: 10px; }
+html[data-design="new"] :is(.signin, .landing) .button-like.active-pill { background: var(--accent-bg); border-color: var(--accent-line); color: var(--accent-hover); }

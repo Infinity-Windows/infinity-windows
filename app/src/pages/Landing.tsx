@@ -1,3 +1,4 @@
+import { SignedOutBrand } from "../components/steel/SignedOutBrand";
 import { useSafeSurface } from "../lib/pwa/useSafeSurface";
 
 interface LandingProps {
@@ -11,12 +12,7 @@ export function Landing({ onSignIn, onRequest }: LandingProps) {
   useSafeSurface();
   return (
     <div className="landing">
-      <div className="landing-brand">
-        <h1>FORGE</h1>
-        <div className="signin-rule">
-          <span>Windows &amp; Doors</span>
-        </div>
-      </div>
+      <SignedOutBrand />
       <p className="landing-tagline">
         Installs, time, supplies, points, and the company brain — one field app
         for the whole crew.

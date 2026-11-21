@@ -1,3 +1,4 @@
+import { SignedOutBrand } from "../components/steel/SignedOutBrand";
 import { useEffect, useState } from "react";
 import { formatApiError } from "../lib/errors";
 import { supabase } from "../lib/supabase";
@@ -133,12 +134,7 @@ export function JoinCrew({
 
   return (
     <div className="signin">
-      <div className="signin-brand">
-        <h1>FORGE</h1>
-        <div className="signin-rule">
-          <span>{t("signin.tagline")}</span>
-        </div>
-      </div>
+      <SignedOutBrand />
 
       {signedInAs && (
         <div className="detail-card" style={{ marginBottom: 4 }}>
