@@ -351,6 +351,16 @@ describe("menuForRole (Horizon grouped menu)", () => {
     }
   });
 
+  it("shortens the new design's installer drawer: no Current Work, Servicing last, Me and Help folded", () => {
+    const sections = menuForRole("installer", undefined, "new");
+    const work = sections.find((s) => s.title === "Work")!.items.map((i) => i.to);
+    expect(work).not.toContain("/current-work");
+    expect(work.at(-1)).toBe("/service");
+    expect(sections.filter((s) => s.collapsible).map((s) => s.title)).toEqual(["Me", "Help"]);
+    // The classic drawer keeps every section open.
+    expect(menuForRole("installer").some((s) => s.collapsible)).toBe(false);
+  });
+
   it("surfaces My Work and Photos in the manager menu (drawer/bottom-bar parity)", () => {
     const tos = flatten("foreman").map((i) => i.to);
     expect(tos).toContain("/my-work");

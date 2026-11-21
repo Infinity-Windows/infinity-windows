@@ -702,13 +702,21 @@ function installerMenu(
       .filter((it): it is MenuItem => Boolean(it?.to) && canAccess(role, it!.to!, grants))
       .map((it) => (it.to === "/" ? { ...it, label: homeLabel } : it));
 
+  // The new design's drawer is shorter (Matt, 2026-11-21): the Workday shows
+  // the running activity, so "Current Work" has no row; Servicing drops to the
+  // end of Work; Me and Help fold shut until tapped (a section holding the
+  // open page starts unfolded — AppMenu). The classic drawer is unchanged.
+  const fresh = design === "new";
+  const workPaths = fresh
+    ? [...INSTALLER_WORK_PATHS.filter((p) => p !== "/current-work" && p !== "/service"), "/service" as RoutePath]
+    : INSTALLER_WORK_PATHS;
   const out: MenuSection[] = [];
-  const work = pick(INSTALLER_WORK_PATHS);
+  const work = pick(workPaths);
   if (work.length) out.push({ title: "Work", items: work });
   const me = pick(INSTALLER_ME_PATHS);
-  if (me.length) out.push({ title: "Me", items: me });
+  if (me.length) out.push({ title: "Me", items: me, collapsible: fresh || undefined });
   const help = pick(INSTALLER_HELP_PATHS);
-  if (help.length) out.push({ title: "Help", items: help });
+  if (help.length) out.push({ title: "Help", items: help, collapsible: fresh || undefined });
   return out;
 }
 
