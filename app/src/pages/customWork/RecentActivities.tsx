@@ -48,6 +48,9 @@ function ActivityReview() {
   });
   const [from, setFrom] = useState(initialFrom);
   const [periodFilter, setPeriodFilter] = useState("recent");
+  // "Load earlier" moves the select to the pay period it fetches. Until those
+  // rows arrive the table keeps what it was showing rather than going empty.
+  const [heldFilter, setHeldFilter] = useState<string | null>(null);
   const work = useWork(job, from);
   const currentPeriod = timecardRange("pay", new Date(from));
   const nextPeriod = currentPeriod.start.getTime() < from ? currentPeriod : previousPayPeriod(currentPeriod.start);
@@ -84,11 +87,12 @@ function ActivityReview() {
   const rows = work.sessions.filter(row => (!people.length || people.includes(row.profile_id))
     && (!selectedActivities.length || selectedActivities.includes(titleOf(row)))).sort((a, b) =>
     Date.parse(b.started_at) - Date.parse(a.started_at) || b.id.localeCompare(a.id));
+  const tableFilter = work.loadingOlderSessions && heldFilter ? heldFilter : periodFilter;
   const periods = new Map<string, { label: string; rows: WorkSession[] }>();
   for (const row of rows) {
     const period = timecardRange("pay", new Date(row.started_at));
-    if (periodFilter === "recent" && row.ended_at && Date.parse(row.ended_at) <= initialFrom) continue;
-    if (periodFilter !== "recent" && periodFilter !== "loaded" && periodFilter !== period.startIso) continue;
+    if (tableFilter === "recent" && row.ended_at && Date.parse(row.ended_at) <= initialFrom) continue;
+    if (tableFilter !== "recent" && tableFilter !== period.startIso) continue;
     const existing = periods.get(period.startIso);
     if (existing) existing.rows.push(row);
     else periods.set(period.startIso, { label: period.label, rows: [row] });
@@ -97,7 +101,8 @@ function ActivityReview() {
   const shownTotal = clockText(workerSeconds(shown.filter(row => row.ended_at)));
   const olderButton = <button type="button" className="cw-activity-older" disabled={work.loading || work.loadingOlderSessions}
     title={nextPeriod.label} onClick={() => {
-      setPeriodFilter("loaded");
+      setHeldFilter(periodFilter);
+      setPeriodFilter(nextPeriod.startIso);
       setFrom(nextPeriod.start.getTime());
     }}>
     {work.loadingOlderSessions ? "Loading earlier activities…" : "Load earlier activities"}
@@ -115,11 +120,11 @@ function ActivityReview() {
         <select value={periodFilter} onChange={event => {
           const value = event.target.value;
           setPeriodFilter(value);
+          setHeldFilter(null);
           const selected = periodOptions.find(period => period.startIso === value);
           if (selected && selected.start.getTime() < from) setFrom(selected.start.getTime());
         }}>
           <option value="recent">Last 14 days</option>
-          {from < initialFrom && <option value="loaded">All loaded periods</option>}
           {periodOptions.map(period => <option key={period.startIso} value={period.startIso}>{period.label}</option>)}
         </select>
       </label>
@@ -150,7 +155,7 @@ function ActivityReview() {
     <div className="cw-activity-table-scroll">
       <table className="cw-activity-table" aria-label="Recent activities">
         <colgroup><col className="cw-activity-time-col" /><col /><col className="cw-activity-duration-col" /></colgroup>
-        <thead><tr><th scope="col">Time</th><th scope="col">Activity</th><th scope="col">Duration</th></tr></thead>
+        <thead><tr><th scope="col">Started</th><th scope="col">Activity</th><th scope="col">Duration</th></tr></thead>
         {!periods.size && !work.loading && !work.loadingOlderSessions && !work.error &&
           <tbody><tr><td colSpan={3} className="cw-activity-empty">No recorded activities match these filters.</td></tr></tbody>}
         {[...periods].map(([key, period]) => <tbody key={key}>
@@ -175,8 +180,12 @@ function ActivityReview() {
               </td></tr>}
               <tr className="cw-activity-row" id={`activity-row-${row.id}`} data-expanded={expanded || undefined} onClick={toggle}
                 style={{ "--activity-color": pilotActivityColor(`${row.kind === "idle" ? "general" : "unit"}:${title}`) } as CSSProperties}>
-                <td className="cw-activity-time">{timeOf(row.started_at)}
-                  {row.ended_at && <span> – {timeOf(row.ended_at)}</span>}</td>
+                {/* A timeline: when it started, a mark in the activity's colour,
+                    and the duration at the far end. The end time is one tap away
+                    in the details, and on hover where there is a pointer (Matt,
+                    2026-11-20: "duration holds enough information"). */}
+                <td className="cw-activity-time" title={row.ended_at
+                  ? `${timeOf(row.started_at)} – ${timeOf(row.ended_at)}` : `${timeOf(row.started_at)} – running`}>{timeOf(row.started_at)}</td>
                 <td>
                   <span className="cw-activity-main">
                     <span className="cw-activity-icon"><ActivityIcon activity={title} /></span>

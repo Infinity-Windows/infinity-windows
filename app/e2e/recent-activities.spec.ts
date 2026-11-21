@@ -51,14 +51,15 @@ test("loads earlier activities without clearing the table or shifting its column
     releaseHistory.resolve();
     await expect(travel).toBeVisible();
     await expect(table.getByRole("rowheader", { name: /Pay period Nov 1 – Nov 15/ })).toBeVisible();
+    // The select follows to the period that was just loaded.
+    await expect(period.locator("option:checked")).toHaveText("Pay period Nov 1 – Nov 15");
+    await expect(setup).toHaveCount(0);
     await period.selectOption({ label: "Pay period Nov 1 – Nov 15" });
     await expect(travel).toBeVisible();
     await expect(setup).toHaveCount(0);
     await period.selectOption("recent");
     await expect(setup).toBeVisible();
     await expect(travel).toHaveCount(0);
-    await period.selectOption("loaded");
-    await expect(travel).toBeVisible();
     const columns = () => table.locator("thead th").evaluateAll(cells =>
       cells.map(cell => ({ left: cell.getBoundingClientRect().left, width: cell.getBoundingClientRect().width })));
     for (const width of [390, 1100]) {

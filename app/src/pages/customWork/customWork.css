@@ -424,7 +424,7 @@
   .cw-activity-toolbar { grid-template-columns: minmax(0, 1fr); }
 }
 .cw-activity-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
-.cw-activity-time-col { width: 19ch; }
+.cw-activity-time-col { width: 96px; }
 .cw-activity-duration-col { width: 12ch; }
 .cw-activity-table :is(td, button) { overflow-wrap: anywhere; }
 .cw-activity-period th {
@@ -453,9 +453,16 @@
 .cw-activity-day td > span:last-child { float: inline-end; }
 .cw-activity-row { cursor: pointer; }
 .cw-activity-row:hover, .cw-activity-row[data-expanded] { background: color-mix(in srgb, var(--surface) 70%, transparent); }
-.cw-activity-row > td:first-child { box-shadow: inset 3px 0 0 var(--activity-color, transparent); }
-.cw-activity-time { color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; line-height: 1.25; }
-.cw-activity-time > span { white-space: nowrap; }
+/* The timeline: a line down the day with one mark per activity. */
+.cw-activity-table td.cw-activity-time {
+  position: relative; padding-inline-end: 22px; color: var(--muted); font-size: .85rem;
+  font-variant-numeric: tabular-nums; line-height: 1.25; text-align: end; white-space: nowrap;
+}
+.cw-activity-time::before { content: ""; position: absolute; inset-block: 0; inset-inline-end: 8px; width: 2px; background: var(--border); }
+.cw-activity-time::after {
+  content: ""; position: absolute; top: 50%; inset-inline-end: 4px; width: 10px; height: 10px; margin-top: -5px;
+  border-radius: 50%; background: var(--activity-color, var(--muted)); box-shadow: 0 0 0 3px var(--card, var(--surface));
+}
 .cw-activity-main { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .cw-activity-icon { display: inline-flex; color: var(--activity-color, var(--muted)); }
 .cw-activity-icon svg { width: 16px; height: 16px; }
@@ -543,9 +550,8 @@
 @media (max-width: 520px) {
   .cw-correction { grid-template-columns: minmax(0, 1fr); }
   .cw-activity-table th, .cw-activity-table td { padding-inline: 8px; }
-  .cw-activity-time-col { width: 8.5ch; }
-  .cw-activity-time { font-size: .78rem; }
-  .cw-activity-time > span { display: block; }
+  .cw-activity-time-col { width: 80px; }
+  .cw-activity-table td.cw-activity-time { font-size: .8rem; padding-inline-end: 20px; }
   .cw-activity-duration-col { width: 8.5ch; }
   .cw-activity-chevron { display: none; }
   .cw-activity-table td:last-child:not([colspan]) { font-size: .9rem; }
