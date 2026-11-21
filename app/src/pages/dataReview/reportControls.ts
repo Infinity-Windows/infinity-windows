@@ -1,14 +1,5 @@
 export type ReportDimension = "job" | "floor" | "activity" | "scope" | "person" | "category" | "subtype" | "configuration" | "system" | "material";
-export const groupingDimensions: ReportDimension[] = ["floor", "activity", "person", "job", "category", "subtype", "configuration", "system", "material", "scope"];
-export const reportDimensions: ReportDimension[] = ["job", "floor", "activity", "scope", "person", "category", "subtype", "configuration", "system", "material"];
 export const facetColors: Record<ReportDimension, string> = { job: "#60b9d0", floor: "#b29aed", activity: "#edb953", scope: "#7ac69b", person: "#e68eae", category: "#8b949e", subtype: "#8b949e", configuration: "#8b949e", system: "#8b949e", material: "#8b949e" };
-export type ReportFilters = Record<ReportDimension, string[] | null>;
-export const allReportFilters = (): ReportFilters => ({ job: null, floor: null, activity: null, scope: null, person: null, category: null, subtype: null, configuration: null, system: null, material: null });
-export function reorderDimension(order: ReportDimension[], source: ReportDimension, target: ReportDimension) {
-  const from = order.indexOf(source), to = order.indexOf(target);
-  if (from < 0 || to < 0 || from === to) return order;
-  const next = [...order]; next.splice(from, 1); next.splice(to, 0, source); return next;
-}
 export type RangePreset = "all" | "week" | "month" | "quarter" | "year" | "custom" | "thisWeek" | "lastWeek" | "thisMonth" | "lastMonth";
 export function presetRange(preset: RangePreset, today: string) {
   if (preset === "all" || preset === "custom") return { from: "", until: "" };

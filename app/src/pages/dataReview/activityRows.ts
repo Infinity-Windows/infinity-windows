@@ -1,4 +1,3 @@
-import { workAttribution } from "./workAttribution";
 import type { ReportingFacts } from "./reportingFacts";
 import type { WorkSession, WorkUnit } from "../../lib/customWork/model";
 export interface ActivityRow { shiftId?: string; originalActivity?: string; reviewKind?: "duplicate" | "overlap" | "timer"; reviewRelatedIds?: string[]; reviewReason?: string; unitFacts?: ReportingFacts; material?: string; area?: number | null; sourceTable?: string; openingId?: string; openingCode?: string; configuration?: string | null; system?: string | null; category?: string | null; subtype?: string | null; unitRecord?: WorkUnit; id: string; jobId?: string; job?: string; activity: string; scope: string; machinerySeconds?: number; person: string; personId: string; unit: string; unitId: string | null; floor: string; seconds: number; started: string; ended: string; outcome: string; revision: number; }
@@ -22,18 +21,4 @@ export function activityRows(sessions: WorkSession[], units: WorkUnit[], people:
       started: s.started_at, ended: s.ended_at!, outcome: s.outcome ?? "Not recorded", revision: s.revision });
   }
   return { rows, excluded };
-}
-export function groupActivities(rows: ActivityRow[], group: "activity" | "floor" | "unit" | "person" | "scope" | "job" | "none") {
-  const groups = new Map<string, { key: string; label: string; seconds: number; records: number }>();
-  for (const row of rows) {
-    const label = group === "none" ? "Total" : group === "activity" ? `${workAttribution(row)} · ${row.activity}` : group === "scope" ? workAttribution(row) : row[group] ?? "Unknown";
-    const key = group === "job" ? row.jobId ?? "no-job" : group === "person" ? row.personId : group === "unit" ? row.unitId ?? "no-unit" : label;
-    const value = groups.get(key) ?? { key, label: group === "unit" && row.unitId ? `${label} · ${row.unitId.slice(0, 8)}` : label, seconds: 0, records: 0 };
-    value.seconds += row.seconds; value.records++; groups.set(key, value);
-  }
-  return [...groups.values()].sort((a, b) => b.seconds - a.seconds || a.label.localeCompare(b.label));
-}
-
-export function unitLabor(rows: ActivityRow[]) {
-  return groupActivities(rows.filter(row => row.scope === "Specific" && row.unitId !== null), "unit");
 }
