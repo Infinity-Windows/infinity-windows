@@ -3,6 +3,7 @@ import { verifyCaller } from "../_shared/auth.ts";
 import { corsHeaders, jsonResponse, requireOpenAI, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL } from "../_shared/openai.ts";
 import { parseJsonLoose } from "../_shared/anthropicJson.ts";
 import { releaseAiSpend, reserveAiSpend, settleAiSpend } from "../_shared/spendGuard.ts";
+import { reportCaughtError, withSentry } from "../_shared/sentry.ts";
 
 import { CAD_VISION_MODEL as model, requestCadVision } from "../_shared/cadVision.ts";
 import { CAD_DEFINITION_INSTRUCTIONS, CAD_REVIEW_INSTRUCTIONS, cadDefinitionContext, cadReviewContext, cleanCadDefinition } from "../_shared/cadReviewPrompt.mts";
@@ -15,7 +16,7 @@ function crop(value: unknown) {
   return value;
 }
 
-Deno.serve(async req => {
+Deno.serve(withSentry("review-cad-opening", async req => {
   const cors = corsHeaders(req);
   const reply = (body: unknown, status = 200) => jsonResponse(body, status, { ...cors, "Cache-Control": "no-store" });
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -76,10 +77,12 @@ Deno.serve(async req => {
     const answer = parseJsonLoose(completion.text) as { key?: unknown; reason?: unknown } | null;
     const key = candidates.find(item => item.key === answer?.key)?.key ?? null;
     return reply({ key, reason: typeof answer?.reason === "string" ? answer.reason.slice(0, 400) : "AI could not establish a match.", provider: "openai" });
-  } catch {
+  } catch (error) {
+    // Caught here, so withSentry never sees it; report it or it is invisible.
+    await reportCaughtError("review-cad-opening", req, error);
     return reply({ error: "AI review could not complete." }, 502);
   } finally {
     if (usage) await settleAiSpend(meter, gate.reservationId, usage, model);
     else await releaseAiSpend(meter, gate.reservationId, "review_failed", false);
   }
-});
+}));

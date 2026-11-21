@@ -156,7 +156,7 @@ test("planner priority wraps, scrolls vertically, and reorders across rows", asy
   await expect.poll(() => list.evaluate(el => el.scrollHeight > el.clientHeight && el.scrollWidth === el.clientWidth)).toBe(true);
   const source = list.getByRole("button", { name: "100", exact: true });
   await source.scrollIntoViewIfNeeded();
-  const row = await source.evaluate(el => el.offsetTop);
+  const row = await source.evaluate(el => (el as HTMLElement).offsetTop);
   const target = list.locator("button").nth(await list.locator("button").evaluateAll(
     (chips, top) => chips.findIndex(chip => (chip as HTMLElement).offsetTop > top), row,
   ));

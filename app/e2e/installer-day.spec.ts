@@ -469,7 +469,7 @@ test("Travel starts even if the installer leaves Workday before clock-in returns
  await expect(page).toHaveURL(/\/settings$/);
  finishClockIn();
  await expect.poll(() => sessions[0]?.description).toBe("Travel");
- expect(sessions[0].started_at).toBe(shift?.clock_in_at);
+ expect(sessions[0].started_at).toBe((shift as { clock_in_at?: string } | null)?.clock_in_at);
  await page.getByRole("link", { name: "Work", exact: true }).first().click();
  const current = page.getByRole("region", { name: "Current activity" });
  await expect(current.locator(".wd-activity-picker")).toHaveAttribute("data-activity", "job:Travel");

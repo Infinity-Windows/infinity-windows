@@ -91,6 +91,7 @@ FEATURE_NAMES = {
     'hex-portal-review': 'sending approved lessons to Hex-Portal',
     'extract-placement': 'placing windows on the plan',
     'extract-receipt': 'reading receipts',
+    'review-cad-opening': 'matching openings to drawings',
     'review-qc-photo': 'reviewing install photos',
     'extract-schedule': 'reading delivery schedules',
     'extract-specs': 'plan-set reading',
