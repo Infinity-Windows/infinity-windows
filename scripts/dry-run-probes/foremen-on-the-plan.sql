@@ -2,12 +2,14 @@
 -- The harness always rolls this probe back.
 --
 -- A foreman can be named on a Plan block, can take lead on a unit from the
--- Workday, and a supervisor still cannot be named.
+-- Workday, and someone who is neither is still refused.
 do $$
 declare
   job uuid;
   foreman uuid;
-  supervisor uuid;
+  -- The company may have no supervisor to pick, so the refusal is tried with
+  -- an id that belongs to nobody: it fails the same installer-or-foreman rule.
+  stranger uuid := gen_random_uuid();
   opening uuid;
   block_id text := 'dry-run-foreman-' || gen_random_uuid();
   other_lead text := gen_random_uuid()::text;
@@ -17,7 +19,6 @@ begin
   perform pg_temp.dry_run_as_system();
   job := pg_temp.dry_run_sandbox_job();
   foreman := pg_temp.dry_run_pick('foreman');
-  supervisor := pg_temp.dry_run_pick('supervisor');
   select id into opening from public.project_openings
     where project_id = job and removed_at is null order by opening_code limit 1;
   if opening is null then
@@ -48,9 +49,9 @@ begin
     'start', '2099-01-06', 'end', '2099-01-06', 'startMinute', 420, 'endMinute', 900,
     'openingIds', jsonb_build_array(opening));
   perform pg_temp.dry_run_act_as(foreman);
-  perform pg_temp.dry_run_expect_error('a supervisor still cannot be named on a block',
+  perform pg_temp.dry_run_expect_error('someone who is not an installer or foreman is refused',
     format('select public.save_installer_plan(%L, %s, %L::jsonb)', job, rev,
-      jsonb_build_array(block || jsonb_build_object('installerIds', jsonb_build_array(supervisor)))),
+      jsonb_build_array(block || jsonb_build_object('installerIds', jsonb_build_array(stranger)))),
     'Choose an available installer or foreman');
   perform pg_temp.dry_run_check('a foreman can be named on a block',
     public.save_installer_plan(job, rev,
