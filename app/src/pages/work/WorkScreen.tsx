@@ -1,3 +1,4 @@
+import { ClockReadNotice } from "../../components/clock/ClockReadNotice";
 import { useWorkdayPreview } from "../installerPilot/workdayPreview";
 // Work — the new front door (crew redesign Release 1, K1.2, owner-approved
 // 2026-09-23). One screen, one job: "clocked in? where? what's next?"
@@ -383,11 +384,17 @@ export function WorkScreen() {
       {installer ? <>
         {switchError && <p role="alert">{switchError}</p>}
         {switchChecking && <p role="status">{es ? "Comprobando la obra…" : "Checking job access…"}</p>}
-        {selectedJob ? <WorkdayProject key={selectedJob} project={selectedJob} day={today}
+        {/* The installer's Workday has no clock strip, so the "cannot check
+            your clock" notice from the strip is shown here. While the clock
+            is unverified nothing that starts or switches work is offered. */}
+        {!preview && clock.verification.status === "saved" && <ClockReadNotice state={clock.verification} onRetry={clock.recheck}
+          savedOffClock={shift?.status !== "open"} />}
+        {!preview && clock.verification.recoveryRequired ? <ClockReadNotice state={clock.verification} onRetry={clock.recheck} />
+          : selectedJob ? <WorkdayProject key={selectedJob} project={selectedJob} day={today}
           planAs={preview ? profileId : null} planBlock={null} simulator={simulator} live embedded
           jobPicker={name => <WorkdayJobs key={selectedJob} profileId={profileId} currentJob={selectedJob}
             jobName={name} plannedJobs={plannedJobs} onChoose={chooseJob} />} />
-          : <section className="ws-card ws-today-jobs" aria-label={es ? "Inicia tu jornada" : "Start Your Work Day"}>
+          : <section className="ws-card ws-today-jobs" data-testid="ws-start-day" aria-label={es ? "Inicia tu jornada" : "Start Your Work Day"}>
             <h2 className="ws-h2">{es ? "Inicia tu jornada" : "Start Your Work Day"}</h2>
             {plannedJobs.map(job => <button type="button" key={job.id} className="ws-today-job"
               onClick={() => chooseJob(job.id, job.job_code)}>
