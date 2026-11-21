@@ -250,16 +250,16 @@ export async function listCostCodes(): Promise<CostCode[]> {
  * one who knows when they actually stopped. Leaving it out of this query would
  * hide the question from the only person who can answer it.
  */
-export async function getOpenShift(profileId: string): Promise<TimeShift | null> {
-  const { data, error } = await supabase
+export async function getOpenShift(profileId: string, signal?: AbortSignal): Promise<TimeShift | null> {
+  const request = supabase
     .from("time_shifts")
     .select(SHIFT_SELECT)
     .eq("profile_id", profileId)
     .in("status", ["open", "needs_finish"])
     .is("clock_out_at", null)
     .order("clock_in_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+  const { data, error } = await (signal ? request.abortSignal(signal) : request).maybeSingle();
   if (error) throw error;
   return data as TimeShift | null;
 }

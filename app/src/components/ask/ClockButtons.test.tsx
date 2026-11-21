@@ -7,16 +7,18 @@ import { createRoot, type Root } from "react-dom/client";
 import { IsRestoringProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimeShift } from "../../lib/timeclock";
+import type { ClockReadState } from "../../lib/clockReadState";
 
 const clock = vi.hoisted(() => ({
   shift: null as TimeShift | null,
   loading: false,
+  verification: undefined as ClockReadState | undefined,
   profileId: "p1" as string | null,
   refreshed: 0,
   opened: 0,
 }));
 vi.mock("../../lib/clockContext", () => ({
-  useClock: () => ({ shift: clock.shift, refresh: () => { clock.refreshed += 1; }, profileId: clock.profileId, loading: clock.loading, isOpen: false, openClock: () => {}, closeClock: () => {} }),
+  useClock: () => ({ shift: clock.shift, verification: clock.verification, recheck: () => {}, refresh: () => { clock.refreshed += 1; }, profileId: clock.profileId, loading: clock.loading, isOpen: false, openClock: () => {}, closeClock: () => {} }),
   openClockGlobally: () => { clock.opened += 1; },
 }));
 vi.mock("../../lib/queryClient", async () => {
@@ -24,7 +26,8 @@ vi.mock("../../lib/queryClient", async () => {
   return { queryClient: new QueryClient() };
 });
 const lang = vi.hoisted(() => ({ current: "en" as "en" | "es" }));
-vi.mock("../../lib/i18n/context", () => ({
+vi.mock("../../lib/i18n/context", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../lib/i18n/context")>(),
   useLanguage: () => ({ lang: lang.current, t: (k: string) => k, setLang: () => {}, needsChoice: false }),
 }));
 
@@ -71,6 +74,7 @@ const button = (text: string) => [...host!.querySelectorAll<HTMLButtonElement>("
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   clock.shift = open(); clock.loading = false; clock.profileId = "p1"; clock.refreshed = 0; clock.opened = 0; calls.length = 0;
+  clock.verification = undefined;
   lang.current = "en";
 });
 afterEach(() => { act(() => root?.unmount()); host?.remove(); root = null; host = null; });
@@ -182,4 +186,17 @@ describe("one-tap clock buttons while the clock is still being read", () => {
     await mount(lunch);
     expect(checking()).toBe("Revisando tu reloj…");
   });
+});
+
+
+it("offers the clock for a saved off-clock copy without claiming a verified current state", async () => {
+  clock.shift = null;
+  clock.verification = { status: "saved", recoveryRequired: false, checking: false };
+  await mount([{ action: "start_break", break_type: "lunch" }]);
+  expect(host!.querySelector('[data-testid="clock-read-notice"]')).not.toBeNull();
+  expect(host!.textContent).toContain("Last saved: off the clock. Changes will sync when connected.");
+  expect(host!.textContent).not.toContain("You're not clocked in");
+  await act(async () => button("Open job clock")!.click());
+  expect(clock.opened).toBe(1);
+  expect(calls).toEqual([]);
 });

@@ -85,7 +85,8 @@ const fake = vi.hoisted(() => {
 vi.mock("./offline/outbox", () => fake.module);
 
 import { ClockProvider, OPEN_CLOCK_EVENT, openClockGlobally, useClock } from "./clockContext";
-import type { TimeShift } from "./timeclock";
+import { getOpenShift, type TimeShift } from "./timeclock";
+import { rememberSignedIn } from "./signedIn";
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
@@ -118,12 +119,14 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  rememberSignedIn({ user: { id: "me", email: "me@example.test" } });
   rendered = [];
   fake.state.shiftMap = {};
   fake.setQueue([], true);
 });
 
 function mount(serverShift: TimeShift | null = null): HTMLElement {
+  vi.mocked(getOpenShift).mockResolvedValue(serverShift);
   qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
@@ -154,6 +157,7 @@ function queued(op: OutboxEntry["op"], payload: Record<string, unknown>, over: P
   return {
     id: over.id ?? `${op}-1`,
     op,
+    ownerId: over.ownerId ?? "me",
     payload: { tappedAt: TAP, ...payload },
     createdAt: over.createdAt ?? 1,
     attemptCount: 0,

@@ -22,6 +22,9 @@ import {
   type RefusedClockAction,
 } from "./clockQueueView";
 import { useOpenShiftView } from "./useOpenShiftView";
+import { clockReadFor } from "./clockRead";
+import type { ClockReadState } from "./clockReadState";
+import { signInMark, stillSignedInAs } from "./signedIn";
 
 /**
  * App-wide clock state. The clock is a bottom sheet that any surface can open
@@ -52,6 +55,8 @@ interface ClockContextValue {
   loading: boolean;
   pending: QueuedClockAction | null;
   refused: RefusedClockAction[];
+  verification: ClockReadState;
+  recheck: () => void;
   isOpen: boolean;
   openClock: () => void;
   closeClock: () => void;
@@ -96,11 +101,21 @@ export function ClockProvider({ children }: { children: ReactNode }) {
       subscribeClockSent((entry, result) => {
         const next = confirmedOpenShift(entry.op as ClockActionKind, result);
         if (next === undefined) return;
-        const owner = next?.profile_id ?? profileId;
-        if (!owner) return;
+        const owner = entry.ownerId;
+        if (!owner || !stillSignedInAs(signInMark(), owner) || (next && next.profile_id !== owner)) return;
+        // A reply to an old account's send is not proof for this sign-in.
+        // Only a punch this runtime already saw applied may bridge the gap
+        // until the next actual read; it remains explicitly a saved clock.
+        const reader = clockReadFor(queryClient, owner);
+        void queryClient.cancelQueries({ queryKey: ["openShift", owner], exact: true });
+        if (!reader.acknowledge(entry, next)) {
+          reader.invalidateReadProof();
+          void queryClient.invalidateQueries({ queryKey: ["openShift", owner] });
+          return;
+        }
         queryClient.setQueryData(["openShift", owner], next);
       }),
-    [queryClient, profileId],
+    [queryClient],
   );
 
   const openClock = useCallback(() => setIsOpen(true), []);
@@ -141,24 +156,28 @@ export function ClockProvider({ children }: { children: ReactNode }) {
       loading,
       pending: view.pending,
       refused: view.refused,
+      verification: view.verification,
+      recheck: view.recheck,
       isOpen,
       openClock,
       closeClock,
       refresh,
     }),
-    [profileId, shift, loading, view.pending, view.refused, isOpen, openClock, closeClock, refresh],
+    [profileId, shift, loading, view.pending, view.refused, view.verification, view.recheck, isOpen, openClock, closeClock, refresh],
   );
 
   return (
     <ClockContext.Provider value={value}>
       {children}
-      <LunchReminder shift={shift} onOpen={openClock} />
+      <LunchReminder shift={view.verification.recoveryRequired ? null : shift} onOpen={openClock} />
       {isOpen && (
         <ClockSheet
           profileId={profileId}
           shift={shift}
           pending={view.pending}
           refused={view.refused}
+          verification={view.verification}
+          onRecheck={view.recheck}
           initialPick={initialPick}
           onClose={closeClock}
           onChanged={refresh}
@@ -168,7 +187,7 @@ export function ClockProvider({ children }: { children: ReactNode }) {
           because "you're 14 miles from the job" is worth asking wherever the
           person happens to be looking when they open the app. Renders nothing
           until it has something to ask. */}
-      <FarFromJobPrompt shift={shift} onChanged={refresh} />
+      <FarFromJobPrompt shift={shift} enabled={!view.verification.recoveryRequired} onChanged={refresh} />
     </ClockContext.Provider>
   );
 }

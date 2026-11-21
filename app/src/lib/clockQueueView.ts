@@ -209,6 +209,10 @@ function applyQueued(
 
 export interface MergeClockQueueOptions {
   profileId: string | null;
+  /** Only an applied clock-in or matching clock-out establishes local state. */
+  onStateApplied?: (entry: OutboxEntry) => void;
+  /** A break can be acknowledged on an existing shift without proving off-clock state. */
+  onPunchMatched?: (entry: OutboxEntry) => void;
   lookups?: ClockNameLookups;
   /**
    * The sender's memory of which server shift each queued clock-in became.
@@ -250,7 +254,12 @@ export function mergeClockQueue(
       refused.push({ kind, entryId: e.id, tappedAt, reason: e.lastError });
       continue;
     }
+    const before = shift;
+    if (kind === "clock_in" || (before && refMatches(before, str(e.payload.shiftRef), aliases, opts.resolveShiftRef))) {
+      opts.onPunchMatched?.(e);
+    }
     shift = applyQueued(shift, e, kind, tappedAt, profileId, lookups, aliases, opts.resolveShiftRef);
+    if (kind === "clock_in" || (kind === "clock_out" && before && !shift)) opts.onStateApplied?.(e);
     pending = { kind, entryId: e.id, tappedAt, sending: e.status === "sending" };
   }
   return { shift, pending, refused };

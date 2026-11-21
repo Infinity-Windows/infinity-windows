@@ -12,8 +12,9 @@ import type { TimeShift } from "../../lib/timeclock";
 
 const openClock = vi.fn();
 let shift: TimeShift | null = null;
+let verification: { status: "verified" | "saved" | "unavailable" | "checking"; recoveryRequired: boolean; checking: boolean };
 vi.mock("../../lib/clockContext", () => ({
-  useClock: () => ({ shift, openClock, profileId: "me", loading: false, isOpen: false, closeClock: () => {}, refresh: () => {} }),
+  useClock: () => ({ shift, verification, openClock, profileId: "me", loading: false, isOpen: false, closeClock: () => {}, refresh: () => {} }),
 }));
 
 const { ClockBadge } = await import("./ClockBadge");
@@ -49,6 +50,7 @@ let host: HTMLDivElement | null = null;
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
+  verification = { status: "verified", recoveryRequired: false, checking: false };
 });
 afterEach(() => {
   act(() => root?.unmount());
@@ -100,4 +102,20 @@ describe("ClockBadge", () => {
     const btn = mount().querySelector<HTMLButtonElement>("button.clock-badge")!;
     expect(btn.textContent).toMatch(/Finish time\?/);
   });
+});
+
+
+it("offers a neutral clock check instead of counting an unverified old shift", () => {
+  shift = mkShift({ clock_in_at: new Date(Date.now() - 39 * 86400_000).toISOString() });
+  verification = { status: "unavailable", recoveryRequired: true, checking: false };
+  const btn = mount().querySelector<HTMLButtonElement>("button.clock-badge")!;
+  expect(btn.textContent).toBe("Check clock");
+  act(() => btn.click());
+  expect(openClock).toHaveBeenCalledOnce();
+});
+
+it("labels a recent offline shift as the saved clock", () => {
+  shift = mkShift();
+  verification = { status: "saved", recoveryRequired: false, checking: false };
+  expect(mount().textContent).toBe("Saved clock");
 });

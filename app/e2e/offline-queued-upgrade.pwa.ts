@@ -351,6 +351,7 @@ test("a warmed signed-in landing reopens offline when the profile server cannot 
   await serveBuild(request, "new");
   await page.goto("/");
   await expect(page.locator(".clockin-block")).toBeVisible();
+  const startWasEnabled = await page.locator(".clockin-block .clock-btn.primary.big").isEnabled();
   await serviceWorkerReady(page);
   // Warmth alone does not help when myRealProfile is excluded from the
   // persisted query roots (queryKeys.ts), so the next launch waits on a read.
@@ -366,5 +367,17 @@ test("a warmed signed-in landing reopens offline when the profile server cannot 
   await page.reload();
   expect(failed, "new-build app files missing from the worker cache").toEqual([]);
   await expect.poll(() => refused).toBeGreaterThan(0);
-  await expect(page.locator(".clockin-block"), "the signed-in landing remains visible offline").toBeVisible({ timeout: 8_000 });
+  // The signed-in landing and navigation survive the failed profile read. A
+  // genuinely persisted null clock retains its Start control offline, while
+  // its notice labels the state as saved on this phone, not server-verified.
+  // This fixture has no job or cost code selected, so Start is disabled for
+  // that existing picker reason on both launches.
+  await expect(page.getByRole("heading", { name: "My work" }), "the signed-in landing remains visible offline").toBeVisible({ timeout: 8_000 });
+  await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
+  const clockNotice = page.getByTestId("clock-read-notice");
+  await expect(clockNotice).toBeVisible();
+  await expect(clockNotice.getByRole("heading", { name: "Saved clock" })).toBeVisible();
+  await expect(clockNotice).toContainText("Last saved: off the clock. Changes will sync when connected.");
+  await expect(page.locator(".clockin-block .clock-btn.primary.big")).toBeVisible();
+  expect(await page.locator(".clockin-block .clock-btn.primary.big").isEnabled()).toBe(startWasEnabled);
 });
