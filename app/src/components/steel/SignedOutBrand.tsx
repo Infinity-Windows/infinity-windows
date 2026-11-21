@@ -1,4 +1,5 @@
 import { useLayoutEffect } from "react";
+import { restingDesign } from "../../lib/design/design";
 import logo from "./forge-steel-logo.jpg";
 import "./steel.css";
 import "./signedOut.css";
@@ -15,12 +16,9 @@ import "./signedOut.css";
  */
 export function SignedOutBrand() {
   useLayoutEffect(() => {
-    const root = document.documentElement, was = root.dataset.design;
+    const root = document.documentElement;
     root.dataset.design = "new";
-    return () => {
-      if (was === undefined) delete root.dataset.design;
-      else root.dataset.design = was;
-    };
+    return () => { root.dataset.design = restingDesign(); };
   }, []);
   return <div className="signin-brand signed-out-brand">
     <img src={logo} alt="Forge Windows and Doors" />

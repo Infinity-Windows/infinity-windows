@@ -22,6 +22,19 @@
         var meta = document.querySelector('meta[name="theme-color"]');
         if (meta) meta.setAttribute("content", dark ? "#1a1512" : "#f6f1ea");
       } catch (e) {}
+      // Design before first paint. The app only learns a person's design once
+      // their profile loads, and until then nothing was stamped, so every
+      // start, sign-in and loading screen flashed the classic colours first
+      // (Matt, 2026-11-21). The new design is the default; only a phone whose
+      // last resolved answer was classic (lib/design/design.ts) starts there.
+      try {
+        var d = localStorage.getItem("forge.design") === "classic" ? "classic" : "new";
+        document.documentElement.dataset.design = d;
+        var themeMeta = document.querySelector('meta[name="theme-color"]');
+        if (d === "new" && themeMeta) themeMeta.setAttribute("content", "#101418");
+      } catch (e) {
+        document.documentElement.dataset.design = "new";
+      }
     </script>
     <script>
       // The module entry can be cancelled during a service-worker takeover,

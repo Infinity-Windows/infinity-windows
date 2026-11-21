@@ -18,6 +18,7 @@ import {
   normalizeDesign,
   readCachedDesign,
   resolveDesign,
+  restingDesign,
   writeCachedDesign,
   type UiDesign,
 } from "./design";
@@ -52,7 +53,8 @@ export function DesignProvider({ children }: { children: ReactNode }) {
     document.documentElement.dataset.design = design;
     if (me.data && !localSteelPreview) writeCachedDesign(design);
     return () => {
-      delete document.documentElement.dataset.design;
+      // Never leave <html> unstamped: an unstamped page is the classic palette.
+      document.documentElement.dataset.design = restingDesign();
     };
   }, [design, me.data, localSteelPreview]);
 

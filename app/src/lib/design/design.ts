@@ -42,11 +42,23 @@ export interface ResolveDesignInput {
   cached: UiDesign | null;
 }
 
-/** The one rule: master off wins, then the person's choice, then the cache. */
+/** The one rule: master off wins, then the person's choice, then the cache,
+ * then the new design (the default since 2026-11-21 — it used to be classic,
+ * which is what flashed on every cold load of a phone with no cache). */
 export function resolveDesign(input: ResolveDesignInput): UiDesign {
   if (input.masterOn === false) return "classic";
   if (input.personChoice) return input.personChoice;
-  return input.cached ?? "classic";
+  return input.cached ?? "new";
+}
+
+/**
+ * What to paint while nobody's design is known: before sign-in, between
+ * screens, and after the provider unmounts. The new design unless this
+ * phone's last resolved answer was classic. index.html stamps the same answer
+ * before the first paint; keep the two in step.
+ */
+export function restingDesign(): UiDesign {
+  return readCachedDesign() ?? "new";
 }
 
 export function readCachedDesign(): UiDesign | null {
