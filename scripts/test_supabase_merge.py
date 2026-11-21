@@ -210,7 +210,8 @@ class TestSchemaParsing(unittest.TestCase):
         # 20261035000000 to land after the bill-to migrations).
         # +10 monthly-values tables: private policy, immutable reviews and
         # frozen accounting/provenance, plus reserved reminder claims.
-        self.assertEqual(len(SCHEMA.tables), 213)  # adds three retained unit-fact tables to the prior 210
+        # +4: the job plan, its done marks and lead changes, and unit edit history.
+        self.assertEqual(len(SCHEMA.tables), 217)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
