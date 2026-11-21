@@ -330,7 +330,7 @@ test("switching preview jobs keeps paid time running and closes unit and machine
  await page.getByRole("link", { name: /OTHER.*Second test job/ }).click();
  await expect(page).toHaveURL(new RegExp(other.id));
  await expect(page.getByRole("region", { name: "Preview clock" }).getByRole("button", { name: "Break" })).toBeEnabled();
- await expect(page.getByTestId("wd-clock-status")).toHaveText("On the clock · preview");
+ await expect(page.getByTestId("wd-clock-status")).toHaveText("On the clock");
  await expect(page.getByRole("switch", { name: "Operating machinery", checked: true })).toHaveCount(0);
  await expect(page.getByText(/Still running/)).toHaveCount(0);
  expect(commands).toHaveLength(0);

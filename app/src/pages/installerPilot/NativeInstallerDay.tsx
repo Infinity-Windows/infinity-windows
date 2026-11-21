@@ -621,9 +621,8 @@ function DayView({ sandbox, person, day, actions, preview, previewClock, planBlo
     // which (Matt, 2026-11-20), whatever the timers show.
     const clockStatus = preview ? previewClock ?? "off"
         : shift?.status !== "open" ? "off" : shift.break_started_at ? "break" : "working";
-    const clockStatusLabel = (clockStatus === "working" ? text("On the clock", "En turno")
-        : clockStatus === "break" ? text("On break", "En descanso") : text("Off the clock", "Fuera de turno"))
-        + (preview ? text(" · preview", " · prueba") : "");
+    const clockStatusLabel = clockStatus === "working" ? text("On the clock", "En turno")
+        : clockStatus === "break" ? text("On break", "En descanso") : text("Off the clock", "Fuera de turno");
     const finalActivity = lastActivities.size === 1 && lastActivities.has(picked.activity);
     const overrideCompletion = !finalActivity && canOverride;
     const canCompleteUnit = unitSchedule.isSuccess && (finalActivity || overrideCompletion)
