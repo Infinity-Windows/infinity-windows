@@ -5,7 +5,7 @@ import { SavedCopyNotice } from "../../components/offline/SavedCopyNotice";
 import { useSavedCopy } from "../../lib/offline/useSavedCopy";
 import { useT } from "../../lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Link2 } from "lucide-react";
 import { type BeforeAfterValue } from "../../components/PhotoCaptureSheet";
@@ -118,7 +118,10 @@ import { indexSpecsByMark, specForOpeningCode } from "../../lib/install/specs";
 import { SpecCard } from "../../components/install/SpecCard";
 import { PartsPanel } from "../../components/install/PartsPanel";
 import { MissingSpecNotice } from "../../components/install/MissingSpecNotice";
-import { AgendaUnitDetails } from "../work/AgendaUnitDetails";
+// Loaded when "Unit details" is tapped: this sheet is in the chunk every phone
+// downloads first, and the details panel (with the plan and unit-state code
+// behind it) put that chunk over its budget.
+const AgendaUnitDetails = lazy(() => import("../work/AgendaUnitDetails").then(module => ({ default: module.AgendaUnitDetails })));
 import { unitSourceMark } from "../../lib/install/unitDetails";
 import { UnitFactsCard } from "../../components/install/UnitFactsCard";
 import { OpeningMoved } from "../../components/install/OpeningMoved";
@@ -1472,8 +1475,8 @@ export function OpeningSheet() {
           <button type="button" className="button-like" aria-haspopup="dialog" onClick={() => setShowUnitDetails(true)}>
             {t("unitDetails.title")}
           </button>
-          {showUnitDetails && <AgendaUnitDetails unit={{ id: o.id, label: o.opening_code, projectId, crewIds: [] }}
-            profileId={myId ?? ""} openingRow={o} localSessions={[]} onClose={() => setShowUnitDetails(false)} />}
+          {showUnitDetails && <Suspense fallback={null}><AgendaUnitDetails unit={{ id: o.id, label: o.opening_code, projectId, crewIds: [] }}
+            profileId={myId ?? ""} openingRow={o} localSessions={[]} onClose={() => setShowUnitDetails(false)} /></Suspense>}
           {o.window_types?.type_code && (
             <span className="ui-status-chip" data-tone="mute">{o.window_types.type_code}</span>
           )}
