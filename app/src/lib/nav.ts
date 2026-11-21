@@ -32,6 +32,8 @@ import {
   Users,
   Warehouse as WarehouseIcon,
   Wrench,
+  LifeBuoy,
+  UserRound,
 } from "lucide-react";
 import { roleRank, type CrewRole } from "./install/types";
 import type { UiDesign } from "./design/design";
@@ -714,9 +716,9 @@ function installerMenu(
   const work = pick(workPaths);
   if (work.length) out.push({ title: "Work", items: work });
   const me = pick(INSTALLER_ME_PATHS);
-  if (me.length) out.push({ title: "Me", items: me, collapsible: fresh || undefined });
+  if (me.length) out.push({ title: "Me", items: me, ...(fresh ? { collapsible: true, Icon: UserRound } : {}) });
   const help = pick(INSTALLER_HELP_PATHS);
-  if (help.length) out.push({ title: "Help", items: help, collapsible: fresh || undefined });
+  if (help.length) out.push({ title: "Help", items: help, ...(fresh ? { collapsible: true, Icon: LifeBuoy } : {}) });
   return out;
 }
 

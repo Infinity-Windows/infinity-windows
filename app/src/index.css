@@ -6777,6 +6777,19 @@ body {
 .menu-pill-chevron {
   transition: transform 0.2s var(--ease-out);
 }
+/* A folding section that is not a pill (the installer drawer's Me and Help).
+   Drawn as an outlined row with an icon and a chevron so it reads as something
+   to tap, not as a heading (Matt, 2026-11-21). */
+button.menu-fold {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; min-height: 48px; margin-top: 8px; padding: 8px 12px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text); font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none;
+  cursor: pointer; text-align: left;
+}
+button.menu-fold:hover { background: var(--card-raised); }
+button.menu-fold .menu-pill-chevron { color: var(--accent); }
+.menu-fold.open .menu-pill-chevron { transform: rotate(90deg); }
 .menu-pill.open .menu-pill-chevron {
   transform: rotate(90deg);
 }
