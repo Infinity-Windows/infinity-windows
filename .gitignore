@@ -48,3 +48,9 @@ docs/backups/
 # Payroll audit inputs, reviewed plans and receipts are private local evidence.
 *.private.json
 *.private.txt
+
+# Scratch output from local test and preview runs (compile caches, Playwright
+# transforms, one-off preview builds). 6,000+ files that are rebuilt on demand.
+app/.test-temp/
+# Python bytecode from the scripts' own tests.
+__pycache__/
