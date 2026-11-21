@@ -23,7 +23,13 @@ import { pushToast, toastSuccess } from "../../lib/toast";
  * One case still goes to the sheet: a shift left open so long that Forge asks
  * when the day really ended. That needs the sheet's own finish-time form.
  */
-export function useWorkdayShiftControls(es: boolean): { buttons: ReactNode; panel: ReactNode } {
+export function useWorkdayShiftControls(es: boolean, breaks?: {
+  /** What is running, read before the break stops it. */
+  capture: () => unknown;
+  /** The break is saved (or queued); `captured` is what was running. */
+  onBreak: (captured: unknown) => void;
+  onResume: () => void;
+}): { buttons: ReactNode; panel: ReactNode } {
   const t = useT();
   const { shift } = useClock();
   const punches = useShiftPunches();
@@ -69,7 +75,7 @@ export function useWorkdayShiftControls(es: boolean): { buttons: ReactNode; pane
   const buttons = <div className="wd-preview-clock-actions" aria-label={text("Shift controls", "Controles del turno")}>
     {onBreak
       ? <button type="button" disabled={busy} className="wd-break" onClick={() => void send(punches.breakEnd,
-          result => toastSuccess(t(waits(result) ? "clock.toast.backOnClockQueued" : "clock.toast.backOnClock")))}>
+          result => { breaks?.onResume(); toastSuccess(t(waits(result) ? "clock.toast.backOnClockQueued" : "clock.toast.backOnClock")); })}>
           <Play size={15} aria-hidden="true" />{text("Resume", "Continuar")}</button>
       : <button type="button" className="wd-break" aria-expanded={open === "break"} aria-controls={open === "break" ? panelId : undefined}
           onClick={() => toggle("break")}><Coffee size={15} aria-hidden="true" />{text("Break", "Descanso")}</button>}
@@ -84,8 +90,13 @@ export function useWorkdayShiftControls(es: boolean): { buttons: ReactNode; pane
         <p>{text("Your timecard pauses until you tap Resume.", "Tu tarjeta de tiempo se pausa hasta que toques Continuar.")}</p>
         <div className="wd-shift-choices">
           {BREAK_TYPES.map(({ type }) => <button type="button" key={type} disabled={busy}
-            onClick={() => void send(() => punches.breakStart(type), result => pushToast(
-              `On ${breakTypeLabel(type).toLowerCase()} break${waits(result) ? " — will sync when online" : ""}`, "info"))}>
+            onClick={() => {
+              const running = breaks?.capture();
+              void send(() => punches.breakStart(type), result => {
+                breaks?.onBreak(running);
+                pushToast(`On ${breakTypeLabel(type).toLowerCase()} break${waits(result) ? " — will sync when online" : ""}`, "info");
+              });
+            }}>
             {breakTypeLabel(type)}</button>)}
           <button type="button" className="wd-shift-cancel" disabled={busy} onClick={() => setOpen(null)}>{text("Cancel", "Cancelar")}</button>
         </div>

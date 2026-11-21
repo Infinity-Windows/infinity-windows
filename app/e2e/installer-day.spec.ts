@@ -330,7 +330,7 @@ test("switching preview jobs keeps paid time running and closes unit and machine
  await page.getByRole("link", { name: /OTHER.*Second test job/ }).click();
  await expect(page).toHaveURL(new RegExp(other.id));
  await expect(page.getByRole("region", { name: "Preview clock" }).getByRole("button", { name: "Break" })).toBeEnabled();
- await expect(page.getByRole("region", { name: "Preview clock" }).getByRole("status")).toHaveText("Clocked in · preview");
+ await expect(page.getByTestId("wd-clock-status")).toHaveText("On the clock · preview");
  await expect(page.getByRole("switch", { name: "Operating machinery", checked: true })).toHaveCount(0);
  await expect(page.getByText(/Still running/)).toHaveCount(0);
  expect(commands).toHaveLength(0);
@@ -603,9 +603,11 @@ test("offline Workday reopens, pauses machinery, switches jobs and replays clock
  await page.getByRole("region", { name: "Go on break" }).getByRole("button", { name: "Rest", exact: true }).click();
  await expect(page.getByRole("button", { name: "Start unit 12 Flashing", exact: true })).toBeVisible();
  await expect(page.getByRole("switch", { name: "Operating machinery", checked: true })).toHaveCount(0);
+ await expect(page.getByTestId("wd-clock-status")).toHaveText("On break");
+ // Resume starts the same activity on the same unit again.
  await page.getByRole("button", { name: "Resume", exact: true }).click();
- await page.getByRole("button", { name: "Start unit 12 Flashing", exact: true }).click();
  await expect(running).toBeEnabled();
+ await expect(page.getByTestId("wd-clock-status")).toHaveText("On the clock");
  await pickWorkdayActivity(page, "company:Company delivery");
  await sheet.getByRole("button", { name: "Switch project", exact: true }).click();
  await expect(page.getByRole("region", { name: "Current activity" }).getByText("Running", { exact: true })).toBeVisible();

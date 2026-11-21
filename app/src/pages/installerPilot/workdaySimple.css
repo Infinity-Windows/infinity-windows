@@ -112,6 +112,11 @@
 .native-installer-day .native-day-unit-details .native-day-links { border-top:1px solid var(--border); padding-top:12px; margin:12px 0 0; }
 .native-installer-day .native-day-unit-details .native-day-notes .dictation-buttons { grid-area:1 / 2; justify-self:end; }
 .wd-detail-machinery { margin:8px 0; font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums; }
+/* On the clock / on break / off the clock: the shift, whatever the timers show. */
+.wd-heading .wd-clock-status { display:flex; align-items:center; gap:6px; margin-top:6px; font-size:13px; font-weight:600; white-space:nowrap; color:var(--muted,#aab6bf); }
+.wd-clock-status > span { flex:none; width:8px; height:8px; border-radius:50%; background:currentColor; }
+.wd-heading .wd-clock-status[data-state="working"] { color:#3ecf8e; }
+.wd-heading .wd-clock-status[data-state="break"] { color:var(--accent,#fa843e); }
 .wd-preview-clock-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
 .wd-preview-clock-actions > button { display:inline-flex; align-items:center; gap:5px; min-height:36px; padding:5px 9px; font-size:13px; }
 .wd-unit-complete { display:inline-flex; color:#92d9ad; margin-inline-start:4px; vertical-align:middle; }

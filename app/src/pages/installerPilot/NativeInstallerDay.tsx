@@ -51,6 +51,10 @@ type Choice = {
     scope: "unit" | "job" | "company";
     activity: string;
 };
+/** The picker choice a running or stopped session was started from. */
+const choiceOf = (session: WorkSession): Choice => session.unit_id
+    ? { scope: "unit", activity: session.stage }
+    : { scope: session.project_id === null ? "company" : "job", activity: session.description.split(" — ", 1)[0] };
 const unitActivities = PILOT_ACTIVITIES[1].names;
 const generalActivities = PILOT_ACTIVITIES[0].names;
 const company = ["Company delivery", "Container unloading", "Warehouse work", "Equipment / yard", "Training", "Other company work"];
@@ -132,8 +136,10 @@ function PreviewDay({ sandbox, person, day, planBlock, planName, embedded, jobPi
     }, start: async (choice, unit) => {
         if (clockState === "break") return;
         if (clockState === "off") setClock("working");
+        begin(choice, unit, !!active?.workday_machinery_started_at);
+    } };
+    function begin(choice: Choice, unit: string | undefined, continueMachinery: boolean) {
         const at = Date.now();
-        const continueMachinery = !!active?.workday_machinery_started_at;
         const session: WorkSession = {
             id: crypto.randomUUID(), profile_id: person, project_id: choice.scope === "company" ? null : sandbox.id,
             unit_id: unit ?? null, shift_id: "preview", stage: choice.scope === "unit" ? choice.activity : "Idle time",
@@ -142,13 +148,20 @@ function PreviewDay({ sandbox, person, day, planBlock, planName, embedded, jobPi
             workday_machinery_started_at: continueMachinery ? new Date(at).toISOString() : null,
         };
         setSessions(old => [...old.map(item => closePreviewSession(item, at)), session]);
-    } };
+    }
+    // As on a real shift: a break stops the activity, and Resume starts the same one again.
+    const beforeBreak = useRef<{ choice: Choice; unit?: string }>(undefined);
+    const toggleBreak = () => {
+        if (clockState !== "break") {
+            beforeBreak.current = active ? { choice: choiceOf(active), unit: active.unit_id ?? undefined } : undefined;
+            return setClock("break");
+        }
+        setClock("working");
+        if (beforeBreak.current) begin(beforeBreak.current.choice, beforeBreak.current.unit, false);
+    };
     const clockControls = clockState !== "off" && (
       <section className="wd-preview-clock-actions" aria-label={es ? "Reloj de prueba" : "Preview clock"}>
-        <span className="wd-sr-only" role="status">{clockState === "break"
-          ? (es ? "En descanso · prueba" : "On break · preview")
-          : (es ? "En turno · prueba" : "Clocked in · preview")}</span>
-        <button type="button" className="wd-break" onClick={() => setClock(clockState === "break" ? "working" : "break")}>
+        <button type="button" className="wd-break" onClick={toggleBreak}>
           {clockState === "break" ? <Play size={15} aria-hidden="true" /> : <Coffee size={15} aria-hidden="true" />}
           {clockState === "break" ? (es ? "Continuar" : "Resume") : (es ? "Descanso" : "Break")}
         </button>
@@ -156,7 +169,7 @@ function PreviewDay({ sandbox, person, day, planBlock, planName, embedded, jobPi
       </section>
     );
     return <DayView sandbox={sandbox} person={person} day={day} actions={actions} planBlock={planBlock}
-      planName={planName} embedded={embedded} jobPicker={jobPicker} clockControls={clockControls} unitCompletion={unitCompletion} preview />;
+      planName={planName} embedded={embedded} jobPicker={jobPicker} clockControls={clockControls} unitCompletion={unitCompletion} previewClock={clockState} preview />;
 
 }
 function LiveDay({ sandbox, planBlock, embedded, jobPicker }: {
@@ -323,19 +336,37 @@ function LiveDay({ sandbox, planBlock, embedded, jobPicker }: {
     const es = lang === "es";
     const openShift = shift?.status === "open";
     // Break, resume and clock out happen here in the timer, not in the clock sheet.
-    const shiftControls = useWorkdayShiftControls(es);
+    // A break stops the running activity (the timecard pauses). Resume starts
+    // the same one again, so nobody has to find their unit a second time
+    // (Matt, 2026-11-20). Kept through a reload and a long lunch; a new break
+    // always replaces it, with nothing when nothing was running.
+    const [beforeBreak, setBeforeBreak] = useStoredState<{ choice: Choice; openingId?: string } | undefined>(
+        `forge:workday-before-break:${sandbox.id}:${sandbox.actorId}`, undefined, { maxAgeMs: 16 * 60 * 60_000 });
+    const shiftControls = useWorkdayShiftControls(es, {
+        capture: () => {
+            const running = work.active;
+            if (!running || (running.project_id !== null && running.project_id !== sandbox.id)) return undefined;
+            const openingId = running.unit_id ? work.units.find(unit => unit.id === running.unit_id)?.opening_id : undefined;
+            return running.unit_id && !openingId ? undefined : { choice: choiceOf(running), openingId: openingId ?? undefined };
+        },
+        onBreak: captured => setBeforeBreak(captured as typeof beforeBreak),
+        // The start itself waits (pendingStart) until the shift reads as back on the clock.
+        onResume: () => { if (beforeBreak) setPendingStart(beforeBreak); setBeforeBreak(undefined); },
+    });
     const clockControls = openShift && shiftControls.buttons;
     const toolbox = openShift && talkLocked && talk.data && (shift.project_id === sandbox.id || pendingStart) &&
       <section id="work-toolbox-signature" tabIndex={-1}><ToolboxSignCard profileId={sandbox.actorId} talk={talk.data} /></section>;
     return <DayView sandbox={sandbox} person={sandbox.actorId} day={localWorkDate()} actions={actions} units={work.units}
       planBlock={planBlock} embedded={embedded} jobPicker={jobPicker} clockControls={clockControls} toolbox={<>{shiftControls.panel}{toolbox}</>}/>;
 }
-function DayView({ sandbox, person, day, actions, preview, planBlock, planName, embedded, jobPicker, clockControls, toolbox, units = [], unitCompletion }: {
+function DayView({ sandbox, person, day, actions, preview, previewClock, planBlock, planName, embedded, jobPicker, clockControls, toolbox, units = [], unitCompletion }: {
     sandbox: Sandbox;
     person: string;
     day: string;
     actions: Actions;
     preview?: boolean;
+    /** The preview's own pretend clock; a real day reads the person's shift. */
+    previewClock?: "off" | "working" | "break";
     unitCompletion?: Record<string, boolean>;
     embedded: boolean;
     clockControls?: import("react").ReactNode;
@@ -585,6 +616,14 @@ function DayView({ sandbox, person, day, actions, preview, planBlock, planName, 
     const lastKey = completionSchedule?.map(finalKey).sort().at(-1);
     const lastActivities = new Set(completionSchedule?.filter(block => finalKey(block) === lastKey).map(block => block.activity));
     const canOverride = sandbox.canEditAllUnits && (!preview || person === sandbox.actorId);
+    // Paid time is the shift, not the timers: a person can be on the clock with
+    // nothing running, or looking at this screen off the clock. Always say
+    // which (Matt, 2026-11-20), whatever the timers show.
+    const clockStatus = preview ? previewClock ?? "off"
+        : shift?.status !== "open" ? "off" : shift.break_started_at ? "break" : "working";
+    const clockStatusLabel = (clockStatus === "working" ? text("On the clock", "En turno")
+        : clockStatus === "break" ? text("On break", "En descanso") : text("Off the clock", "Fuera de turno"))
+        + (preview ? text(" · preview", " · prueba") : "");
     const finalActivity = lastActivities.size === 1 && lastActivities.has(picked.activity);
     const overrideCompletion = !finalActivity && canOverride;
     const canCompleteUnit = unitSchedule.isSuccess && (finalActivity || overrideCompletion)
@@ -656,7 +695,7 @@ function DayView({ sandbox, person, day, actions, preview, planBlock, planName, 
         {jobPicker ? jobPicker(sandbox.job_code)
           : !embedded && (!preview || params.has("planAs")) ? <WorkdayJobs key={sandbox.id} profileId={person} currentJob={sandbox.id}
               previewDate={preview ? day : undefined} jobName={scope ? sandbox.job_code : text("Company work", "Trabajo de la empresa")} />
-          : <strong>{scope ? sandbox.job_code : text("Company work", "Trabajo de la empresa")}</strong>}{preview && previewLabel && <small>{previewLabel}</small>}</div><div className="wd-heading-right">{clockControls}{!embedded && !preview && shift?.project_id === scope && shift.status === "open" && <small>{text("Clocked in", "Entrada registrada")}</small>}<button className="wd-language" onClick={() => setLang(es ? "en" : "es")} aria-label={es ? "Change language to English" : "Cambiar idioma a español"}>{es ? "English" : "Español"}</button></div></header>
+          : <strong>{scope ? sandbox.job_code : text("Company work", "Trabajo de la empresa")}</strong>}{preview && previewLabel && <small>{previewLabel}</small>}<small className="wd-clock-status" data-testid="wd-clock-status" data-state={clockStatus} role="status"><span aria-hidden="true"/>{clockStatusLabel}</small></div><div className="wd-heading-right">{clockControls}<button className="wd-language" onClick={() => setLang(es ? "en" : "es")} aria-label={es ? "Change language to English" : "Cambiar idioma a español"}>{es ? "English" : "Español"}</button></div></header>
       {toolbox}
       {published.isPending && <p role="status">{text("Loading today’s plan…", "Cargando el plan de hoy…")}</p>}
       {published.isError && <p role="alert">{formatApiError(published.error)}</p>}
