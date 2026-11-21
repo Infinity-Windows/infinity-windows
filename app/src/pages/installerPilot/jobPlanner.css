@@ -135,7 +135,9 @@
 .jp-event-body .jp-card-content:has(.jp-scope) { max-width: min(370px, calc(100vw - 64px), 100%); }
 .jp-event-actions { position: absolute; top: 4px; right: 7px; z-index: 4; display: flex; gap: 2px; }
 .job-planner .jp-event-edit { min-height: 24px; min-width: 24px; padding: 4px; display: grid; place-items: center; border: 0; background: transparent; color: var(--activity-color); }
-.jp-time-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+/* A date-and-time field needs about 216px to show "11/20/2026 05:00 PM" whole;
+   narrower than that the AM/PM is cut off, so the pair stacks instead. */
+.jp-time-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 216px), 1fr)); gap: 8px; }
 .jp-time-fields label { min-width: 0; }
 .jp-time-fields input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 36px; padding-block: 5px; }
 @supports selector(input::-webkit-calendar-picker-indicator) {
@@ -146,7 +148,7 @@
 }
 
 .jp-edit-footer { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
-.jp-edit-footer .jp-time-fields { flex: 1 1 360px; }
+.jp-edit-footer .jp-time-fields { flex: 1 1 440px; }
 .jp-edit-actions { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; }
 .job-planner .jp-compose-footer :is(.jp-time-fields input, .jp-edit-actions button, .jp-create-actions button) {
   box-sizing: border-box; height: 38px; min-height: 38px; padding-block: 4px;

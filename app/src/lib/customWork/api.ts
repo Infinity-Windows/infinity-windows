@@ -88,17 +88,25 @@ export async function getWorkUnit(id: string): Promise<WorkUnit | null> {
   if (error) throw error;
   return (data as WorkUnit | null) ?? null;
 }
+// How many column sets back this database is. Remembered until the page
+// reloads, so a database one migration behind is asked for the missing column
+// once, not on every read (each miss is a failed request in the console).
+let sessionColumnsBehind = 0;
 export async function listWorkSessions(job?: string | null, profileId?: string, scope?: { projectIds?: string[]; from?: number; until?: number; includeOpen?: boolean; signal?: AbortSignal }, unitId?: string) {
   const read = (columns: string) => allRows<WorkSession>("custom_work_sessions", columns, job, profileId, unitId, scope);
   // Newest columns first; each step back is a database one migration behind.
   const workday = SESSION_COLS + ",workday_done_at,workday_machinery_ms,workday_machinery_started_at";
-  for (const columns of [workday + ",workday_machinery_spans", workday]) {
+  const sets = [workday + ",workday_machinery_spans", workday, SESSION_COLS];
+  for (let behind = sessionColumnsBehind; behind < sets.length - 1; behind++) {
     try {
-      return await read(columns);
+      const rows = await read(sets[behind]);
+      sessionColumnsBehind = behind;
+      return rows;
     } catch (error) {
       if (!isMissingColumn(error)) throw error;
     }
   }
+  sessionColumnsBehind = sets.length - 1;
   return read(SESSION_COLS);
 }
 export async function listOpeningWorkProgress(projectId: string, openingId: string) {
