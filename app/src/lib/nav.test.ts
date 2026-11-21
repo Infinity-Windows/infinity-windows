@@ -160,6 +160,15 @@ describe("bottomBarForRole (phone bottom bar)", () => {
       }
     });
 
+    it("shortens a foreman's first section like an installer's: no Current Work, Servicing last, My Work kept", () => {
+      const first = menuForRole("foreman", undefined, "new")[0].items.map((i) => i.to);
+      expect(first).not.toContain("/current-work");
+      expect(first).toContain("/my-work");
+      expect(first.at(-1)).toBe("/service");
+      expect(menuForRole("foreman")[0].items.map((i) => i.to)).toContain("/current-work");
+      expect(menuForRole("supervisor", undefined, "new")[0].items.map((i) => i.to)).toContain("/current-work");
+    });
+
     it("keeps foremen's Jobs reachable from More", () => {
       const paths = menuForRole("foreman", undefined, "new").flatMap((s) => s.items).map((i) => i.to);
       expect(paths).toContain("/projects");

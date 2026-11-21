@@ -735,8 +735,17 @@ export function menuForRole(
 ): MenuSection[] {
   if (roleRank(role) === 0) return installerMenu(role, grants, design);
   const out: MenuSection[] = [];
+  // A foreman on the new design works from the Workday like an installer
+  // does, so the same two changes apply: Current Work is gone and Servicing
+  // sits at the bottom of its section. My Work stays for now (Matt,
+  // 2026-11-21: "leave it showing").
+  const worksUnits = design === "new" && role === "foreman";
   for (const section of MENU_DEF) {
-    const items = section.items
+    const rows = worksUnits && section.items.some((it) => it.to === "/service")
+      ? [...section.items.filter((it) => it.to !== "/current-work" && it.to !== "/service"),
+        ...section.items.filter((it) => it.to === "/service")]
+      : section.items;
+    const items = rows
       .filter((it) => design === "new" || it.to !== "/summary")
       .filter((it) => !it.to || canAccess(role, it.to, grants))
       // K1.1: "Work" everywhere in the new design (see installerMenu).
