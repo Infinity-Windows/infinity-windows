@@ -160,6 +160,15 @@ describe("bottomBarForRole (phone bottom bar)", () => {
       }
     });
 
+    it("shortens a foreman's first section like an installer's: no Current Work, Servicing last, My Work kept", () => {
+      const first = menuForRole("foreman", undefined, "new")[0].items.map((i) => i.to);
+      expect(first).not.toContain("/current-work");
+      expect(first).toContain("/my-work");
+      expect(first.at(-1)).toBe("/service");
+      expect(menuForRole("foreman")[0].items.map((i) => i.to)).toContain("/current-work");
+      expect(menuForRole("supervisor", undefined, "new")[0].items.map((i) => i.to)).toContain("/current-work");
+    });
+
     it("keeps foremen's Jobs reachable from More", () => {
       const paths = menuForRole("foreman", undefined, "new").flatMap((s) => s.items).map((i) => i.to);
       expect(paths).toContain("/projects");
@@ -349,6 +358,16 @@ describe("menuForRole (Horizon grouped menu)", () => {
       const ai = flatten(role).find((i) => i.to === "/ask");
       expect(ai?.label, `Ask missing for ${role}`).toBe("Ask");
     }
+  });
+
+  it("shortens the new design's installer drawer: no Current Work, Servicing last, Me and Help folded", () => {
+    const sections = menuForRole("installer", undefined, "new");
+    const work = sections.find((s) => s.title === "Work")!.items.map((i) => i.to);
+    expect(work).not.toContain("/current-work");
+    expect(work.at(-1)).toBe("/service");
+    expect(sections.filter((s) => s.collapsible).map((s) => s.title)).toEqual(["Me", "Help"]);
+    // The classic drawer keeps every section open.
+    expect(menuForRole("installer").some((s) => s.collapsible)).toBe(false);
   });
 
   it("surfaces My Work and Photos in the manager menu (drawer/bottom-bar parity)", () => {

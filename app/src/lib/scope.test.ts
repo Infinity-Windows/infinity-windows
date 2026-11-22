@@ -46,6 +46,9 @@ describe("the card line", () => {
   // A job whose specs nobody has read yet knows how many holes there are and
   // nothing else. "0 doors" would read as a job somebody has checked.
   it("leaves out what it cannot say", () => {
+    const withWalls = scopeLineParts(counts({ openings: 5, windows: 3, curtain_walls: 2 }));
+    expect(withWalls.parts.map((part) => [part.key, part.n])).toEqual([
+      ["scope.openings.many", 5], ["scope.windows.many", 3], ["scope.curtainWalls.many", 2]]);
     const { parts } = scopeLineParts(counts({ openings: 40, unknown_units: 40 }));
     expect(say(parts)).toBe("40 openings");
   });

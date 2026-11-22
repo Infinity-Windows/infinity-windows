@@ -127,6 +127,8 @@ export function modeBadgeKey(
  * transient values a legacy ?tab= link carries before it is redirected; the
  * rest are real tabs. `specs` and `time` are the tracking-only additions. */
 export type HubTabId =
+  | "planner"
+  | "units"
   | "custom-data"
   | "overview"
   | "warehouse"
@@ -145,6 +147,7 @@ export type HubTabId =
 export interface HubTabOpts {
   trackingOnly: boolean;
   isLead: boolean;
+  canPlan?: boolean;
   /** A tracking job shows Warehouse ONLY when it actually has material staged. */
   warehouseStaged: boolean;
 }
@@ -163,9 +166,13 @@ export interface HubTabOpts {
  */
 export function hubTabsFor(opts: HubTabOpts): HubTabId[] {
   const { trackingOnly, isLead, warehouseStaged } = opts;
+  // Units (the Unit Builder) sits beside Plan and is offered to the same
+  // people: units are established there, then planned (Matt, 2026-11-20).
+  const planning: HubTabId[] = opts.canPlan ? ["planner", "units"] : [];
   if (trackingOnly) {
     return [
       "overview",
+      ...planning,
       "custom-data",
       "specs",
       "logs",
@@ -177,6 +184,7 @@ export function hubTabsFor(opts: HubTabOpts): HubTabId[] {
   }
   return [
     "overview",
+    ...planning,
     "custom-data",
     ...(isLead ? (["dispatch"] as HubTabId[]) : []),
     "logs",
@@ -211,6 +219,7 @@ export function resolveHubTab(
     return visible.includes(t as HubTabId) ? (t as HubTabId) : "overview";
   }
   const accept: string[] = [
+    ...(opts.canPlan ? ["planner", "units"] : []),
     "custom-data",
     "warehouse",
     "map",

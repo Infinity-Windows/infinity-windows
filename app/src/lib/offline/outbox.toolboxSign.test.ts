@@ -26,9 +26,16 @@ vi.mock("../supabase", () => ({
 // (owner review of the ordering fix's cross-account case) — never two
 // profiles' writes pending at once under one identity.
 const identity = vi.hoisted(() => ({ userId: "2b1c9f0e-1111-4a2b-8c3d-000000000001", email: "e2e@example.test" }));
-vi.mock("../signedIn", () => ({ signedInEmail: () => identity.email, signedInUserId: () => identity.userId, subscribeSignedIn: () => () => {} }));
+vi.mock("../signedIn", () => ({ signedInEmail: () => identity.email, signedInUserId: () => identity.userId, subscribeSignedIn: () => () => {}, signInMark: () => ({ userId: identity.userId, generation: 0 }), stillSignedInAs: (mark: { userId: string }, who: string) => mark.userId === who && identity.userId === who }));
 vi.mock("./telemetry", () => ({ logOfflineEvent: () => {} }));
 
+// Test cleanup owns its fixture store; production discard is owner/state guarded.
+vi.mock("./outboxStore", async importOriginal => {
+  const actual = await importOriginal<typeof import("./outboxStore")>();
+  const fixtureStore = new actual.MemoryOutboxStore();
+  return { ...actual, createDefaultStore: () => fixtureStore, fixtureStore };
+});
+const { fixtureStore } = await import("./outboxStore") as unknown as { fixtureStore: import("./outbox-core").OutboxStore };
 const outbox = await import("./outbox");
 
 const ME = "2b1c9f0e-1111-4a2b-8c3d-000000000001";
@@ -71,7 +78,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   online();
-  for (const e of await outbox.listAll()) await outbox.discardFailed(e.id);
+  for (const e of await outbox.listAll()) await fixtureStore.delete(e.id);
 });
 
 describe("a signature made with no signal", () => {

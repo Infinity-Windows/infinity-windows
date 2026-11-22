@@ -292,6 +292,7 @@ export interface ProjectOpening {
    * off a planset. Re-extraction never deletes one — see planDraftPersistence.
    */
   field_added?: boolean | null;
+  unit_details?: import("./unitDetails").UnitDetails;
   /**
    * Set when a foreman removes this window or door. Rows carrying it are hidden
    * by row level security, so anything reached from a browser only ever sees

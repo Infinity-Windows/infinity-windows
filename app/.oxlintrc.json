@@ -9,7 +9,8 @@
     "src/lib/fitview/fitviewRenderer.ts",
     "src/lib/fitview/traceRenderer.ts",
     "src/lib/modelstudio/vendor/**",
-    "public/assets/**"
+    "public/assets/**",
+    ".test-temp/**"
   ],
   "rules": {
     "react/rules-of-hooks": "error",

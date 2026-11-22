@@ -460,7 +460,7 @@ export function PlanModelEditor(props: {
         (rows = []) => updateRows(rows),
       );
       queryClient.invalidateQueries({
-        queryKey: ["planOutlines", projectId, planset.id],
+        queryKey: ["planOutlines", projectId],
       });
     },
     onError: (e) => setError(formatApiError(e)),
@@ -555,7 +555,7 @@ export function PlanModelEditor(props: {
           ),
       );
       queryClient.invalidateQueries({
-        queryKey: ["planOutlines", projectId, planset.id],
+        queryKey: ["planOutlines", projectId],
       });
     },
     onError: (e) => setError(formatApiError(e)),
@@ -580,7 +580,7 @@ export function PlanModelEditor(props: {
         (rows = []) => rows.filter((outline) => outline.id !== removedId),
       );
       queryClient.invalidateQueries({
-        queryKey: ["planOutlines", projectId, planset.id],
+        queryKey: ["planOutlines", projectId],
       });
     },
     onError: (e) => setError(formatApiError(e)),

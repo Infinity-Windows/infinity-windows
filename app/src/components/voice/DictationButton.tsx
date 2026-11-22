@@ -8,7 +8,7 @@ import "./dictation.css";
 
 type Field = HTMLTextAreaElement | HTMLInputElement;
 
-export function DictationButton({ fieldRef }: { fieldRef: RefObject<Field | null> }) {
+export function DictationButton({ fieldRef, compact = false }: { fieldRef: RefObject<Field | null>; compact?: boolean }) {
   const t = useT();
   const { lang } = useLanguage();
   const [phase, setPhase] = useState<"idle" | "starting" | "recording" | "transcribing" | "retry">("idle");
@@ -92,7 +92,9 @@ export function DictationButton({ fieldRef }: { fieldRef: RefObject<Field | null
         onError: () => { if (token === generation.current) { setMessage(t("dictation.recordingFailed")); setPhase("idle"); } },
         onComplete: audio => {
           if (token !== generation.current) return;
-          clip.current = audio; setPreview(audio); setUnapplied(true);
+          clip.current = audio;
+          if (!compact) setPreview(audio);
+          setUnapplied(true);
           void transcribe(audio, token);
         },
       });
@@ -107,12 +109,14 @@ export function DictationButton({ fieldRef }: { fieldRef: RefObject<Field | null
   return (
     <span className="dictation-controls" onClick={e => { if (!(e.target instanceof Element && e.target.closest("audio, a"))) e.preventDefault(); e.stopPropagation(); }}>
       <span className="dictation-buttons">
-        {phase === "idle" && <button type="button" className="dictation-button" aria-label={t("dictation.start")} onClick={() => void start()}><Mic size={16} aria-hidden="true" /><span aria-hidden="true">{t("dictation.start")}</span></button>}
+        {phase === "idle" && <button type="button" className="dictation-button" aria-label={t("dictation.start")} onClick={() => void start()}><Mic size={16} aria-hidden="true" />{!compact && <span aria-hidden="true">{t("dictation.start")}</span>}</button>}
         {phase === "starting" && <span role="status">{t("dictation.starting")}</span>}
-        {phase === "recording" && <button type="button" className="dictation-button is-recording" onClick={() => recorder.current?.stop()}><Square size={14} aria-hidden="true" />{t("dictation.stop")} · {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}</button>}
+        {phase === "recording" && <button type="button" className="dictation-button is-recording" aria-label={t("dictation.stop")} onClick={() => recorder.current?.stop()}>
+          <Square size={14} aria-hidden="true" />{t("dictation.stop")} · {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
+        </button>}
         {phase === "transcribing" && <span role="status">{t("dictation.transcribing")}</span>}
         {phase === "retry" && <button type="button" className="dictation-button" onClick={() => clip.current && void transcribe(clip.current, generation.current)}>{t("dictation.retry")}</button>}
-        {phase !== "idle" && <button type="button" className="dictation-button" aria-label={t("dictation.cancel")} onClick={() => {discard(); setPreview(null); setUnapplied(false); setPhase("idle"); setMessage("");}}><X size={16} aria-hidden="true" />{t("dictation.cancel")}</button>}
+        {phase !== "idle" && <button type="button" className="dictation-button" aria-label={t("dictation.cancel")} onClick={() => {discard(); setPreview(null); setUnapplied(false); setPhase("idle"); setMessage("");}}><X size={16} aria-hidden="true" />{!compact && t("dictation.cancel")}</button>}
       </span>
       {previewUrl && phase !== "recording" && phase !== "starting" && <span className="dictation-preview">
         <audio controls preload="metadata" src={previewUrl} aria-label={t("dictation.playback")} />

@@ -892,6 +892,14 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "work_unit_fact_revisions": ("id",),
     "work_unit_fact_current": ("unit_id",),
     "work_unit_fact_context_epochs": ("scope_kind", "scope_id"),
+    # Job plans, Workday and unit details (20261130000000 to 20261130110000).
+    # A job has one plan, keyed by the job like project_bill_to. Done marks,
+    # lead changes and unit edit history are append-only events: two identical
+    # ones are two events.
+    "installer_job_plans": ("project_id",),
+    "plan_activity_done_marks": None,
+    "plan_unit_lead_changes": None,
+    "unit_detail_edit_history": None,
 
 }
 

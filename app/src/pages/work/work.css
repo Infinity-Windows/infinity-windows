@@ -337,6 +337,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
+.ws-quick--installer { grid-template-columns:repeat(auto-fit, minmax(min(100%, 175px), 1fr)); }
 .ws-quick-btn { min-height: 56px; }
 .ws-prep-running { border-color: var(--accent-line); }
 
@@ -450,3 +451,188 @@
 @media (min-width: 860px) {
   .work-screen { max-width: 720px; }
 }
+
+.ws-workday-jobs { display: grid; gap: 8px; justify-items: start; }
+.ws-workday-job-picker { display: grid; gap: 8px; width: min(100%, 32rem); max-height: 24rem; overflow: auto; padding: 8px; border: 1px solid var(--border); border-radius: 10px; }
+.ws-workday-job-picker input { width: 100%; }
+.ws-workday-job-picker a[aria-current="page"] { border-color: var(--accent); }
+
+.ws-today-jobs { gap:8px; }
+.ws-today-jobs > .ws-workday-jobs { justify-items:stretch; }
+.ws-today-jobs > .ws-workday-jobs > .ws-btn {
+  display:flex; justify-content:center; align-items:center; gap:8px; width:100%;
+  background:transparent; color:var(--text); border-color:var(--border);
+}
+.ws-today-jobs > .ws-workday-jobs > .ws-btn:hover { background:var(--surface); }
+.ws-today-jobs > .ws-workday-jobs > .ws-workday-job-picker { width:100%; }
+.ws-workday-jobs[data-job-switcher="true"] { position: relative; }
+.ws-workday-jobs[data-job-switcher="true"] .ws-workday-job-picker {
+  position: absolute; top: calc(100% + 4px); inset-inline-start: 0; z-index: 5;
+  width: min(22rem, calc(100vw - 64px)); background: var(--surface);
+}
+.ws-installer { width:min(100%, 960px); margin-inline:auto; display:grid; grid-template-columns:minmax(0, 1fr); gap:16px; }
+.ws-installer-heading { display:flex; align-items:end; justify-content:space-between; flex-wrap:wrap; gap:10px; padding-block:8px 4px; }
+.ws-installer-heading h1 { margin:0; font-size:clamp(25px, 5vw, 34px); letter-spacing:-.025em; }
+.ws-installer :is(.ws-work-back, .ws-work-upcoming) { display:inline-flex; align-items:center; gap:7px; min-height:36px; padding:4px 8px; font-size:16px; }
+.ws-installer .ws-work-back { padding-inline-start:0; border:0; background:transparent; color:var(--muted); }
+.ws-installer .ws-clock { margin:0; }
+.ws-installer .ws-today-job {
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  align-items:center;
+  gap:12px;
+  padding:12px 14px;
+  border:1px solid var(--accent-line, var(--border));
+  border-radius:10px;
+  background:color-mix(in srgb, var(--surface) 92%, var(--accent));
+  color:var(--text);
+  text-align:start;
+}
+.ws-installer .ws-today-job:hover { border-color:var(--accent); }
+.ws-today-job-copy { display:grid; gap:4px; min-width:0; overflow-wrap:anywhere; }
+.ws-today-job-copy strong { line-height:1.3; }
+.ws-today-job-copy .ws-meta { font-size:16px; }
+.ws-today-job-action {
+  padding:7px 9px;
+  border-radius:7px;
+  background:var(--accent);
+  color:var(--primary-foreground, #151b20);
+  font-size:16px;
+  font-weight:650;
+  white-space:nowrap;
+}
+@media (max-width:360px) {
+  .ws-installer .ws-today-job { grid-template-columns:minmax(0, 1fr); }
+  .ws-today-job-action { justify-self:start; }
+}
+.ws-installer > .native-installer-day {
+  width:100%;
+  max-width:none;
+  min-width:0;
+  margin:0;
+  padding:0;
+}
+.ws-installer .native-installer-day .workday-simple {
+  width:100%;
+  max-width:none;
+  margin:0;
+  padding:clamp(14px, 3vw, 24px);
+}
+.ws-installer .ws-workday-jobs[data-job-switcher="true"] {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px 12px;
+}
+.ws-installer .ws-workday-jobs[data-job-switcher="true"] > .ws-current-job {
+  min-height:44px; padding:6px 12px; gap:6px; text-align:start; overflow-wrap:anywhere;
+  border:1px solid var(--border); border-radius:10px; background:var(--surface);
+}
+.ws-installer .ws-current-job > strong { font-size:17px; }
+.ws-installer .ws-current-job > svg { flex:none; color:var(--accent); transition:transform .15s; }
+.ws-installer .ws-current-job[aria-expanded="true"] > svg { transform:rotate(180deg); }
+.ws-installer .ws-workday-jobs[data-job-switcher="true"] > button {
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+}
+.ws-installer .ws-workday-jobs[data-job-switcher="true"] > :not(button, strong) { flex-basis:100%; }
+.ws-installer .wd-heading { margin-bottom:14px; }
+.ws-installer .wd-current { margin-block:12px; }
+@media (max-width:520px) {
+  .ws-installer { gap:10px; }
+  .ws-installer .ws-work-upcoming { padding-inline:0; }
+}
+.ws-installer .wd-plan { margin:0; }
+@media (max-width:520px) {
+  .ws-installer .wd-heading-right { gap:4px; }
+}
+.ws-installer .wd-current {
+  grid-template-columns:40px minmax(0, 1fr) auto;
+  column-gap:12px;
+  padding:14px;
+  border-color:var(--border);
+  background:var(--card, #1b2328);
+}
+.ws-installer .wd-current[data-running=true] { border-color:color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.ws-installer .wd-activity-symbol {
+  width:40px;
+  height:40px;
+  border-radius:10px;
+  background:color-mix(in srgb, var(--accent) 12%, transparent);
+  color:var(--accent);
+}
+.ws-installer .wd-timer {
+  flex-direction:row;
+  gap:10px;
+  padding-inline-start:12px;
+  border-inline-start:1px solid var(--border);
+}
+.ws-installer .wd-timer strong { font-size:clamp(18px, 4vw, 25px); }
+.ws-installer .wd-play { width:46px; height:46px; }
+.ws-installer .wd-play:disabled { background:var(--surface, #263038); color:var(--muted); opacity:1; }
+.ws-installer .wd-unit-tools { margin-block:16px 8px; }
+.ws-installer .wd-unit-tools button { min-height:40px; padding:6px 12px; }
+@media (max-width:480px) {
+  .ws-installer .wd-current {
+    grid-template-columns:40px minmax(0, 1fr) auto;
+    grid-template-areas:"icon choice timer";
+    gap:10px;
+    padding:12px;
+  }
+  .ws-installer .wd-current-state { min-width:0; line-height:1.35; }
+  .ws-installer .wd-timer { padding-inline-start:8px; }
+}
+.ws-upcoming-plan .ws-plan-date {
+  display:grid;
+  grid-template-columns:110px minmax(0,1fr);
+  align-items:start;
+  gap:12px;
+  padding:8px 0;
+}
+.ws-upcoming-plan .ws-plan-date + .ws-plan-date { border-top:1px solid var(--border); }
+.ws-plan-date-label {
+  justify-self:start;
+  margin:0;
+  padding:4px 7px;
+  border-radius:5px;
+  background:var(--surface);
+  color:var(--muted);
+  font-size:16px;
+  font-weight:650;
+}
+.ws-plan-jobs { display:grid; min-width:0; gap:8px; }
+.ws-plan-job h4 { margin:0 0 3px; padding:4px 0 4px 8px; border-inline-start:2px solid var(--accent); font-size:16px; font-weight:700; color:var(--text); }
+.ws-plan-entry + .ws-plan-entry { border-top:1px solid color-mix(in srgb, var(--border) 55%, transparent); }
+.ws-plan-row {
+  display:grid;
+  grid-template-columns:22px minmax(0,1fr) auto 16px;
+  align-items:center;
+  gap:8px;
+  min-height:40px;
+  padding:4px;
+  border-radius:6px;
+  list-style:none;
+}
+summary.ws-plan-row { cursor:pointer; }
+summary.ws-plan-row:hover, .ws-plan-entry details[open] summary { background:var(--surface); }
+summary.ws-plan-row::-webkit-details-marker { display:none; }
+.ws-plan-row strong { font-size:16px; }
+.ws-plan-chevron { color:var(--muted); }
+.ws-plan-entry details[open] .ws-plan-chevron { transform:rotate(90deg); }
+.ws-plan-icon { display:grid; place-items:center; color:var(--activity-color, var(--accent)); }
+.ws-plan-icon svg { width:19px; height:19px; }
+.ws-plan-meta { display:flex; justify-content:end; flex-wrap:wrap; gap:3px 9px; font-size:16px; color:var(--muted); }
+.ws-plan-roles { display:grid; gap:8px; padding:0 0 10px 30px; }
+.ws-plan-role { display:flex; flex-wrap:wrap; align-items:baseline; gap:5px 10px; font-size:16px; }
+.ws-plan-role > strong { min-width:36px; color:var(--muted); }
+.ws-plan-units { display:flex; flex-wrap:wrap; gap:4px; }
+.ws-plan-unit { border:1px solid var(--border); border-radius:5px; padding:2px 6px; }
+@media (max-width:540px) {
+  .ws-upcoming-plan .ws-plan-date { grid-template-columns:minmax(0,1fr); gap:3px; padding-block:6px; }
+  .ws-plan-row { grid-template-columns:22px minmax(0,1fr) 16px; gap:3px 8px; padding-block:8px; }
+  .ws-plan-meta { grid-column:2; justify-content:start; }
+  .ws-plan-chevron { grid-column:3; grid-row:1; }
+}
+.ws-upcoming-plan button.ws-plan-unit { min-height:32px; background:var(--surface); color:var(--text); cursor:pointer; }
+.ws-upcoming-plan button.ws-plan-unit:hover { border-color:var(--accent); }

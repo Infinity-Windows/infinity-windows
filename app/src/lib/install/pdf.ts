@@ -27,7 +27,7 @@ import {
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 /** Map a PDF-user-space rect into normalized top-left page coordinates. */
-function pdfRectToNormalized(
+export function pdfRectToNormalized(
   rect: [number, number, number, number],
   viewport: { width: number; height: number; transform: number[] },
 ): { x1: number; y1: number; x2: number; y2: number } {
@@ -52,8 +52,12 @@ function pdfRectToNormalized(
   };
 }
 
+export function loadPdfTask(data: ArrayBuffer) {
+  return pdfjs.getDocument({ data });
+}
+
 export async function loadPdf(data: ArrayBuffer): Promise<PDFDocumentProxy> {
-  return pdfjs.getDocument({ data }).promise;
+  return loadPdfTask(data).promise;
 }
 
 /**
@@ -256,6 +260,7 @@ export async function extractSheetTextLines(
  */
 export async function extractPlanMarkCallouts(
   doc: PDFDocumentProxy,
+  parseMarks = parsePlanMarkAnnotation,
 ): Promise<PlanMarkCallout[]> {
   const callouts: PlanMarkCallout[] = [];
 
@@ -276,12 +281,12 @@ export async function extractPlanMarkCallouts(
           .contentsObj?.str ??
         (annotation as { contents?: string }).contents ??
         "";
-      const marks = parsePlanMarkAnnotation(raw);
+      const marks = parseMarks(raw);
       if (!marks?.length) continue;
 
       const rect = annotation.rect as [number, number, number, number];
       const box = pdfRectToNormalized(rect, viewport);
-      const centers = markCentersAlongAnnotation(raw);
+      const centers = parseMarks !== parsePlanMarkAnnotation && !parsePlanMarkAnnotation(raw) ? [0.5] : markCentersAlongAnnotation(raw);
       // How big the drawn number itself is: one annotation can hold several
       // ("2  2" over a pair of identical windows), so its width is shared out.
       // The elevation reference rings the number with this, rather than guessing

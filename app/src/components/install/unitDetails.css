@@ -1,0 +1,54 @@
+.ws-agenda-unit-dialog {
+  width:min(390px, calc(100% - 24px)); max-height:85dvh; overflow:auto; margin:auto; padding:0;
+  border:1px solid var(--border); border-radius:14px; background:var(--card, var(--surface, #192025)); color:var(--text);
+}
+.ws-agenda-unit-dialog::backdrop { background:#0008; }
+.ws-agenda-unit-panel { display:grid; gap:14px; padding:16px; }
+.ws-agenda-unit-panel header { display:flex; align-items:center; gap:12px; }
+.ws-agenda-unit-overview { display:grid; gap:12px; min-width:0; }
+.ws-agenda-unit-top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.ws-agenda-unit-panel header { justify-content:space-between; align-items:flex-start; }
+.ws-agenda-unit-panel .ws-agenda-unit-close {
+  display:grid; place-items:center; flex:0 0 32px; width:32px; min-width:32px;
+  height:32px; min-height:32px; padding:0; border:1px solid var(--border); border-radius:7px;
+  background:transparent; color:var(--muted);
+}
+.ws-agenda-unit-panel .ws-agenda-unit-close:hover { color:var(--text); background:var(--surface); }
+.ws-agenda-unit-panel h2 { font-size:19px; margin:0; }
+.ws-agenda-unit-panel p { margin:2px 0 0; color:var(--muted); font-size:13px; }
+.ws-agenda-unit-panel header p { margin:3px 0 0; }
+/* A light line drawing straight on the panel, as in the unit tables: no box. */
+.ws-agenda-unit-diagram { display:grid; place-items:center start; flex:none; height:46px; color:var(--muted); }
+.ws-agenda-unit-diagram img { display:block; width:auto; height:46px; max-width:96px; object-fit:contain; filter:brightness(0) invert(.85); }
+.ws-agenda-unit-edit {
+  display:grid; place-items:center; flex:none; width:44px; min-width:44px; height:44px; min-height:44px; padding:0;
+  border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--muted);
+}
+.ws-agenda-unit-edit:hover { color:var(--text); background:var(--surface); }
+/* One label column for the specs and for the status, lead and crew rows under
+   them, so every value starts on the same line down the panel. */
+.ws-agenda-unit-specs { display:grid; grid-template-columns:112px minmax(0,1fr); gap:7px 12px; margin:0; font-size:14px; line-height:1.35; }
+.ws-agenda-unit-specs dt { color:var(--muted); }
+.ws-agenda-unit-specs dd { margin:0; overflow-wrap:anywhere; }
+.ws-agenda-unit-crew { display:grid; grid-template-columns:112px minmax(0,1fr); gap:7px 12px; align-items:center; margin:0; padding-top:12px; border-top:1px solid var(--border); font-size:14px; line-height:1.35; }
+.ws-agenda-unit-crew dt { color:var(--muted); }
+.ws-agenda-unit-crew dd { margin:0; }
+.ws-agenda-unit-panel footer { display:flex; flex-wrap:wrap; gap:12px; border-top:1px solid var(--border); padding-top:12px; }
+.ws-agenda-unit-status { padding:2px 6px; border-radius:5px; background:var(--surface); font-weight:650; }
+.ws-agenda-unit-status[data-status="complete"] { color:#92d9ad; }
+.ws-agenda-unit-stamp { display:inline-flex; align-items:center; gap:5px; width:fit-content; margin:0; padding:3px 7px; border-radius:5px; background:var(--surface); color:#92d9ad; font-size:.8rem; font-weight:650; }
+.ws-agenda-unit-status:is([data-status="running"],[data-status="blocked"],[data-status="rework"]) { color:var(--accent); }
+.unit-details { display:grid; gap:10px; min-width:0; }
+.unit-details fieldset { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; border:0; margin:0; padding:0; min-width:0; }
+.unit-details :is(label, .unit-details-select) { display:grid; align-content:start; gap:4px; font-size:.85rem; }
+.unit-details :is(input,select) { width:100%; min-width:0; min-height:44px; font-size:16px; }
+.unit-details-reason { grid-column:1/-1; }
+.unit-details-actions { grid-column:1/-1; display:flex; justify-content:flex-end; gap:8px; }
+.unit-details-actions button { min-height:44px; }
+
+.unit-details-number { grid-column:1/-1; }
+.unit-details-number-entry { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:6px; align-items:center; }
+.unit-details-number-entry button { min-width:44px; min-height:44px; }
+.ws-agenda-unit-lead { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; }
+.ws-agenda-unit-lead button { min-height:36px; padding:4px 10px; font-size:13px; }
+.ws-agenda-unit-lead small { flex-basis:100%; }

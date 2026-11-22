@@ -6,11 +6,12 @@ import "./jobSearchSelect.css";
 export interface JobOption { id: string; job_code: string; name?: string | null }
 
 /** Searches only the caller's allowed jobs; typing never changes the saved job. */
-export function JobSearchSelect({ jobs, value, onChange, label, loading = false }: {
+export function JobSearchSelect({ jobs, value, onChange, label, allLabel, loading = false }: {
   jobs: JobOption[];
   value: string;
   onChange: (id: string) => void;
   label?: string;
+  allLabel?: string;
   loading?: boolean;
 }) {
   const t = useT();
@@ -19,12 +20,15 @@ export function JobSearchSelect({ jobs, value, onChange, label, loading = false 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(-1);
-  const options = useMemo(() => [...jobs].sort((a, b) =>
-    a.job_code.localeCompare(b.job_code, undefined, { sensitivity: "base", numeric: true }) ||
-    (a.name ?? "").localeCompare(b.name ?? "", undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id),
-  ), [jobs]);
+  const options = useMemo(() => {
+    const sorted = [...jobs].sort((a, b) =>
+      a.job_code.localeCompare(b.job_code, undefined, { sensitivity: "base", numeric: true }) ||
+      (a.name ?? "").localeCompare(b.name ?? "", undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id),
+    );
+    return allLabel ? [{ id: "", job_code: allLabel }, ...sorted] : sorted;
+  }, [jobs, allLabel]);
   const visible = options.filter(p => `${p.job_code} ${p.name ?? ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
-  const selected = jobs.find(p => p.id === value);
+  const selected = options.find(p => p.id === value);
   const jobLabel = (p: JobOption) => p.name ? `${p.job_code} · ${p.name}` : p.job_code;
   function close() { setOpen(false); setQuery(""); setActive(-1); }
   function pick(p: JobOption) { onChange(p.id); close(); input.current?.blur(); }

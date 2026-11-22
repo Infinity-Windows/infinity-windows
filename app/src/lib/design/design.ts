@@ -22,9 +22,11 @@ export type UiDesign = "classic" | "new";
 /** localStorage key for the last resolved design on this device. */
 export const DESIGN_CACHE_KEY = "forge.design";
 
-/** Only the two words the database accepts; anything else reads as classic. */
+/** Only the two words the database accepts. Classic only when a person's
+ * profile says so; anything else (a profile read without the column, say)
+ * reads as the new design, which is everyone's default since 20261130190000. */
 export function normalizeDesign(value: unknown): UiDesign {
-  return value === "new" ? "new" : "classic";
+  return value === "classic" ? "classic" : "new";
 }
 
 export interface ResolveDesignInput {
@@ -42,11 +44,23 @@ export interface ResolveDesignInput {
   cached: UiDesign | null;
 }
 
-/** The one rule: master off wins, then the person's choice, then the cache. */
+/** The one rule: master off wins, then the person's choice, then the cache,
+ * then the new design (the default since 2026-11-21 — it used to be classic,
+ * which is what flashed on every cold load of a phone with no cache). */
 export function resolveDesign(input: ResolveDesignInput): UiDesign {
   if (input.masterOn === false) return "classic";
   if (input.personChoice) return input.personChoice;
-  return input.cached ?? "classic";
+  return input.cached ?? "new";
+}
+
+/**
+ * What to paint while nobody's design is known: before sign-in, between
+ * screens, and after the provider unmounts. The new design unless this
+ * phone's last resolved answer was classic. index.html stamps the same answer
+ * before the first paint; keep the two in step.
+ */
+export function restingDesign(): UiDesign {
+  return readCachedDesign() ?? "new";
 }
 
 export function readCachedDesign(): UiDesign | null {

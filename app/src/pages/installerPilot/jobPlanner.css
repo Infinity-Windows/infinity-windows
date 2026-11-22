@@ -1,0 +1,564 @@
+.job-planner {
+  display: grid;
+  gap: 18px;
+  color: var(--text);
+}
+.job-planner :is(h1, h2, p) { margin: 0; }
+.jp-calendar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.jp-calendar-heading > span, .jp-calendar-heading > small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.job-planner label { display: grid; gap: 5px; font-size: 12px; color: var(--muted); min-width: 0; }
+.job-planner :is(select, input) { margin: 0; width: 100%; min-width: 0; min-height: 40px; font-size: 13px; color: var(--text); }
+.jp-crew-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.job-planner .jp-crew-options button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  min-height: 32px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+.jp-crew-options button[aria-pressed=true] { border-color: var(--crew-color); background: color-mix(in srgb, var(--surface), var(--crew-color) 15%); }
+.jp-members i, .jp-crew-options i {
+  display: inline-block;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--crew-color);
+}
+.jp-unit-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 105px), 1fr)); gap: 6px; }
+.job-planner .jp-unit-options button { display: grid; gap: 4px; justify-items: start; padding: 6px; min-width: 0; }
+.jp-unit-options button[aria-pressed=true] { border-color: var(--accent); background: var(--accent-soft); }
+.jp-unit-options strong { display: flex; width: 100%; justify-content: space-between; font-size: 12px; }
+.jp-unit-options img { width: 60px; height: 35px; filter: brightness(0) invert(.85); }
+.jp-event {
+  border: 1px solid var(--activity-color);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface), var(--activity-color) 14%);
+}
+.jp-work-title { color: var(--activity-color); }
+.jp-members { display: grid; gap: 1px; font-size: 11px; min-width: 0; }
+.jp-members > span {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+  color: var(--crew-color, var(--muted));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.jp-scope { display: block; font-size: 10px; line-height: 1.4; color: var(--text-secondary, var(--muted)); overflow-wrap: anywhere; }
+.jp-card-content { display: flex; flex-direction: column; gap: 8px; min-width: 0; max-width: 100%; }
+.jp-calendar { min-width: 0; }
+.jp-calendar-heading { margin-bottom: 10px; flex-wrap: wrap; }
+.job-planner .jp-back-to-calendar { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 5px 11px; font-size: 12px; }
+.jp-calendar-heading > small { margin-left: auto; font-size: 10px; }
+.jp-date-picker { display: flex !important; align-items: center; gap: 8px !important; }
+.jp-scroll { --jp-calendar-min-height: 520px; min-height: var(--jp-calendar-min-height); overflow: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.jp-grid { display: grid; position: relative; min-width: 100%; width: max-content; }
+.job-planner .jp-date {
+  grid-column: span 2;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  height: 38px;
+  min-height: 38px;
+  padding: 6px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface);
+  text-align: center;
+  font-size: 12px;
+}
+.jp-period {
+  position: sticky;
+  top: 38px;
+  z-index: 4;
+  height: 26px;
+  padding: 5px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--surface);
+}
+.jp-date[data-today=true], .jp-period[data-today=true] { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.jp-track { grid-column: 1 / -1; display: grid; align-content: start; min-height: calc(var(--jp-calendar-min-height) - 72px); position: relative; }
+.job-planner .jp-cell {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+}
+.jp-cell[data-today=true] { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+.jp-track[data-mode=day] .jp-cell { border: 0; }
+.jp-track[data-mode=day] .jp-cell:nth-child(4n) { border-right: 1px solid var(--border); }
+.jp-event { position: relative; min-width: 0; margin: 4px 3px; z-index: 1; overflow: clip; }
+.jp-event[data-selected=true] { outline: 2px solid var(--activity-color); outline-offset: 1px; z-index: 2; }
+.job-planner .jp-event-body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 9px;
+  padding: 10px 8px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  text-align: left;
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+}
+.jp-event[data-selected=true] .jp-work-title { padding-right: 48px; }
+.jp-event-body .jp-card-content { position: sticky; left: 12px; width: max-content; max-width: min(240px, calc(100vw - 64px), 100%); align-self: flex-start; }
+.jp-event-body .jp-card-content:has(.jp-scope) { max-width: min(370px, calc(100vw - 64px), 100%); }
+.jp-event-actions { position: absolute; top: 4px; right: 7px; z-index: 4; display: flex; gap: 2px; }
+.job-planner .jp-event-edit { min-height: 24px; min-width: 24px; padding: 4px; display: grid; place-items: center; border: 0; background: transparent; color: var(--activity-color); }
+/* A date-and-time field needs about 216px to show "11/20/2026 05:00 PM" whole;
+   narrower than that the AM/PM is cut off, so the pair stacks instead. */
+.jp-time-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 216px), 1fr)); gap: 8px; }
+.jp-time-fields label { min-width: 0; }
+.jp-time-fields input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 36px; padding-block: 5px; }
+@supports selector(input::-webkit-calendar-picker-indicator) {
+  .jp-time-fields input[type="datetime-local"] { position: relative; padding-inline-start: 34px; }
+  .jp-time-fields input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    position: absolute; inset-inline-start: 8px; margin: 0;
+  }
+}
+
+.jp-edit-footer { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.jp-edit-footer .jp-time-fields { flex: 1 1 440px; }
+.jp-edit-actions { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; }
+.job-planner .jp-compose-footer :is(.jp-time-fields input, .jp-edit-actions button, .jp-create-actions button) {
+  box-sizing: border-box; height: 38px; min-height: 38px; padding-block: 4px;
+}
+.job-planner .jp-edit-actions button { padding-inline: 12px; font-size: 13px; }
+.jp-edit-bundle-activities { color: var(--muted); font-size: 13px; }
+.job-planner .jp-edit-heading { margin: 0 0 8px; }
+@media(max-width: 800px) {
+  .jp-calendar-heading > small { display: none; }
+}
+
+
+/* Activity-led planner: one quiet composer and an uninterrupted work board. */
+.job-planner { gap:16px; }
+.jp-members > span { color:var(--text); }
+.jp-members i { width:6px; height:6px; }
+.jp-scope { display:flex; align-items:center; gap:4px; font-size:11px; }
+.jp-event { border:1px solid color-mix(in srgb,var(--activity-color),var(--border) 55%); background:color-mix(in srgb,var(--surface),var(--activity-color) 18%); border-radius:9px; }
+.jp-event[data-selected=true] { outline-width:1px; }
+.jp-event-body .jp-card-content { gap:3px; }
+.job-planner .jp-event-body { padding:6px; }
+.jp-calendar-heading { margin:4px 0 12px; }
+.jp-calendar-heading > small { font-size:11px; }
+.jp-scroll { border-radius:12px; }
+.job-planner .jp-date { height:42px; min-height:42px; font-weight:600; }
+.jp-period { top:42px; height:28px; font-size:11px; }
+.jp-date[data-weekend=true]:not([data-today=true]) { color:var(--muted); }
+@media(max-width:800px) {
+}
+.jp-event { container-type:inline-size; }
+.jp-scope-units { display:none; align-items:center; gap:4px; }
+.jp-scope-unit { display:inline-flex; flex-direction:column; align-items:center; gap:2px; width:50px; min-width:0; }
+.jp-scope-unit > img { width:29px; height:20px; flex:none; }
+.jp-scope-unit > svg { width:19px; height:20px; flex:none; }
+.jp-scope-unit > img { filter:brightness(0) invert(.85); }
+.jp-scope-unit > span { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.jp-scope-unit[data-done=true], .jp-unit-status[data-done=true], .job-planner .jp-priority-list button[data-done=true] { color: #85ddb0; }
+.jp-scope-unit > span > svg { vertical-align: -2px; margin-inline-end: 2px; }
+.jp-scope-more { cursor:help; padding-inline:3px; }
+.jp-scope-overflow:popover-open { display:flex; gap:4px; }
+.jp-scope-overflow {
+  position:fixed; inset:auto; margin:0; padding:8px; max-width:calc(100vw - 16px); overflow-x:auto;
+  color:var(--text); background:var(--surface); border:1px solid var(--border); border-radius:8px;
+}
+.jp-scope-overflow > .jp-scope-unit { flex:0 0 50px; }
+@container (min-width:155px) {
+  .jp-scope-count { display:none; }
+  .jp-scope-units { display:flex; }
+  .jp-scope-more { display:none; }
+}
+@container (155px <= width < 265px) {
+  .jp-scope-units > .jp-scope-unit:nth-child(n+3) { display:none; }
+  .jp-scope-more:not([data-count="1"], [data-count="2"]) { display:inline; }
+}
+@container (265px <= width < 375px) {
+  .jp-scope-units > .jp-scope-unit:nth-child(n+5) { display:none; }
+  .jp-scope-more:is([data-count="5"], [data-count="6"], [data-count="7"]) { display:inline; }
+}
+@container (min-width:375px) {
+  .jp-scope-more[data-count="7"] { display:inline; }
+}
+.job-planner .jp-calendar-label {
+  display: flex; align-items: center; gap: 4px; min-width: 0;
+  font-size: 11px; font-weight: 650; line-height: 1.2;
+}
+.jp-calendar-label > svg { width: 14px; height: 14px; flex: none; }
+.jp-calendar-label > span:first-of-type { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Page scrolls vertically; the board only needs horizontal panning. */
+.job-planner { gap:10px; align-content:start; padding-top:calc(8px + var(--safe-top)); }
+.jp-calendar-heading { margin:0 0 8px; }
+.jp-scroll { overflow-anchor:none; }
+.jp-unit-stage h3 { display: flex; align-items: center; margin: 10px 0 6px; font-size: 13px; }
+.jp-unit-stage h3 span { margin-left: 4px; color: var(--muted); }
+.jp-unit-card { min-width: 0; position: relative; }
+.jp-unit-pick { position: relative; }
+.job-planner .jp-unit-pick > button:first-child { width: 100%; }
+.job-planner .jp-unit-options :is(.jp-unit-info-trigger, .jp-unit-deselect) {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 34px;
+  height: 34px;
+  min-height: 0;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.job-planner .jp-unit-options .jp-unit-info-trigger { top: auto; bottom: 0; }
+.job-planner .jp-unit-card[data-selected-unit=true] :is(.jp-unit-info-trigger, .jp-unit-deselect) { max-height: 50%; }
+@media (pointer: coarse) {
+  .job-planner .jp-unit-options :is(.jp-unit-info-trigger, .jp-unit-deselect) { width: 44px; height: 44px; }
+}
+.jp-unit-info { width: max-content; max-width: min(300px, 90vw); color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.jp-unit-info:popover-open { display: grid; gap: 4px; font-size: 13px; }
+.jp-unit-options button[data-included=true] { background: var(--accent-soft); }
+.job-planner .jp-composer {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  container-type: inline-size;
+}
+.jp-composer[hidden] { display: none; }
+.jp-compose-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.jp-draft { display: grid; gap: 8px; min-width: 0; }
+.jp-compose-tools { min-width: 0; }
+.jp-draft > :is(.jp-compose-tools, .jp-bundle-activities, .jp-compose-footer) { border-top: 1px solid var(--border); padding-top: 8px; }
+.jp-compose-fields { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 8px; align-items: end; justify-content: start; }
+.jp-compose-fields > small { grid-column: 1 / -1; }
+.job-planner .jp-schedule { min-height: 40px; background: var(--accent); color: var(--accent-contrast, #171411); border-color: var(--accent); white-space: nowrap; }
+
+.jp-floor-browser { --jp-floor-header-height: 34px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; min-height: 0; }
+.jp-floor-index {
+  display: flex; flex-direction: column; align-self: start; gap: 3px; padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 8px;
+}
+.job-planner .jp-floor-index button {
+  min-height: calc(var(--jp-floor-header-height) - 6px); min-width: 40px;
+  padding: 2px 6px; border-radius: 5px; font-size: 12px;
+}
+.jp-floor-list { max-height: 175px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+.jp-floor-list .jp-unit-stage:first-child h3 { margin-top: 0; }
+.job-planner .jp-add-unit { margin-block: 4px 8px; }
+.jp-unit-status { font-size: 10px; color: var(--muted); }
+@media (max-width: 600px) {
+  .jp-floor-list { max-height: min(21dvh, 145px); }
+}
+.job-planner .jp-floor-index button[aria-current="location"],
+.jp-unit-stage[data-current-floor=true] > h3 {
+  color: var(--text);
+  background: var(--surface-raised, var(--border));
+  border-color: var(--muted);
+  font-weight: 650;
+}
+.jp-unit-stage > h3 { box-sizing: border-box; min-height: var(--jp-floor-header-height); padding: 4px 6px; border-radius: 5px; }
+
+
+.jp-compose-tools { --jp-unit-row-height: 64px; --jp-unit-row-gap: 5px; }
+.jp-compose-tools .jp-floor-list {
+  max-height: calc(var(--jp-floor-header-height) + 3 * var(--jp-unit-row-height) + 3 * var(--jp-unit-row-gap));
+}
+.jp-compose-tools .jp-unit-options { grid-template-columns: repeat(auto-fill, minmax(min(100%, 112px), 1fr)); gap: var(--jp-unit-row-gap); }
+.job-planner .jp-compose-tools .jp-unit-pick > button:first-child {
+  grid-template-columns: minmax(0, 44%) minmax(0, 1fr);
+  align-items: stretch; justify-items: stretch; gap: 0;
+  padding: 0; overflow: hidden;
+  min-height: var(--jp-unit-row-height);
+  height: 100%;
+}
+.jp-compose-tools .jp-unit-card { display: grid; }
+.jp-compose-tools :is(.jp-floor-list, .jp-priority-list) {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 50%, transparent) transparent;
+}
+
+
+.job-planner .jp-close-composer { flex: none; display: grid; place-items: center; width: 36px; min-height: 36px; padding: 0; margin-inline-start: auto; }
+.job-planner .jp-unit-card[data-active-unit=true] .jp-unit-pick > button:first-child {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.jp-unit-visual {
+  display: grid; place-items: center; min-width: 0; padding: 3px;
+  background: color-mix(in srgb, var(--surface), transparent 70%);
+  border-inline-end: 1px solid color-mix(in srgb, var(--border), transparent 45%);
+}
+.jp-unit-visual > :is(img, svg) { width: min(100%, 40px); height: 38px; }
+.jp-unit-visual > svg { width: min(100%, 33px); height: 33px; color: var(--muted); }
+.jp-unit-caption {
+  display: grid; grid-template-rows: auto 1fr auto; gap: 2px; min-width: 0;
+  align-items: center; padding: 3px 4px 4px 5px; text-align: start;
+}
+.jp-unit-caption > strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jp-unit-card[data-selected-unit=true] .jp-unit-caption > strong { padding-inline-end: 15px; }
+.jp-unit-caption > .jp-unit-status {
+  grid-row: 3; padding-inline-end: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.jp-unit-status[data-done=false] { color: #72b7ff; }
+.jp-unit-member-summary { display: flex; align-items: center; gap: 3px; min-width: 0; font-size: 10px; line-height: 1.1; }
+.jp-unit-member-summary > span { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+.jp-unit-member-summary > span:not(:has(svg)) { display: block; overflow: hidden; text-overflow: ellipsis; font-weight: 650; }
+.jp-unit-member-summary > span:has(svg) { flex: none; color: var(--muted); }
+.jp-priority { display:flex; align-items:center; gap:5px; margin-bottom:8px; min-width:0; font-size:12px; }
+.jp-priority-list { --jp-priority-row-height:30px; --jp-priority-gap:4px; position:relative; display:flex; flex-wrap:wrap; align-content:start; gap:var(--jp-priority-gap); max-height:calc(2.5 * var(--jp-priority-row-height) + 2 * var(--jp-priority-gap)); overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; flex:1; min-width:0; }
+.job-planner .jp-priority button { display:inline-flex; align-items:center; gap:4px; flex:none; height:var(--jp-priority-row-height); min-height:var(--jp-priority-row-height); padding:3px 7px; white-space:nowrap; }
+.job-planner .jp-priority-list button[aria-pressed=true] { border-color:var(--accent); }
+.jp-priority-list small { color:var(--muted); }
+.jp-unit-assign {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px;
+  margin-top: 6px; padding: 4px 0; font-size: 12px;
+}
+.job-planner .jp-unit-card[data-selected-unit=true][data-assigned=false] .jp-unit-pick > button:first-child {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--surface), var(--accent) 8%);
+}
+.job-planner .jp-unit-assign > .jp-unit-role {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-height: 38px; min-width: 110px; max-width: 100%; padding: 5px 9px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface);
+  text-align: start; font-size: 12px;
+}
+.jp-unit-role > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jp-unit-role > svg { flex: none; color: var(--muted); }
+@media (pointer: coarse) { .job-planner .jp-unit-assign > .jp-unit-role { min-height: 44px; } }
+.jp-unit-crew-popover { position:fixed; inset:auto; margin:0; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--surface); padding: 8px 12px; max-width:calc(100vw - 16px); }
+.jp-unit-crew-popover:popover-open { display: grid; gap: 4px; max-height: 55dvh; overflow: auto; }
+.job-planner .jp-unit-crew-popover label { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+.job-planner .jp-unit-crew-popover input { width: auto; min-height: 0; }
+
+.jp-compose-selection { position: relative; flex: 0 1 380px; min-width: 0; }
+.job-planner .jp-activity-trigger {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px;
+  padding: 7px 10px; text-align: start;
+}
+.jp-activity-trigger > span:first-child { flex: 1; min-width: 0; }
+.jp-activity-trigger > svg, .jp-draft-counts { flex: none; }
+.jp-draft-counts, .jp-draft-counts > span { display: inline-flex; align-items: center; gap: 4px; }
+.jp-draft-counts { gap: 8px; color: var(--muted); font-size: 12px; }
+.jp-activity-menu { width: min(360px, calc(100vw - 16px)); box-sizing: border-box; padding: 8px; }
+.jp-activity-menu:popover-open { display: block; max-height: min(390px, 55dvh); overflow-y: auto; overscroll-behavior: contain; }
+.jp-activity-menu section + section { border-top: 1px solid var(--border); margin-top: 4px; }
+.jp-activity-menu h3 { margin: 6px 8px 3px; font-size: 11px; color: var(--muted); }
+.job-planner .jp-activity-menu button {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px;
+  padding: 5px 8px; text-align: start; border-color: transparent; background: transparent;
+}
+.jp-activity-menu button > span { flex: 1; }
+.jp-activity-menu button > svg { flex: none; width: 16px; height: 16px; }
+.job-planner .jp-activity-menu button:is(:hover, :focus-visible, [aria-pressed=true]) { background: var(--accent-soft); }
+.job-planner .jp-compose-tools .jp-unit-options :is(.jp-unit-info-trigger, .jp-unit-deselect) { width: 21px; height: 22px; }
+@container (max-width: 460px) {
+  .jp-compose-tools .jp-unit-options { grid-template-columns: repeat(auto-fill, minmax(min(100%, 124px), 1fr)); }
+  .job-planner .jp-compose-tools .jp-unit-pick > button:first-child {
+    grid-template-columns: minmax(0, 34%) minmax(0, 1fr);
+  }
+}
+@media (pointer: coarse) {
+  .job-planner .jp-compose-tools .jp-unit-options :is(.jp-unit-info-trigger, .jp-unit-deselect) { width: 28px; height: 28px; }
+  .jp-unit-card[data-selected-unit=true] .jp-unit-caption > strong { padding-inline-end: 21px; }
+  .jp-unit-caption > .jp-unit-status { padding-inline-end: 18px; }
+}
+.jp-create-actions { display: flex; align-items: center; gap: 8px; justify-self: end; }
+@container (max-width: 540px) {
+  .jp-compose-fields { grid-template-columns: minmax(0, 1fr); }
+  .jp-create-actions { justify-self: center; }
+  .jp-edit-footer .jp-time-fields, .jp-edit-actions { flex-basis: 100%; }
+  .jp-edit-actions { justify-content: center; }
+}
+@container (max-width: 440px) {
+  .jp-time-fields { grid-template-columns: minmax(0, 1fr); }
+}
+
+.job-planner .jp-priority-list button[data-priority-unit] { cursor: grab; touch-action: pan-y; user-select: none; }
+.jp-priority-list:has([data-dragging=true]) button { transition: transform 120ms ease-out; }
+.jp-priority-list button[data-dragging=true] { opacity: .8; cursor: grabbing; z-index: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .jp-priority-list:has([data-dragging=true]) button { transition: none; }
+}
+.jp-priority-list button[data-drop-position] { position: relative; }
+.jp-priority-list button[data-drop-position]::after {
+  content: "";
+  position: absolute;
+  inset-block: 2px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.jp-priority-list button[data-drop-position=before]::after { left: 1px; }
+.jp-priority-list button[data-drop-position=after]::after { right: 1px; }
+.job-planner .jp-unit-card[data-done=true] .jp-unit-pick > button:first-child {
+  border-color: #589478;
+  background: color-mix(in srgb, var(--surface), #85ddb0 12%);
+}
+.jp-unit-stage h3 .jp-floor-done { display: inline-flex; align-items: center; gap: 3px; margin-inline-start: 8px; color: inherit; }
+
+.jp-event[data-moving=true] { opacity: .45; }
+.jp-resize { position: absolute; top: 0; bottom: 0; width: 7px; z-index: 3; cursor: ew-resize; touch-action: none; }
+.jp-resize-start { left: 0; }
+.jp-resize-end { right: 0; }
+.jp-resize:hover { background: var(--activity-color); opacity: .6; }
+.jp-drop-preview { margin: 6px 3px; padding: 10px; border: 1px dashed var(--activity-color); background: color-mix(in srgb, var(--surface), var(--activity-color) 22%); border-radius: 8px; color: var(--activity-color); z-index: 3; pointer-events: none; font-size: 12px; }
+
+
+
+
+.jp-build-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.job-planner .jp-build-choice > button { flex: 0 0 96px; }
+.jp-build-choice h2, .jp-unit-builder-heading h2 { margin: 0; font-size: 14px; }
+.jp-unit-builder-heading { justify-content: space-between; }
+.jp-bundle-activities { display: grid; gap: 8px; }
+.jp-bundle-activities strong small { margin-inline-start: 6px; font-weight: normal; }
+.jp-bundle-activities > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.job-planner .jp-bundle-activities button { display: inline-flex; align-items: center; gap: 4px; min-height: 29px; padding: 3px 6px; font-size: 12px; }
+.jp-bundle-activities button > svg { width: 14px; height: 14px; flex: none; }
+@media (pointer: coarse) { .job-planner .jp-bundle-activities button { min-height: 36px; } }
+.job-planner .jp-bundle-activities button[aria-pressed=true] { border-color: var(--accent); background: var(--accent-soft); }
+.job-planner .jp-select-floor { display: inline-flex; align-items: center; gap: 4px; min-height: 26px; margin-inline-start: auto; padding: 2px 6px; font-size: 11px; white-space: nowrap; }
+
+.jp-title-overflow { position: fixed; inset: auto; margin: 0; padding: 6px 9px; max-width: calc(100vw - 16px);
+  pointer-events: none; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+.job-planner .jp-job-context { color: var(--muted); font-size: 13px; }
+.jp-job-context strong { color: var(--text); }
+.jp-stage-arrow { margin-inline: 4px; }
+
+.jp-assignment-notice { display: block; color: var(--muted); font-size: 11px; }
+.jp-bundled-event {
+  --jp-stack-step: 7px; --jp-stack-summary-height: 0px;
+  --jp-stack-chrome: color-mix(in srgb, var(--surface), var(--muted) 12%);
+  border: 1px solid var(--border); background: var(--jp-stack-chrome); overflow: visible;
+}
+.jp-bundled-event[data-stack-open=true] { --jp-stack-step: 28px; }
+.jp-bundled-event[data-stack-selected=true] { --jp-stack-summary-height: 28px; }
+.jp-stack-layer {
+  position: absolute; inset-inline: 2px;
+  top: calc(1px + var(--jp-stack-summary-height) + var(--jp-layer-depth) * var(--jp-stack-step));
+  bottom: 2px;
+  border: 1px solid color-mix(in srgb, var(--activity-color), var(--border) 55%);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface), var(--activity-color) 25%);
+  color: var(--activity-color);
+  box-shadow: 0 -2px 4px rgb(0 0 0 / 22%);
+}
+.jp-stack-layer[data-front=true] {
+  background: color-mix(in srgb, var(--surface), var(--activity-color) 18%);
+}
+.jp-bundled-event[data-stack-open=false] .jp-stack-layer[data-front=false] .jp-stack-header { opacity: 0; }
+.jp-stack-header { display: flex; align-items: center; min-height: 26px; }
+.job-planner .jp-stack-title, .job-planner .jp-stack-edit {
+  display: flex; align-items: center; gap: 5px; min-height: 26px; padding: 2px 5px;
+  border: 0; background: transparent; color: inherit; text-align: start;
+}
+.job-planner .jp-stack-title { flex: 1; }
+.job-planner .jp-stack-edit { flex: none; }
+.job-planner .jp-stack-body { height: auto; min-height: 24px; padding: 3px 7px 4px; cursor: default; }
+.jp-stack-actions { display: none; flex: none; align-items: center; gap: 2px; padding-inline: 2px 7px; }
+.jp-stack-layer[data-activity-selected=true] .jp-stack-actions,
+.jp-stack-layer:has(:focus-visible) .jp-stack-actions { display: flex; }
+
+@media (hover: hover) {
+  .jp-bundled-event:has(.jp-stack-layer:hover) .jp-stack-layer:not(:hover, :has(:focus-visible)) .jp-stack-actions { display: none; }
+  .jp-stack-layer:hover .jp-stack-actions { display: flex; }
+}
+.job-planner .jp-stack-actions .jp-stack-edit { min-width: 22px; justify-content: center; }
+.job-planner .jp-stack-title { cursor: grab; touch-action: pan-y; }
+
+.jp-bundled-event > .jp-resize { z-index: calc(var(--jp-stack-depth) + 2); }
+.jp-bundled-event > .jp-resize:hover, .jp-bundled-event[data-moving=true] > .jp-resize:hover {
+  background: var(--jp-stack-chrome); opacity: 1;
+}
+@media (pointer: coarse) { .jp-bundled-event > .jp-resize { width: 11px; } }
+
+@media (hover: hover) {
+  .jp-event:not(.jp-bundled-event):hover {
+    border-color: color-mix(in srgb, var(--activity-color), var(--border) 25%);
+    background: color-mix(in srgb, var(--surface), var(--activity-color) 27%);
+  }
+}
+
+.jp-stack-summary {
+  position: absolute; inset: 0 0 auto; display: flex; align-items: center; gap: 2px;
+  height: var(--jp-stack-summary-height); padding-inline: 4px; color: var(--text-secondary);
+  background: var(--jp-stack-chrome); border-radius: 6px 6px 2px 2px;
+}
+.job-planner .jp-stack-summary .jp-stack-drag {
+  display: flex; flex: 1; align-items: center; justify-content: flex-start; min-width: 0; gap: 3px;
+  border: 0; background: transparent; color: inherit; min-height: 26px; cursor: grab; touch-action: pan-y;
+}
+.jp-stack-drag > svg { flex: none; }
+.jp-stack-drag > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.jp-drop-preview[data-joins-bundle=true] { z-index: 6; border-style: solid; }
+
+.job-planner .jp-stack-summary button { justify-content: center; min-width: 21px; padding-inline: 3px; }
+.job-planner .jp-stack-summary button:hover { color: var(--text); }
+
+.jp-unit-table-actions { margin-top: 6px; }
+.job-planner .jp-unit-table-actions button {
+  display: flex; justify-content: center; align-items: center; gap: 6px;
+  width: 100%; min-height: 32px; padding: 4px 10px; font-size: 12px;
+  background: var(--surface); color: var(--text-secondary);
+}
+.jp-unit-table-actions button[aria-expanded=true] > svg { transform: rotate(180deg); }
+@media (pointer: coarse) { .job-planner .jp-unit-table-actions button { min-height: 44px; } }
+
+/* Fingers, not a mouse: the compact floor jumps, "Select all" and stacked card
+   titles were 26-28px tall, under the 44px a thumb needs (phone pass, 2026-11-20). */
+@media (pointer: coarse) {
+  .job-planner .jp-floor-index button,
+  .job-planner .jp-select-floor,
+  .job-planner .jp-stack-title { min-height: 44px; }
+}
+
+/* A phone fits one unit to a row in the Plan's picker, so three rows showed
+   three units. Six rows keeps picking workable there (phone pass, 2026-11-20). */
+@media (max-width: 600px) {
+  .jp-compose-tools .jp-floor-list {
+    max-height: calc(var(--jp-floor-header-height) + 6 * var(--jp-unit-row-height) + 6 * var(--jp-unit-row-gap));
+  }
+}
+
+/* Two units to a row on a phone, in the Plan's picker as in Workday (Matt,
+   2026-11-20). The picture gives up width so the number and status still fit. */
+@media (max-width: 600px) {
+  .jp-compose-tools .jp-unit-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .job-planner .jp-compose-tools .jp-unit-pick > button:first-child { grid-template-columns: minmax(0, 34%) minmax(0, 1fr); }
+}

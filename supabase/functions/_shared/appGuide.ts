@@ -136,6 +136,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "In the new design, follow a job's recorded payroll back to original activity evidence, see classified/unknown/conflicted coverage and unit-area exclusions. General overhead stays separate. Classic keeps the existing reports here; the new design keeps those reports under Summary. Historical breaks, unverified dimensions and unaccepted final QC are disclosed rather than guessed.",
   },
   {
+    path: "/activities",
+    label: "Recent Activities",
+    minRole: "foreman",
+    blurb:
+      "Review the crew's recorded work activities by day: who did what, on which job and unit, for how long, with machinery time marked. Filter by pay period, job, activity or person. Open a row to correct its times, outcome or notes with a reason, and to see its correction history. Corrections change the recorded activity only, not the timecard.",
+  },
+  {
     path: "/summary",
     label: "Summary",
     minRole: "supervisor",

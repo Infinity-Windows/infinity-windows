@@ -1,0 +1,79 @@
+/* Use the app's Steel tokens; never paint an independent light pilot theme
+   inside the redesigned shell. Classic and isolated mockups keep their CSS. */
+@scope (html[data-design="new"] .native-installer-day) {
+  :scope { background: transparent; color: var(--text); font-family: var(--font-body); padding-top: 18px; }
+  :scope :is(h1,h2,strong,button,input,select,textarea) { font-family: var(--font-body); letter-spacing: normal; text-transform: none; }
+  .pilot-review-bar { border-color: var(--border); font-size: 13px; padding-bottom: 16px; }
+  a { color: var(--accent); }
+  .installer-task-board { background: var(--card); border-color: var(--border); border-radius: 14px; margin-top: 18px; }
+  :is(.itb-groups,.itb-group-heading) { background: var(--card); border-color: var(--border); }
+  :is(.itb-general-sidebar,.itb-check-row,.native-day-assign) { border-color: var(--border); }
+  :is(.itb-tile,.itb-general-item) { background: var(--surface); border-color: var(--border); color: var(--text); }
+  :is(.itb-tile[aria-pressed=true],.itb-general-item[data-active=true]) { background: var(--accent-soft); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  :is(.itb-meta,.itb-clock span,.itb-group-heading>span,.itb-save-status,.itb-expand small) { color: var(--muted); }
+  :is(.itb-general-item>span,.itb-timing strong) { color: var(--text); font-variant-numeric: tabular-nums; }
+  button { background: var(--card-raised); color: var(--text); border-color: var(--border); box-shadow: none; }
+  button:disabled { opacity: .55; }
+  .itb-primary { background: var(--steel-button); color: var(--primary-foreground); border-color: var(--accent); box-shadow: var(--steel-button-shadow); }
+  :is(input:not([type=checkbox]),select,textarea) { background: var(--surface); color: var(--text); border-color: var(--border); color-scheme: dark; }
+  input[type=checkbox] { accent-color: var(--accent); }
+  :is(.itb-status,.itb-review-note) { background: var(--accent-soft); color: var(--text-secondary); border: 1px solid var(--accent-line); }
+  .itb-error { background: #3b2025; color: var(--danger); border: 1px solid var(--danger); }
+  :is(.itb-drag,.itb-tile>svg,.itb-general-icon,.itb-time-icon) { color: var(--muted); }
+  .itb-active-dot { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .itb-tile img { filter: brightness(0) invert(.85); }
+  .itb-upload { border-color: var(--border); }
+  .itb-general-list,.itb-groups { scrollbar-color: var(--border) var(--surface); scrollbar-width: thin; }
+}
+
+@scope (html[data-design="new"] .native-installer-day) {
+  .itb-general-list { gap: 6px; }
+  .itb-general-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    gap: 2px 4px;
+    padding: 5px 6px;
+    align-items: center;
+  }
+  .itb-general-item > span { grid-area: 2 / 1; font-size: 12px; }
+  .itb-general-item > button {
+    grid-area: 1 / 2 / span 2;
+    width: 36px;
+    min-height: 36px;
+    margin: 0;
+    padding: 0;
+  }
+  .native-day-activity-fields { display:grid; gap:10px; margin:16px 0; border:1px solid var(--line,#39434b); border-radius:10px; padding:14px; }
+  .native-day-activity-fields .native-day-field-row {
+    display: grid;
+    grid-template-columns: clamp(5rem, 16%, 7rem) minmax(0, 1fr);
+    gap: 6px 12px;
+    align-items: center;
+  }
+  .native-day-field-row > :is(input, textarea) { width: 100%; min-width: 0; margin: 0; }
+  .native-day-field-row.native-day-notes { align-items: start; }
+  .native-day-notes > textarea { grid-area: 1 / 2 / span 2; }
+  .native-day-notes > .dictation-controls { display: contents; }
+  .native-day-notes .dictation-buttons { grid-area: 2 / 1; }
+  .native-day-notes :is(.dictation-message, .dictation-overflow) { grid-column: 2; }
+  .native-day-activity-fields input[type=checkbox] { width:18px; height:18px; min-height:0; margin:0; flex:none; }
+  .itb-unit-pane > .itb-group { margin-bottom:18px; }
+}
+.native-day-unit-details {
+  position: fixed;
+  z-index: 20;
+  inset-inline-end: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  width: min(380px, calc(100% - 32px));
+  max-height: min(420px, 48dvh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 14px;
+  border: 1px solid var(--border, #dce0d6);
+  border-radius: 12px;
+  background: var(--card, #fcfcf8);
+  box-shadow: 0 8px 24px #0005;
+}
+.native-day-unit-details-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.native-day-unit-details-header h2 { font-size: 16px; margin: 0; }
+.native-installer-day .native-day-unit-details-header button { display: grid; place-items: center; flex: none; min-height: 32px; padding: 6px; }

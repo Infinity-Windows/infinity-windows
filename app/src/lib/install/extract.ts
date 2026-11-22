@@ -925,9 +925,8 @@ export function planDraftPersistence(
     });
   }
 
-  const protectedCodes = new Set(
-    survivors.filter(isProtected).map((o) => o.opening_code),
-  );
+  // Every surviving row and every accepted draft reserves its exact job code.
+  const usedCodes = new Set(survivors.map((o) => o.opening_code));
   // Base marks already owned by a surviving opening from the OTHER slot — we
   // won't duplicate the same physical opening across both plansets.
   const otherKindMarks = new Set(
@@ -952,12 +951,13 @@ export function planDraftPersistence(
       continue;
     }
     if (
-      protectedCodes.has(d.opening_code) ||
+      usedCodes.has(d.opening_code) ||
       otherKindMarks.has(markBase(d.opening_code))
     ) {
       skipped += 1;
       continue;
     }
+    usedCodes.add(d.opening_code);
     // Vision-first law (point 6 above): a specs draft's own page_number is
     // whatever page of the SPEC SHEET the mark was read from, and — however
     // it might have picked one up — never a real plan pin either. Neither

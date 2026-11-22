@@ -18,6 +18,7 @@ import {
   normalizeDesign,
   readCachedDesign,
   resolveDesign,
+  restingDesign,
   writeCachedDesign,
   type UiDesign,
 } from "./design";
@@ -40,18 +41,22 @@ export function DesignProvider({ children }: { children: ReactNode }) {
   const masterOn: boolean | null =
     settings.data == null ? null : (settings.data.new_design_r1_enabled ?? null);
 
-  const design = resolveDesign({ personChoice: choice, masterOn, cached });
+  // Local review can show the shell without changing a person's preference.
+  // Production builds always retain the existing company/person switch.
+  const localSteelPreview = import.meta.env.DEV && import.meta.env.VITE_STEEL_PREVIEW === "true";
+  const design = localSteelPreview ? "new" : resolveDesign({ personChoice: choice, masterOn, cached });
 
   // Keep the device cache equal to what actually rendered, so the next cold
   // load paints this design first. Written from the resolved answer, so a
   // master switch flipped off is cached as classic too.
   useLayoutEffect(() => {
     document.documentElement.dataset.design = design;
-    if (me.data) writeCachedDesign(design);
+    if (me.data && !localSteelPreview) writeCachedDesign(design);
     return () => {
-      delete document.documentElement.dataset.design;
+      // Never leave <html> unstamped: an unstamped page is the classic palette.
+      document.documentElement.dataset.design = restingDesign();
     };
-  }, [design, me.data]);
+  }, [design, me.data, localSteelPreview]);
 
   const setChoice = useCallback(
     (next: UiDesign) => {

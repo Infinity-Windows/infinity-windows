@@ -26,13 +26,14 @@ export const CLOCKED_OUT_EVENT = "infinity:clocked-out";
 
 export interface ClockedOutDetail {
   projectId: string | null;
+  job?: { job_code: string; name: string } | null;
 }
 
 /** Tell whoever is listening that a shift just ended on this job. */
-export function announceClockedOut(projectId: string | null): void {
+export function announceClockedOut(projectId: string | null, job?: ClockedOutDetail["job"]): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
-    new CustomEvent<ClockedOutDetail>(CLOCKED_OUT_EVENT, { detail: { projectId } }),
+    new CustomEvent<ClockedOutDetail>(CLOCKED_OUT_EVENT, { detail: { projectId, ...(job ? { job } : {}) } }),
   );
 }
 

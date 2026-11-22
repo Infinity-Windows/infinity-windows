@@ -3,6 +3,7 @@
 // password. This screen renders when the app boots from a recovery link —
 // one job, two fields, then back to the app.
 
+import { SignedOutBrand } from "./steel/SignedOutBrand";
 import { useState } from "react";
 import { formatApiError } from "../lib/errors";
 import { newPasswordProblem } from "../lib/passwordReset";
@@ -34,12 +35,7 @@ export function SetNewPassword({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="signin">
-      <div className="signin-brand">
-        <h1>FORGE</h1>
-        <div className="signin-rule">
-          <span>Windows &amp; Doors</span>
-        </div>
-      </div>
+      <SignedOutBrand />
 
       {saved ? (
         <div className="signin-done">

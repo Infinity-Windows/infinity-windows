@@ -74,6 +74,7 @@ export function MapsInteractive({ project }: { project: Project }) {
   // a view that no longer exists.
   const [mapView, setMapViewState] = useState<"flat" | "sheets">(() => {
     if (searchParams.get("mapview") === "sheets") return "sheets";
+    if (searchParams.get("mapview") === "flat") return "flat";
     try {
       const stored = localStorage.getItem("infinity.mapsView");
       if (stored === "3d") {
@@ -136,7 +137,17 @@ export function MapsInteractive({ project }: { project: Project }) {
   });
 
   // The model-bearing outline wins; the auto-extracted one is a fallback.
-  const outline = preferModelOutline(outlines.data);
+  const preferredOutline = preferModelOutline(outlines.data);
+  const [modelPage, setModelPage] = useState<number>();
+  const floorOutlines = useMemo(() => {
+    if (!preferredOutline || fitviewModel(preferredOutline.features)) return [];
+    const byPage = new Map<number, typeof preferredOutline>();
+    for (const row of outlines.data ?? []) {
+      if (row.planset_id === preferredOutline.planset_id) byPage.set(row.page_number, row);
+    }
+    return [...byPage.values()];
+  }, [outlines.data, preferredOutline]);
+  const outline = floorOutlines.find(row => row.page_number === modelPage) ?? preferredOutline;
   // Whether a supervisor has saved a Studio (3D builder) model for this job
   // — gates the "Walk the 3D model" door to the phone-friendly viewer
   // (Studio 100x #27). A DIFFERENT thing from the fitview outline model
@@ -211,16 +222,13 @@ export function MapsInteractive({ project }: { project: Project }) {
   // for them on THIS rendered model — never pinned, or pinned on a
   // different sheet. Computed here, outside the vendored renderer, then
   // carried on the job object it already understands (unplacedMarks).
-  const unplaced = useMemo(
-    () =>
-      job
-        ? unplacedScheduleMarks(
-            (scheduledMarks.data ?? []).map((m) => m.mark_code),
-            job.windows.map((w) => w.id),
-          )
-        : [],
-    [job, scheduledMarks.data],
-  );
+  const tracedPages = useMemo(() => floorOutlines.map(row => row.page_number), [floorOutlines]);
+  const unplaced = useMemo(() => {
+    const placedMarks = tracedPages.length > 1
+      ? (openings.data ?? []).filter(opening => opening.pin_x != null && opening.pin_y != null && tracedPages.includes(opening.page_number)).map(opening => opening.opening_code)
+      : job?.windows.map(window => window.id) ?? [];
+    return unplacedScheduleMarks((scheduledMarks.data ?? []).map(mark => mark.mark_code), placedMarks);
+  }, [job, openings.data, scheduledMarks.data, tracedPages]);
   const jobForRenderer = useMemo(
     () => (job ? { ...job, unplacedMarks: unplaced } : null),
     [job, unplaced],
@@ -340,6 +348,22 @@ export function MapsInteractive({ project }: { project: Project }) {
         // installer's existing sequence, same as the Sheets view.
         ...(isForemanPlus(effectiveRole)
           ? {
+              ...(import.meta.env.DEV && effectiveRole === "owner" ? {
+                onPlanOpening: (code: string) => {
+                  const mark = normalizeMarkCode(code);
+                  const matches = openingsRef.current?.filter(opening => normalizeMarkCode(opening.opening_code) === mark) ?? [];
+                  if (matches.length > 1) {
+                    pushToast("Multiple job openings match this mark. Review the opening codes before planning it.", "error");
+                    return;
+                  }
+                  const params = new URLSearchParams(matches.length ? { opening: matches[0].id } : { mark });
+                  navTimerRef.current = window.setTimeout(() => {
+                    navTimerRef.current = null;
+                    params.set("tab", "planner");
+                    navigate(`/projects/${projectId}?${params}`);
+                  }, 0);
+                },
+              } : {}),
               crew: crewForRenderer(profilesRef.current),
               // The roster as it stood at mount is only half the story. The
               // profiles query is its own request, and on a slow phone (or a
@@ -512,6 +536,11 @@ export function MapsInteractive({ project }: { project: Project }) {
       </div>
       <div className={fullscreen ? "fitview-shell fitview-fullscreen" : "fitview-shell"}>
         <div className="fitview-toolbar">
+          {floorOutlines.length > 1 && (
+            <label>Model floor <select value={outline.page_number} onChange={event => setModelPage(Number(event.target.value))}>
+              {floorOutlines.map(row => <option key={row.page_number} value={row.page_number}>Floor {row.page_number}</option>)}
+            </select></label>
+          )}
           {!mountFailed && job && job.windows.length === 0 && (
             <p className="muted" style={{ margin: 0, flex: 1 }}>
               The outline is traced, but no openings are pinned on sheet{" "}

@@ -1,0 +1,101 @@
+2026-10-24 — automatic refresh replaces the manual-only policy below
+
+Removed the shared Refresh report banner. Report snapshots revalidate when stale
+(5 minutes) on mount, focus and reconnect. Inactive comparison observers stay
+disabled; compatible owner/job/date scopes share private memory caches.
+
+Clocked labor uses useReportShifts: initial authoritative scoped snapshot, then
+30-second recent-window replacement (last 2 days within selected dates) plus
+older unfinished punches fetched by ID in batches of 100. Successful complete
+polls replace covered rows, catching recent voids/removals as well as inserts.
+Failed/cancelled batches do not commit partial results; a newer snapshot wins.
+Recent updates preserve the authoritative snapshot timestamp.
+
+Finite ranges up to 45 days reconcile every 5 minutes. Larger/all-history ranges
+have no full-history timer; old closed corrections require stale revalidation on
+return/focus/reconnect or the existing ledger refresh action. No universal change
+cursor has been verified, so this does not claim arbitrary old edits are immediate.
+Other report readers regain automatic stale revalidation, not frequent broad polls.
+
+Next backend investigation: a verified change cursor covering edits, deletes,
+voids and job reassignment, or invalidation events followed by scoped reads.
+No schema change or production operation was made for this implementation.
+
+Earlier notes (manual-only policy superseded):
+
+DATA COMPARISON QUERY LIFECYCLE — October 23, 2026
+Local runtime: launch from repo/app with VITE_STEEL_PREVIEW=true and
+node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5174 --strictPort.
+Without that existing DEV-only flag, the saved design preference can route /data
+to Classic DataHub and hide the synthesis comparison tabs. Do not change live
+profile/company preferences just to review Steel locally.
+
+Local matt/forge-synthesis work. No push, deployment, migration execution,
+production data changes, or live reporting queries during this change.
+
+Owner comparison only
+- Current and Proposed retain their mounted controls but all report queries
+  receive an active flag. Hidden views do not fetch on focus/reconnect/timers.
+- Evidence mounts only while selected; leaving it invokes its existing private
+  cancellation/disposal. Its controls reset on return. Pilot remains sample data.
+- Comparison queries use a private dataReview/sign-in-generation namespace,
+  registered offline:false. Disposal cancels/removes this owner's report cache.
+- Compatible project and shift queries share factories/keys across Current,
+  its hours ledger, and Proposed. Job order is canonicalized; distinct dates,
+  jobs, readers, or viewer generations do not share incompatible results.
+- No changes to the default polling/cache behavior of other DataHub/ledger or
+  estimating consumers. Current's company-wide estimating reference cohort and
+  original lifetime unit evidence keep their original meanings; they are manual
+  reads in the owner comparison, not date-filtered clock totals.
+
+Scope and load
+- Proposed starts with the past month instead of all history. All-time remains
+  an explicit choice. Jobs/dates are sent to shift/custom/historical readers.
+- Clock shifts use clock-in bounds, preserving the existing allocation basis.
+  Activity readers select overlapping intervals, then existing projections clip
+  durations. Empty job selections do not query these sources.
+- Unit facts use one paginated request sequence for selected jobs represented in
+  scoped activity evidence. Whole-job custom facts retain sibling conflict
+  checks; opening/spec lookup is limited to openings referenced by timed rows.
+- Relative weeks request at most one first finished shift per represented job
+  (including unassigned labor) when that axis is selected. A failed origin read
+  does not silently re-anchor to the date window. Relative week is not phase.
+- Current's owner hours ledger starts in the pay period. Its original all-time
+  choice remains available. Current's six-reader job bundles run one job at a
+  time. Cancellation stops the queue before the next job; legacy requests already
+  sent may finish. Supported scoped readers receive AbortSignals on every page.
+
+Refresh
+- Saved history has no timer, focus, reconnect, or mount revalidation. Selecting
+  a new uncached scope reads it once; cached scopes remain until explicit refresh.
+- Refresh report invalidates this owner's comparison queries and reloads active
+  enabled reads. Inactive scopes become stale for the next activation. The
+  clock's local running-hours display still ticks from the last loaded shifts;
+  this timer does not fetch data and stops while Proposed is hidden.
+
+Calendar and daily view update
+- Added This week / Last week (Monday–Sunday) and This month / Last month.
+  Week presets choose Daily; month presets choose Weekly. Rolling ranges remain.
+- Daily and Weekly reuse the same scoped shift cache. Daily keeps every selected
+  Denver day and each selected job column, including days with no finished shifts.
+  Future days display unavailable; a current day is marked partial. Shifts stay
+  allocated to their clock-in day; payroll duration is not guessed across days.
+- Daily drill-down uses one local calendar day, including 23/25-hour DST days.
+- 67 reporting tests passed, including preset transitions, empty job-days,
+  identity/record conservation, and a 23-hour daily drill-down. Mobile page width
+  was checked with two jobs, seven days, and fourteen job columns.
+
+Validation
+- 295 tests passed across 41 reporting, timeclock, custom-work, estimate, query
+  registry, and offline-cache suites. New tests use mocked records/readers.
+- TypeScript noEmit passed. Targeted lint passed with four existing DataHub
+  useMemo dependency warnings. git diff --check passed.
+- No new Vite runtime or browser session started. Browser layout/live database
+  performance were not measured. No pilot records used as real evidence.
+
+Incident review files and the related daily-log/schedule conflict changes remain
+separate and untouched by this reporting work.
+At the final check, independent work had moved the incident review into
+projects/forge/fix-save-conflicts on matt/fix-save-conflicts, with migration
+20261130000000_nonretryable_save_conflicts.sql. That checkout was only inspected
+read-only here; the original incident paths are no longer in synthesis.

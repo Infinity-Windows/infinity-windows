@@ -1,3 +1,4 @@
+import { buildWorkdayLogDraft } from "../../lib/workdayLogDraft";
 // The daily log filing dialog (wave L, L3; extended 2026-10-01 for Horizon
 // parity / window-stage progress). Both entry points — the job page's Logs
 // tab (DailyLogsTab.tsx) and the cross-job Daily Logs page — mount this same
@@ -171,12 +172,14 @@ export function DailyLogDialog({
   jobLabel,
   onClose,
   onSaved,
+  clockOut = false,
 }: {
   projectId: string;
   logDate: string;
   jobLabel: string;
   onClose: () => void;
   onSaved?: (log: DailyLog) => void;
+  clockOut?: boolean;
 }) {
   const t = useT();
   const reviewedConflict=useRef<string|null>(null);
@@ -192,11 +195,14 @@ export function DailyLogDialog({
     queryFn: () => getDailyLog(projectId, logDate),
   });
   const draft = useQuery({
-    queryKey: ["dailyLogDraft", projectId, logDate, ownerId],
-    queryFn: () => buildDraftForJobDay(projectId, logDate),
+    queryKey: ["dailyLogDraft", projectId, logDate, ownerId, ...(clockOut ? ["workday"] : [])],
+    queryFn: () => clockOut && ownerId
+      ? buildWorkdayLogDraft(queryClient, projectId, logDate, ownerId)
+      : buildDraftForJobDay(projectId, logDate),
     // No point building a draft for a day that's already filed — editing an
     // existing log shows what was actually saved, not a recomputed guess.
-    enabled: existing.isSuccess && existing.data == null,
+    enabled: !existing.data && (existing.isSuccess || (clockOut && !!ownerId && (!navigator.onLine || existing.isError))),
+    ...(clockOut ? { networkMode: "always" as const } : {}),
   });
   // Earlier logs on this SAME job, for "was N%" stage captions — a stage
   // worked Monday and again Thursday must show Monday's cumulative reading,
@@ -415,14 +421,14 @@ export function DailyLogDialog({
       setFields(next);
       setBaseRevision(d.revision ?? null);
       setSeeded(true);
-    } else if (existing.isSuccess && existing.data == null && draft.data) {
+    } else if ((existing.isSuccess || clockOut) && existing.data == null && draft.data) {
       const next = { ...latestFields.current, headline: /^0 units installed.*0 crew/.test(draft.data.headline) ? "" : draft.data.headline, notes: draft.data.notesDraft };
       latestFields.current = next;
       setFields(next);
-      setBaseRevision(0);
+      setBaseRevision(existing.isSuccess ? 0 : null);
       setSeeded(true);
     }
-  }, [seeded, pending, existing.data, existing.isSuccess, draft.data]);
+  }, [seeded, pending, existing.data, existing.isSuccess, draft.data, clockOut]);
 
   const save = useMutation({
     mutationFn: (request: { ownerId: string; mark: SignInMark; fields: ManualDailyLogFields; revision: number | null; reviewedConflict: string|null }) => {

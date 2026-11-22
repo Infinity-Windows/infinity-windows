@@ -5,6 +5,6 @@ import { lazyOptional } from "../../lib/pwa/lazyOptional";
 // it and keeps working; it used to take the whole app down (crash report 8WEYC,
 // 2026-09-22 — see lib/pwa/lazyOptional.tsx).
 const DictationButton = lazyOptional(() => import("./DictationButton").then(module => ({default:module.DictationButton})));
-export function VoiceControl({fieldRef}: {fieldRef:RefObject<HTMLInputElement | HTMLTextAreaElement | null>}) {
-  return <Suspense fallback={null}><DictationButton fieldRef={fieldRef} /></Suspense>;
+export function VoiceControl({fieldRef, compact}: {fieldRef:RefObject<HTMLInputElement | HTMLTextAreaElement | null>; compact?: boolean}) {
+  return <Suspense fallback={null}><DictationButton fieldRef={fieldRef} compact={compact} /></Suspense>;
 }

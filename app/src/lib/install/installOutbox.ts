@@ -1,3 +1,4 @@
+import { queueCoordinator, registerInstallLane } from "../offline/queueRuntime";
 // Offline install outbox: persist the full install intent (RPC args + media
 // blobs + points) in IndexedDB BEFORE touching the network, then flush in
 // ordered, idempotent steps. Crews in dead zones no longer lose installs.
@@ -16,9 +17,9 @@ import {
   isRetryableError,
   MAX_ATTEMPTS,
 } from "../offline/outbox-core";
-import { drain, enqueueUpload, listAll } from "../offline/outbox";
+import { enqueueUpload, listAll } from "../offline/outbox";
 import { stableId } from "../offline/stableId";
-import { signedInEmail, signedInUserId, stillSignedInAs, subscribeSignedIn, type SignInMark } from "../signedIn";
+import { signedInEmail, signedInUserId, signInMark, stillSignedInAs, type SignInMark } from "../signedIn";
 import type { Ownership, Signer } from "../offline/entryOwner";
 import { submitInstallEvent, type InstallSendAs, type SubmitInstallParams } from "./api";
 import { clientWithToken, supabase } from "../supabase";
@@ -489,8 +490,8 @@ export async function enqueueInstall(
  *
  * `ownerId`, written at Submit since #660, decides. A record saved before
  * installs carried it goes by the one name it does carry, the submitter's
- * email. A record naming nobody is `unknown`: never sent as anyone, and only
- * a person throwing it away clears it.
+ * email. A record naming nobody is `unknown`: retained for recovery, never
+ * sent or removed through owner-only manual actions.
  */
 export function installOwnership(record: InstallOutboxRecord, signer: Signer): Ownership {
   const owner = record.payload.ownerId;
@@ -535,25 +536,6 @@ async function installSender(record: InstallOutboxRecord): Promise<InstallSendAs
 }
 
 /**
- * The tail of the chain of flushes. Every call to `flushInstallOutbox` links
- * onto it, so two flushes never walk the store at the same time AND a caller
- * always gets a pass of its own.
- *
- * It used to be a boolean: a flush that arrived while one was running
- * returned `failedNow: []` on the spot, having attempted nothing. The 30s
- * background flush (initInstallOutboxAutoFlush) means that is not a rare window —
- * tap Submit while one is in flight and the sheet was told "queued", showed
- * "saved on this device", and the refusal that was coming landed in the next
- * background pass, which throws its refusals away. That is the exact bug this
- * branch exists to kill, reintroduced through the back door (review,
- * 2026-09-02). Waiting costs a person a second; not waiting costs them the
- * answer.
- */
-let flushChain: Promise<void> = Promise.resolve();
-/** Flushes asked for and not yet finished — running or waiting their turn. */
-let flushesInFlight = 0;
-
-/**
  * Refusals nobody has collected yet, keyed by outbox record id.
  *
  * A verdict belongs to the person who tapped Submit, but the pass that finds
@@ -594,12 +576,11 @@ export interface InstallFlushResult {
   synced: number;
   remaining: number;
   /**
-   * Refusals from THIS pass, first attempt only. A list because a flush walks
-   * every stored record and IndexedDB hands them back in key order, so the
-   * one that just failed is not necessarily the one the caller enqueued.
+   * First-attempt refusals observed during this coordinated flush request.
+   * Multiple callers may share turns; match the record id, not array order.
    *
    * A submitter reads its own verdict through `claimRefusal` instead, which
-   * survives the pass boundary; this list is what one pass saw.
+   * survives the turn boundary; this list covers turns this request observed.
    */
   failedNow: InstallRefusal[];
 }
@@ -609,30 +590,26 @@ export interface InstallFlushResult {
  * Each step is marked complete before the next so a retry never re-runs a
  * finished stage. Media then rides the existing upload queue.
  *
- * Serialized: a call that arrives while another flush is running waits for it
- * and then does its own pass, rather than returning "nothing failed" without
- * having tried anything. See `flushChain`.
+ * Callers share coordinated turns and wait for settlement, never returning a
+ * fabricated empty verdict merely because execution was already in progress.
  */
-export function flushInstallOutbox(): Promise<InstallFlushResult> {
-  flushesInFlight += 1;
-  const run = flushChain.then(() => runFlushPass());
-  // The chain must survive a pass that threw, or every later flush would be
-  // stuck behind a rejected promise for the rest of the session.
-  flushChain = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  void flushChain.then(() => {
-    flushesInFlight -= 1;
-  });
-  return run;
+const passListeners = new Set<(result: InstallFlushResult) => void>();
+
+export async function flushInstallOutbox(): Promise<InstallFlushResult> {
+  const total = { synced: 0, failedNow: [] as InstallRefusal[] };
+  const observe = (r: InstallFlushResult) => { total.synced += r.synced; total.failedNow.push(...r.failedNow); };
+  passListeners.add(observe);
+  try { await queueCoordinator.settle(); }
+  finally { passListeners.delete(observe); }
+  return { ...total, remaining: await pendingInstallCount() };
 }
 
-/** Is an install flush running or queued right now? Synchronous, for the
+/** Is coordinated execution in progress? Conservatively includes general
+ * work too. Synchronous, for the
  * update banner: a reload mid-flush could repeat a stage. See
  * lib/pwa/queuedWork.ts. */
 export function isFlushingInstalls(): boolean {
-  return flushesInFlight > 0;
+  return queueCoordinator.isRunning();
 }
 
 /**
@@ -677,7 +654,8 @@ async function mediaClientId(record: InstallOutboxRecord, index: number): Promis
   return stableId(`${record.payload.clientKey}:media:${index}`);
 }
 
-async function runFlushPass(): Promise<InstallFlushResult> {
+async function runInstallTurn(): Promise<InstallFlushResult & { progressed: boolean }> {
+  let progressed = false;
   let synced = 0;
   const failedNow: InstallRefusal[] = [];
   try {
@@ -689,7 +667,7 @@ async function runFlushPass(): Promise<InstallFlushResult> {
     for (const row of rows) {
       const record = deserializeInstallOutbox(row.meta);
       if (!record) {
-        await removeRecord(row.id);
+        // Unreadable records retain their original bytes for recovery.
         continue;
       }
       // Already given up on — needs a person to hit retry or discard, not
@@ -728,12 +706,13 @@ async function runFlushPass(): Promise<InstallFlushResult> {
             installEventId: event.id,
           };
           await putRecord(current, blobs);
+          progressed = true;
         }
 
         // Points (optional — never block media if award fails, matching prior
         // OpeningSheet `.catch(() => {})` behavior; avoid double-award by
         // advancing the step even on failure).
-        if (stageToAttempt(current.step) === "points") {
+        else if (stageToAttempt(current.step) === "points") {
           const pts = current.payload.points;
           if (pts && pts.entries.length > 0) {
             try {
@@ -744,6 +723,7 @@ async function runFlushPass(): Promise<InstallFlushResult> {
           }
           current = { ...current, step: "points_done" };
           await putRecord(current, blobs);
+          progressed = true;
         }
 
         // Hand media to the global outbox, then drop the install record.
@@ -753,12 +733,12 @@ async function runFlushPass(): Promise<InstallFlushResult> {
         // write is durable before the next item is touched, and the record
         // is removed only after the last one — there is no moment where a
         // photo exists in neither store.
-        if (stageToAttempt(current.step) === "media") {
+        else if (stageToAttempt(current.step) === "media") {
           const eventId = current.installEventId;
           for (let i = 0; i < current.payload.media.length; i++) {
             const meta = current.payload.media[i];
             const blob = blobs[i];
-            if (!meta || !blob) continue;
+            if (!meta || !blob) throw new Error("Install media is missing locally; original install retained for recovery");
             await enqueueUpload({
               id: await mediaClientId(current, i),
               // Already captured, already part of a filed install: refusing
@@ -787,6 +767,9 @@ async function runFlushPass(): Promise<InstallFlushResult> {
           }
           current = { ...current, step: "media_done" };
           await putRecord(current, blobs);
+        }
+        // A crash after the media_done checkpoint must only finish cleanup.
+        if (current.step === "media_done") {
           await removeRecord(current.id);
           recentlySent.unshift({
             id: current.id,
@@ -796,6 +779,7 @@ async function runFlushPass(): Promise<InstallFlushResult> {
           });
           if (recentlySent.length > RECENTLY_SENT_MAX) recentlySent.length = RECENTLY_SENT_MAX;
           synced++;
+          progressed = true;
         }
       } catch (err) {
         // A permanent error (bad data, a deleted window) will never succeed
@@ -810,6 +794,7 @@ async function runFlushPass(): Promise<InstallFlushResult> {
         // untouched, so a retry resumes instead of repeating a stage (like
         // the RPC) that already landed on the server.
         await putRecord(current, blobs);
+        progressed = true; // Failure/backoff is durable progress; visit other due installs.
         // First try, with signal, and the server said no on the merits: hand
         // the error back so the sheet can print the actual sentence. A dead
         // zone is a different thing entirely and still gets the calm queued
@@ -823,63 +808,36 @@ async function runFlushPass(): Promise<InstallFlushResult> {
       } finally {
         sendingIds.delete(current.id);
       }
+      break; // Yield to clock/general writes between durable install stages.
     }
   } finally {
     sendingIds.clear();
     notifySyncListeners();
   }
-  return { synced, remaining: await pendingInstallCount(), failedNow };
+  return { synced, remaining: await pendingInstallCount(), failedNow, progressed };
 }
 
-let autoFlushWired = false;
-let stopSignedInFlush: (() => void) | null = null;
+registerInstallLane({
+  execute: async () => {
+    const result = await runInstallTurn();
+    for (const listener of passListeners) listener(result);
+    return result.progressed;
+  },
+  publish: notifySyncListeners,
+  inspect: async () => {
+    const now = Date.now(), signer = signerNow();
+    const records = (await listInstalls()).filter(r => r.status === "pending" && installOwnership(r, signer) === "mine");
+    const next = records.reduce((due, r) => r.nextAttemptAt > now ? Math.min(due, r.nextAttemptAt) : due, Infinity);
+    return { hasPending: records.length > 0, nextRetryAt: Number.isFinite(next) ? next : null };
+  },
+});
+
+/** Compatibility entry points; application bootstrap owns the shared runtime. */
+export function initInstallOutboxAutoFlush(): void { queueCoordinator.start(); }
+export function stopInstallOutboxAutoFlush(): void { queueCoordinator.stop(); }
 
 /**
- * Keep this queue draining from EVERY screen: on reconnect, when the app
- * comes back into view, and on a slow interval (flaky LTE can keep `onLine`
- * true while every request fails). Once per session.
- *
- * Until K0.6 this wiring lived in the retired upload queue and was started
- * only by the opening sheet, so an install queued in a dead zone was retried
- * only while that sheet was open — close it, and the record waited for the
- * next time somebody opened a window. The sync pill starts it now, and the
- * pill is on every screen.
- *
- * Only the install queue. The transcription retry that used to ride the same
- * timer stays with the opening sheet (lib/install/transcriptions.ts): it asks
- * the server for every memo still missing a transcript, company-wide for a
- * foreman, and running that from every screen of every office session every
- * thirty seconds is not what "send from any screen" meant.
- */
-export function initInstallOutboxAutoFlush(): void {
-  if (autoFlushWired || typeof window === "undefined") return;
-  autoFlushWired = true;
-  // A different person signing in changes whose installs are theirs to send:
-  // recount the pill at once, and send the ones that just became theirs —
-  // the person who submitted is back, and should not wait for the timer.
-  stopSignedInFlush = subscribeSignedIn(() => {
-    notifySyncListeners();
-    if (navigator.onLine) void flushInstallOutbox();
-  });
-  window.addEventListener("online", () => void flushInstallOutbox());
-  document.addEventListener?.("visibilitychange", () => {
-    if (document.visibilityState === "visible") void flushInstallOutbox();
-  });
-  window.setInterval(() => {
-    if (navigator.onLine) void flushInstallOutbox();
-  }, 30_000);
-  if (navigator.onLine) void flushInstallOutbox();
-}
-
-/** For tests. */
-export function stopInstallOutboxAutoFlush(): void {
-  autoFlushWired = false;
-  stopSignedInFlush?.();
-  stopSignedInFlush = null;
-}
-
-/**
- * A person tapped "Send now" on /stuck: every pending install becomes due
+ * A person tapped "Send now" on /stuck: their own pending installs become due
  * this instant and a pass starts. Same reasoning as the sibling queue's
  * sendNow — the backoff protects a dead signal from the phone, and a person
  * looking at bars knows more than the timer does.
@@ -888,7 +846,7 @@ export async function sendInstallsNow(): Promise<void> {
   const now = Date.now();
   for (const row of await listRows()) {
     const record = deserializeInstallOutbox(row.meta);
-    if (record && record.status === "pending" && record.nextAttemptAt > now) {
+    if (record && record.status === "pending" && record.nextAttemptAt > now && installOwnership(record, signerNow()) === "mine") {
       await putRecord({ ...record, nextAttemptAt: now }, row.blobs ?? []);
     }
   }
@@ -963,6 +921,35 @@ export async function listFailedInstalls(): Promise<InstallOutboxRecord[]> {
   return (await listInstalls()).filter((r) => r.status === "failed");
 }
 
+/** Check identity and the latest checkpoint inside the same transaction.
+ * A failed record has no active sender; retry preserves its media and stage.
+ * No stale snapshot can recreate a removed record or erase an active stage. */
+async function changeFailedInstall(id: string, discard: boolean): Promise<void> {
+  const mark = signInMark(), signer = signerNow();
+  const db = await openDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      const read = store.get(id);
+      let changed = false;
+      tx.oncomplete = () => changed ? resolve() : reject(new Error("Saved install changed or is not yours; refresh before trying again"));
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error ?? new Error("Install action aborted"));
+      read.onsuccess = () => {
+        const row = read.result as InstallStoreRow | undefined;
+        const record = row && deserializeInstallOutbox(row.meta);
+        if (!record || record.status !== "failed" || installOwnership(record, signer) !== "mine"
+          || !mark.userId || !stillSignedInAs(mark, mark.userId) || sendingIds.has(id)) return;
+        if (discard) store.delete(id);
+        else store.put({ ...row, meta: serializeInstallOutbox({ ...record, status: "pending", attemptCount: 0, nextAttemptAt: Date.now(), lastError: null }) });
+        changed = true;
+      };
+    });
+  } finally { db.close(); }
+  notifySyncListeners();
+}
+
 /**
  * Put one failed install back in the queue and try it now.
  *
@@ -976,20 +963,7 @@ export async function listFailedInstalls(): Promise<InstallOutboxRecord[]> {
  * button does nothing.
  */
 export async function retryFailedInstall(id: string): Promise<void> {
-  const rows = await listRows();
-  const row = rows.find((r) => r.id === id);
-  if (!row) return;
-  const record = deserializeInstallOutbox(row.meta);
-  if (!record || record.status !== "failed") return;
-  const revived: InstallOutboxRecord = {
-    ...record,
-    status: "pending",
-    attemptCount: 0,
-    nextAttemptAt: Date.now(),
-    lastError: null,
-  };
-  await putRecord(revived, row.blobs ?? []);
-  notifySyncListeners();
+  await changeFailedInstall(id, false);
   await flushInstallOutbox();
 }
 
@@ -1001,8 +975,7 @@ export async function retryFailedInstall(id: string): Promise<void> {
  * makes, never something a cleanup sweep does on its own.
  */
 export async function discardFailedInstall(id: string): Promise<void> {
-  await removeRecord(id);
-  notifySyncListeners();
+  await changeFailedInstall(id, true);
 }
 
 /**
@@ -1067,12 +1040,7 @@ export async function submitInstallViaOutbox(
 }> {
   const record = await enqueueInstall(input);
   await flushInstallOutbox();
-  // The media is in the global outbox now (or still behind the RPC). Give it
-  // one attempt while the person is standing there — with signal, the toast
-  // then says "recorded" rather than "queued" — and report what is still
-  // waiting. `drain` returns at once if a drain is already running, in which
-  // case the count is honest about that: waiting, not lost.
-  await drain();
+  // The shared turn has durably handed off media and visited general work.
   const queued = await isInstallStillQueued(record.id);
   return {
     queued,

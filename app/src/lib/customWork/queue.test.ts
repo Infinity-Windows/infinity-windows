@@ -2,7 +2,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./api", () => ({ sendWorkCommand: vi.fn(), getWorkUnit: vi.fn() }));
 import { getWorkUnit, sendWorkCommand } from "./api";
-import { dropWorkCommand, enqueueWork, enqueueWorkBatch, readWorkQueue, syncWork, retryWork } from "./queue";
+import { dropWorkCommand, enqueueWork, enqueueWorkBatch, readWorkQueue, syncWork, retryWork, stopWorkForClock } from "./queue";
+import { clockShiftResolver } from "../offline/shiftResolver";
 import { finishedStop, markCompleteUnit } from "./complete";
 import type { WorkCommand, WorkUnit } from "./model";
 const command = {
@@ -22,26 +23,112 @@ beforeEach(() => {
   });
 });
 describe("durable work queue", () => {
+  it("preserves a refused start and its dependent stop without blocking the next shift", async () => {
+    const refused: WorkCommand = { ...command, action: "start", data: { id: "old-session", at: command.data.at } };
+    const dependent: WorkCommand = { ...command, id: "old-stop", data: {
+      expected_session_id: "old-session", at: "2026-09-15T10:10:00Z",
+    } };
+    const fresh: WorkCommand = { ...refused, id: "fresh", data: {
+      id: "new-session", shift_id: "new-shift", at: "2026-09-15T10:20:00Z",
+    } };
+    vi.mocked(sendWorkCommand).mockRejectedValueOnce(new Error("Clock in or resume your job clock before starting work."));
+    vi.mocked(sendWorkCommand).mockResolvedValue("new-session");
+    await enqueueWorkBatch([refused, dependent]);
+    await syncWork(command.userId);
+    expect(await stopWorkForClock(command.userId, [], command.data.at)).toBe(false);
+    await enqueueWork(fresh);
+    await retryWork(command.userId);
+    expect(vi.mocked(sendWorkCommand).mock.calls.map(([entry]) => entry.id)).toEqual(["one", "fresh"]);
+    expect(readWorkQueue(command.userId)).toEqual([
+      { ...refused, error: "Clock in or resume your job clock before starting work." }, dependent,
+    ]);
+  });
+  it("keeps an offline start until the existing clock resolver confirms its shift", async () => {
+    const start = { ...command, action: "start" as const, data: {
+      id: "session", shift_id: "pending:offline-clock", at: command.data.at,
+    } };
+    await enqueueWork(start);
+    expect(await syncWork("worker-a")).toBe(false);
+    expect(sendWorkCommand).not.toHaveBeenCalled();
+    clockShiftResolver.record("offline-clock", "real-shift");
+    vi.mocked(sendWorkCommand).mockResolvedValue("session");
+    expect(await syncWork("worker-a")).toBe(true);
+    expect(sendWorkCommand).toHaveBeenCalledWith({ ...start, data: { ...start.data, shift_id: "real-shift" } });
+  });
+  it("persists new taps while a previous send is waiting and retains them after that send", async () => {
+    const locks = new Map<string, Promise<void>>();
+    vi.stubGlobal("navigator", { onLine: true, locks: {
+      request: async (name: string, fn: () => Promise<unknown>) => {
+        const preceding = locks.get(name) ?? Promise.resolve();
+        let release!: () => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        locks.set(name, preceding.then(() => held));
+        await preceding;
+        try { return await fn(); } finally { release(); }
+      },
+    } });
+    let finish!: (id: string) => void;
+    vi.mocked(sendWorkCommand).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await enqueueWork(command);
+    const sending = syncWork("worker-a");
+    await vi.waitFor(() => expect(sendWorkCommand).toHaveBeenCalledTimes(1));
+    await enqueueWork({ ...command, id: "next" });
+    expect(readWorkQueue("worker-a").map(row => row.id)).toEqual(["one", "next"]);
+    vi.mocked(sendWorkCommand).mockResolvedValue("ok");
+    finish("ok");
+    expect(await sending).toBe(true);
+    expect(sendWorkCommand).toHaveBeenCalledTimes(2);
+  });
+  it("does not replay a later timer before its paid-clock boundary", async () => {
+    await enqueueWork({ ...command, data: { at: "2026-09-15T11:00:00Z" } });
+    expect(await syncWork("worker-a", "2026-09-15T10:00:00Z")).toBe(true);
+    expect(sendWorkCommand).not.toHaveBeenCalled();
+    expect(readWorkQueue("worker-a")).toHaveLength(1);
+  });
+  it("waits for the queued break end before starting the next activity", async () => {
+    const start = { ...command, action: "start" as const, afterOutbox: ["offline-resume"],
+      data: { id: "session", shift_id: "shift", at: command.data.at } };
+    await enqueueWork(start);
+    expect(await syncWork("worker-a")).toBe(false);
+    expect(sendWorkCommand).not.toHaveBeenCalled();
+    clockShiftResolver.record("workday-after:offline-resume", "sent");
+    vi.mocked(sendWorkCommand).mockResolvedValue("session");
+    expect(await syncWork("worker-a")).toBe(true);
+    expect(sendWorkCommand).toHaveBeenCalledWith(start);
+  });
+  it("saves an offline activity stop at the clock-out tap and avoids a second stop on retry", async () => {
+    await enqueueWork({ ...command, action: "start", data: {
+      id: "session", shift_id: "pending:clock", at: "2026-09-15T09:00:00Z", project_id: "job",
+    } });
+    expect(await stopWorkForClock("worker-a", [], command.data.at)).toBe(true);
+    expect(readWorkQueue("worker-a")[1]).toMatchObject({
+      action: "stop", data: { expected_session_id: "session", at: command.data.at, outcome: "partial" },
+    });
+    await stopWorkForClock("worker-a", [], command.data.at);
+    expect(readWorkQueue("worker-a")).toHaveLength(2);
+  });
   it("persists before sending and isolates account queues", async () => {
     await enqueueWork(command);
     expect(readWorkQueue("worker-a")).toEqual([command]);
     expect(readWorkQueue("worker-b")).toEqual([]);
   });
-  it("keeps a refused request and everything behind it, then retries the same ID", async () => {
+  // 2026-11-20 (Matt): "we dont want to block the picker… overlaps are better."
+  it("keeps a refused request for review, sends what was recorded after it, then retries the same ID", async () => {
     vi.mocked(sendWorkCommand).mockRejectedValueOnce(
       new Error("Current work changed"),
     );
     await enqueueWork(command);
     await enqueueWork({ ...command, id: "two" });
+    vi.mocked(sendWorkCommand).mockResolvedValue("result");
     expect(await syncWork("worker-a")).toBe(false);
-    expect(readWorkQueue("worker-a")).toHaveLength(2);
+    expect(readWorkQueue("worker-a").map(c => c.id)).toEqual(["one"]);
     expect(readWorkQueue("worker-a")[0].error).toContain(
       "Current work changed",
     );
-    vi.mocked(sendWorkCommand).mockResolvedValue("result");
+    expect(vi.mocked(sendWorkCommand).mock.calls.map(([c]) => c.id)).toEqual(["one", "two"]);
     expect(await retryWork("worker-a")).toBe(true);
     expect(readWorkQueue("worker-a")).toEqual([]);
-    expect(vi.mocked(sendWorkCommand).mock.calls[1][0].id).toBe("one");
+    expect(vi.mocked(sendWorkCommand).mock.calls[2][0].id).toBe("one");
   });
   it("automatically retries a lost connection even while the browser says it is online", async () => {
     await enqueueWork(command);
@@ -109,6 +196,45 @@ describe("durable work queue", () => {
 // #648 (2026-09-24) proved the mark was lost when the app closed between the
 // stop's network wait and the mark being queued. Every boundary below is a
 // reload: the queue is re-read from storage, as a relaunched app would.
+describe("a unit created on the phone", () => {
+  const write = { editId: "e1", projectId: "job-1", id: "new-opening", create: true, code: "9-9", details: {}, previousCode: null, previousDetails: {} };
+  const create: WorkCommand = { id: "create", userId: "worker-a", action: "unit_create", data: write };
+  const unit: WorkCommand = { id: "unit", userId: "worker-a", action: "unit",
+    data: { id: "work-unit", project_id: "job-1", opening_id: "new-opening", label: "9-9", facts: {} } };
+  const start: WorkCommand = { id: "start", userId: "worker-a", action: "start",
+    data: { id: "session", unit_id: "work-unit", at: "2026-11-20T15:00:00Z" } };
+
+  it("is sent before the timer that was started on it", async () => {
+    vi.mocked(sendWorkCommand).mockResolvedValue("ok");
+    await enqueueWorkBatch([create, unit, start]);
+    await syncWork("worker-a");
+    expect(vi.mocked(sendWorkCommand).mock.calls.map(([c]) => c.action)).toEqual(["unit_create", "unit", "start"]);
+    expect(readWorkQueue("worker-a")).toEqual([]);
+  });
+
+  it("keeps the clocked time for review when Forge refuses the unit", async () => {
+    vi.mocked(sendWorkCommand).mockRejectedValueOnce(new Error("This job already has a unit with that number."));
+    vi.mocked(sendWorkCommand).mockResolvedValue("ok");
+    await enqueueWorkBatch([create, unit, start]);
+    await syncWork("worker-a");
+    const sent = vi.mocked(sendWorkCommand).mock.calls.map(([c]) => c);
+    expect(sent.map(c => c.action)).toEqual(["unit_create", "unit", "start"]);
+    // The work record no longer points at the unit that was never created,
+    // and says so in its name; the timer is saved on it as tapped.
+    expect(sent[1].data).toMatchObject({ id: "work-unit", opening_id: null, label: "9-9 (unit not created)",
+      facts: { unit_not_created: "This job already has a unit with that number." } });
+    expect(sent[2].data).toMatchObject({ unit_id: "work-unit", at: "2026-11-20T15:00:00Z" });
+    expect(readWorkQueue("worker-a")).toEqual([]);
+  });
+
+  it("waits, with its timer, while there is no signal", async () => {
+    vi.mocked(sendWorkCommand).mockRejectedValue(new TypeError("Failed to fetch"));
+    await enqueueWorkBatch([create, unit, start]);
+    await syncWork("worker-a");
+    expect(readWorkQueue("worker-a").map(c => c.action)).toEqual(["unit_create", "unit", "start"]);
+    expect(readWorkQueue("worker-a").some(c => c.error)).toBe(false);
+  });
+});
 describe("Unit complete survives weak signal and reloads", () => {
   const unit: WorkUnit = {
     id: "u4", project_id: "job-1", opening_id: null, created_by: "worker-a", label: "4", type_label: "Bifold door",

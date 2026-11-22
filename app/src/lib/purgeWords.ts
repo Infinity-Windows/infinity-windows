@@ -257,6 +257,9 @@ export const WORK_HISTORY_PROBES: readonly HistoryProbe[] = [
     many: "jobs on the schedule",
   },
   { table: "workflow_plans", column: "created_by", one: "connected plan", many: "connected plans" },
+  // The last person to save a job's plan (20261130000000). The link has no ON
+  // DELETE, so the delete would fail on it; counted here, the refusal names it.
+  { table: "installer_job_plans", column: "updated_by", one: "job plan they last saved", many: "job plans they last saved" },
   { table: "workflow_plan_revisions", column: "actor", one: "published plan revision", many: "published plan revisions" },
   { table: "workflow_notice_outbox", column: "profile_id", one: "plan notice", many: "plan notices" },
   { table: "trip_crew", column: "profile_id", one: "trip", many: "trips" },

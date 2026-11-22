@@ -4,8 +4,8 @@
 # A check nobody has proved can FAIL is not a check. These feed the script
 # fixture answers through a stubbed scripts/pgq.sh (via the PGQ override), so
 # they need no token, no project and no network, and they never touch a
-# database. The important cases are the failing ones: a job short of a bay, and
-# a bay belonging to no job.
+# database. Container history, uniqueness, orphan and invalid-report failures
+# stay loud; an intentionally inactive empty bay is valid.
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
@@ -36,7 +36,7 @@ run() {
   shift 3
   local out
   out="$(env SUPABASE_ACCESS_TOKEN=sbp_test \
-             SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm \
+             SUPABASE_PROJECT_REF=fixture-only \
              PGQ="$pgq" "$@" bash "$script" 2>&1)"
   local got=$?
   if [ "$got" != "$want" ]; then
@@ -62,41 +62,63 @@ expect_contains() {
   esac
 }
 
-healthy="$(stub '[{"report":{"jobs":[{"job_code":"BLACK22","name":"Black Desert","bays":2},{"job_code":"OAKRIDGE","name":"Oakridge","bays":2}],"orphans":[]}}]')"
-run "a warehouse where every job has both bays passes" 0 "$healthy"
-expect_contains "  and says so in plain English" "Every active job has both of its staging bays"
+healthy="$(stub '[{"report":{"version":2,"jobs":[{"job_code":"SYN-A","name":"Synthetic","bays":1,"active_bays":1},{"job_code":"SYN-B","name":"Retired empty bay","bays":2,"active_bays":0}],"orphans":[]}}]')"
+run "one active bay or intentionally inactive bay history passes" 0 "$healthy"
+expect_contains "  and describes the current model" "Container-bay relationships are consistent"
 
-nobays="$(stub '[{"report":{"jobs":[{"job_code":"BLACK22","name":"Black Desert","bays":0},{"job_code":"OAKRIDGE","name":"Oakridge","bays":2}],"orphans":[]}}]')"
-run "a job with no bays FAILS the check" 1 "$nobays"
-expect_contains "  and names the job" "BLACK22"
-expect_contains "  and says how to fix it without SQL" "Warehouse tab"
+missing="$(stub '[{"report":{"version":2,"jobs":[{"job_code":"SYN-A","name":"Synthetic","bays":0,"active_bays":0}],"orphans":[]}}]')"
+run "missing bay history fails" 1 "$missing"
+expect_contains "  and names the job" "SYN-A"
+expect_contains "  and avoids retired repair advice" "do not recreate legacy rack locations"
 
-onebay="$(stub '[{"report":{"jobs":[{"job_code":"PECAN14","name":"Pecan Valley","bays":1}],"orphans":[]}}]')"
-run "a job with only one bay FAILS too" 1 "$onebay"
-expect_contains "  and says which count it found" "1 of 2 staging bays"
+duplicate="$(stub '[{"report":{"version":2,"jobs":[{"job_code":"SYN-A","name":"Synthetic","bays":2,"active_bays":2}],"orphans":[]}}]')"
+run "multiple active bays fail" 1 "$duplicate"
+expect_contains "  and reports the duplicate count" "2 active container bays"
 
-orphan="$(stub '[{"report":{"jobs":[{"job_code":"BLACK22","name":"Black Desert","bays":2}],"orphans":["J-OLDJOB-A"]}}]')"
-run "a bay belonging to no job FAILS the check" 1 "$orphan"
-expect_contains "  and names the orphaned shelf" "J-OLDJOB-A"
+orphan="$(stub '[{"report":{"version":2,"jobs":[],"orphans":["synthetic-orphan-id"]}}]')"
+run "active orphan bay fails" 1 "$orphan"
+expect_contains "  and names its identity" "synthetic-orphan-id"
 
-garbage="$(stub '{"message":"permission denied"}')"
-run "an error from the database is a VERIFICATION failure, not a pass" 1 "$garbage"
-expect_contains "  and says nothing was measured" "VERIFICATION failure"
+empty="$(stub '[{"report":{"version":2,"jobs":[],"orphans":[]}}]')"
+run "an explicitly measured empty warehouse passes" 0 "$empty"
 
-# A check that cannot tell "measured and clean" from "did not measure" is
-# worthless, so the missing-credential paths must fail rather than pass.
-out="$(env -u SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF=x PGQ="$healthy" bash "$script" 2>&1)"
-if [ $? -eq 0 ]; then
-  echo "FAIL: no token should not be a pass"; fail=$((fail + 1))
-else
-  echo "ok: a missing token fails instead of silently passing"; pass=$((pass + 1))
+for body in '{"message":"permission denied"}' '[]' '[{}]' '[{"report":{}}]' '[{"report":{"jobs":[],"orphans":[]}}]' '[{"report":{"version":2,"jobs":null,"orphans":[]}}]' '[{"report":{"version":2,"jobs":[{"job_code":"X","name":"X","bays":1,"active_bays":2}],"orphans":[]}}]' '[{"report":{"version":2,"jobs":[{"job_code":"X","name":"X","bays":true,"active_bays":0}],"orphans":[]}}]' '[{"report":{"version":2,"jobs":[],"orphans":[null]}}]' 'not-json'; do
+  run "invalid/obsolete response is a verification failure" 1 "$(stub "$body")"
+  expect_contains "  and never claims warehouse health" "VERIFICATION failure"
+done
+
+# Ensure fixture execution also exercises the current SELECT, not the retired
+# locations query. The stub never calls pgq or any network service.
+sqlstub="$work/sql-check.sh"
+cat >"$sqlstub" <<'SH'
+#!/usr/bin/env bash
+if ! grep -q 'from storage_containers' "$1" || ! grep -q 'c.project_id = p.id' "$1" || ! grep -q 'p.deleted_at is null' "$1" || grep -q 'from locations' "$1"; then
+  echo 'wrong query shape' >&2; exit 1
 fi
+printf '%s\n' '[{"report":{"version":2,"jobs":[],"orphans":[]}}]'
+SH
+chmod +x "$sqlstub"
+run "query uses container ownership, not retired J slots" 0 "$sqlstub"
 
-out="$(env SUPABASE_ACCESS_TOKEN=sbp_test -u SUPABASE_PROJECT_REF PGQ="$healthy" bash "$script" 2>&1)"
+badquery="$work/query-failed.sh"
+printf '#!/usr/bin/env bash\nexit 1\n' >"$badquery"
+chmod +x "$badquery"
+run "query transport failure is not a clean warehouse" 1 "$badquery"
+expect_contains "  and explains verification failed" "VERIFICATION failure"
+
+out="$(env -u SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF=fixture-only PGQ="$healthy" bash "$script" 2>&1)"
 if [ $? -eq 0 ]; then
-  echo "FAIL: no project ref should not be a pass"; fail=$((fail + 1))
+  echo "FAIL: no token should not pass"; fail=$((fail + 1))
 else
-  echo "ok: an unnamed project fails instead of guessing"; pass=$((pass + 1))
+  LAST_OUT="$out"; expect_contains "missing token fails for the intended reason" "SUPABASE_ACCESS_TOKEN is not set"
+fi
+# Options must precede assignments: otherwise env itself fails and falsely
+# appears to prove the script's missing-project guard.
+out="$(env -u SUPABASE_PROJECT_REF SUPABASE_ACCESS_TOKEN=sbp_test PGQ="$healthy" bash "$script" 2>&1)"
+if [ $? -eq 0 ]; then
+  echo "FAIL: unnamed project should not pass"; fail=$((fail + 1))
+else
+  LAST_OUT="$out"; expect_contains "unnamed project fails for the intended reason" "SUPABASE_PROJECT_REF is not set"
 fi
 
 echo

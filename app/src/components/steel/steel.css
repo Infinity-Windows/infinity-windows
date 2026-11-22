@@ -1,0 +1,136 @@
+/* Steel belongs to the existing New design. Classic keeps its own palette. */
+html:root[data-design="new"] {
+  color-scheme: dark;
+  --background: #101418;
+  --foreground: #f2f5f6;
+  --bg: #101418;
+  --surface: #12171b;
+  --card: #191f24;
+  --card-raised: #20272d;
+  --card-hot: #29333b;
+  --text: #f2f5f6;
+  --text-secondary: #d2dbe0;
+  --muted: #b0bbc1;
+  --muted-foreground: #b0bbc1;
+  --faint: #a4b1b9;
+  --border: #465159;
+  --primary: #f47731;
+  --accent: #f47731;
+  --accent-hover: #ff914f;
+  --accent-bg: #39271e;
+  --accent-soft: #39271e;
+  --accent-line: #a65c32;
+  --primary-foreground: #101418;
+  --ink: #101418;
+  --ring: #f47731;
+  --font-body: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: var(--font-body);
+  --danger: #ff6b72;
+  --steel-button: linear-gradient(180deg, #ff8845, #ec6828);
+  --steel-button-shadow: inset 0 1px rgba(255,255,255,.25), 0 4px 16px rgba(236,103,40,.12);
+}
+html[data-design="new"] body { background: var(--bg); color: var(--text); }
+html[data-design="new"] .app-rail { background: #12171b; }
+.steel-brand { display: flex; justify-content: center; padding: 14px; }
+.steel-brand img { width: 142px; height: 76px; object-fit: cover; mix-blend-mode: screen; }
+.steel-header {
+  display: flex; align-items: center; gap: 12px; min-height: 60px;
+  padding: 8px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
+  background: #12171b; border-bottom: 1px solid var(--border);
+}
+.steel-menu {
+  display: grid; place-items: center; flex: none; width: 44px; height: 44px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--text);
+  padding: 0; margin: 0; align-self: center; line-height: 1;
+}
+.steel-header-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); }
+.steel-mobile-brand { display: none; }
+.steel-mobile-brand img { width: 76px; height: 40px; object-fit: cover; mix-blend-mode: screen; }
+.steel-header-status { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-left: auto; min-width: 0; }
+.steel-header-status .clock-badge { min-width: 0; max-width: 100%; }
+.steel-header-status .clock-badge-text { white-space: normal; overflow-wrap: anywhere; }
+html[data-design="new"] :is(button, a, input, select, textarea):focus-visible { outline: 2px solid #ffac76; outline-offset: 3px; }
+html[data-design="new"] .tabbar { background: #12171b; border-color: var(--border); }
+html[data-design="new"] .work-screen { gap: 12px; max-width: 1040px; padding-top: 16px; }
+.steel-work-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.steel-eyebrow { margin: 0 0 4px; font-size: 11px; font-weight: 750; letter-spacing: .12em; color: var(--muted); }
+.steel-work-heading h1 { margin: 0; font: 750 28px/1.15 var(--font-body, sans-serif); letter-spacing: -.025em; }
+html[data-design="new"] .steel-work-heading > .ws-btn { flex: none; width: auto; font-size: 14px; }
+html[data-design="new"] .work-screen .ws-card { padding: 12px 14px; border-radius: 14px; background: var(--card); gap: 8px; }
+html[data-design="new"] .work-screen :is(.ws-h2, .ws-unit-title) { font-family: var(--font-body, sans-serif); }
+html[data-design="new"] .work-screen .ws-btn { min-height: 44px; border-radius: 9px; }
+html[data-design="new"] :is(.work-screen .ws-btn--primary, .rail-capture, .capture-fab) {
+  background: var(--steel-button); color: #101418; border: 1px solid #ff955d;
+  box-shadow: var(--steel-button-shadow);
+}
+html[data-design="new"] :is(.work-screen .ws-btn--primary, .rail-capture, .capture-fab):hover:not(:disabled) {
+  background: linear-gradient(180deg, #ff985e, #f47731);
+}
+html[data-design="new"] :is(.work-screen .ws-btn--primary, .rail-capture, .capture-fab):active:not(:disabled) {
+  box-shadow: inset 0 2px 4px rgba(0,0,0,.22); background: #ec6828;
+}
+/* Danger is a semantic action, independent of the brand's ember accent. */
+html[data-design="new"] :is(.ws-btn--danger, .button-like.danger, .button-like.destructive, .record-btn.recording) {
+  background: #bb303d; border-color: #ff858b; color: #fff;
+}
+html[data-design="new"] .danger-outline {
+  color: var(--danger); border-color: var(--danger);
+}
+/* Quiet navigation groups in both the rail and mobile drawer. */
+html[data-design="new"] .menu-pill {
+  min-height:44px; padding:10px 12px; border:1px solid var(--border);
+  border-radius:8px; background:var(--card); color:var(--text-secondary);
+  font-family:var(--font-body); font-size:13px; font-weight:600;
+  letter-spacing:0; text-transform:none; box-shadow:none;
+}
+html[data-design="new"] .menu-pill:is(:hover, .open) {
+  background:var(--card-raised); color:var(--text);
+}
+html[data-design="new"] :is(.menu-pill-icon, .menu-pill-chevron) { color:var(--muted); }
+html[data-design="new"] .menu-signout { background:transparent; color:var(--muted); border-color:transparent; box-shadow:none; }
+html[data-design="new"] .menu-signout:hover { background:var(--card-raised); color:var(--text); }
+html[data-design="new"] .menu-item { font-family: var(--font-body); font-size: 14px; font-weight: 600; min-height: 47px; }
+html[data-design="new"] .tab-label { font-family: var(--font-body); font-size: 10px; font-weight: 650; letter-spacing: 0; text-transform: none; }
+html[data-design="new"] .menu-item.active {
+  background: linear-gradient(90deg, rgba(229,236,239,.18), rgba(145,161,171,.07)); color: #fff;
+}
+/* The menu is a left drawer, not the generic bottom-sheet presentation.
+   Keep the existing focus trap, dismissal and permission-aware contents. */
+html[data-design="new"] .menu-drawer-backdrop { inset: 0; }
+html[data-design="new"] .menu-drawer {
+  inset: 0 auto 0 0; width: min(320px, 88vw); height: 100dvh; max-height: none;
+  border: 0; border-right: 1px solid var(--border); border-radius: 0;
+  padding-top: env(safe-area-inset-top); background: #12171b;
+  box-shadow: 16px 0 40px rgba(0,0,0,.3); animation: steel-drawer-in .2s ease both;
+}
+html[data-design="new"] .menu-drawer-grip { display: none; }
+html[data-design="new"] .menu-drawer-head { min-height: 60px; padding: 8px 12px; }
+html[data-design="new"] .menu-drawer-close { width: 44px; height: 44px; }
+html[data-design="new"] .menu-drawer-body { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+@keyframes steel-drawer-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+html[data-design="new"] .ws-saved-unit { padding: 12px 0; border-bottom: 1px solid var(--border); }
+/* Task order stays clock -> job -> unit at every width. Tablet columns start
+   below that context so a wider screen never changes what the next action is. */
+@media (min-width: 700px) {
+  html[data-design="new"] .work-screen:not(.ws-installer) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  html[data-design="new"] .work-screen > * { min-width: 0; }
+  html[data-design="new"] .work-screen > :is(.steel-work-heading, .ws-clock, .ws-today, .ws-unit, .ws-heads-ups) { grid-column: 1 / -1; }
+}
+@media (min-width: 860px) {
+  html[data-design="new"] { --nav-width: 216px; }
+  .steel-menu { display: none; }
+}
+@media (max-width: 420px) {
+  .steel-header-title { display: none; }
+  .steel-mobile-brand { display: flex; align-items: center; }
+  .steel-header-status .sync-pill-text { display: none; }
+  .steel-header-status .sync-pill { min-width: 44px; min-height: 44px; justify-content: center; }
+  .steel-work-heading h1 { font-size: 25px; }
+}
+/* Respect the app's explicit Phone/desktop layout preference too. */
+html[data-design="new"][data-display-layout="phone"] .steel-menu { display: grid; }
+html[data-design="new"][data-display-layout="desktop"] .steel-menu { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  html[data-design="new"] .work-screen * { scroll-behavior: auto; }
+  html[data-design="new"] .menu-drawer { animation: none; }
+}

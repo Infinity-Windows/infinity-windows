@@ -763,6 +763,12 @@ describe("planDraftPersistence (per-slot re-extract, root-cause fix)", () => {
       expect(plan.deleteIds).toEqual(["building:14-1"]);
     });
 
+    it("skips repeated exact codes in a PDF batch before inserting drafts", () => {
+      const plan = planDraftPersistence([], [draft("14-1"), draft("14-1"), draft("14-2")], "specs");
+      expect(plan.inserts.map(opening => opening.opening_code)).toEqual(["14-1", "14-2"]);
+      expect(plan.skipped).toBe(1);
+    });
+
     it("does not insert a duplicate over an opening kept for field work", () => {
       const prior = [existing("14-1", "building", { assigned_to: "profile-1" })];
       const plan = planDraftPersistence(prior, [draft("14-1"), draft("9-1")], "building");

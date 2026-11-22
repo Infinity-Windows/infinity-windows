@@ -1,0 +1,443 @@
+2026-10-24 — Richer unit facts, no schema changes
+Opening reader now fetches explicit window_type_id and only those linked catalog
+IDs (id/name/category). Job-scoped specs include operation/product_line/extra and
+stored unit_kind/door_kind; missing optional kind columns fall back to descriptions.
+Opening-context cache version taxonomy-v2 avoids reusing the smaller old payload.
+Classification resolver reuses shared supplier kind/door rules, with bounded
+mechanism/material mappings. No brand/color/size/label fuzzy inference. Custom
+type labels and explicit frame_material contribute evidence. Original values,
+source labels and unmapped values are inspectable in Unit details. Disagreements
+are distinct Conflicting category/subtype/material groups, not silently preferred
+sources. Different unit/opening links are rejected; classification conflicts also
+exclude peer outlier comparisons. Area logic remains separate and conservative.
+
+Coverage details count each selected job/opening or custom-unit identity once,
+prior to table filters, for units with activity in the date window. Baseline is
+former signature category/mechanisms and custom material. Live browser read-only
+review: ESH-18 + HURRICANE24, 2026-09-24 through 2026-10-24, 27 recorded units:
+category before0/known20/recovered20/conflict6/unknown1;
+subtype before0/known24/recovered24/conflict0/unknown3;
+material before5/known25/recovered20/conflict0/unknown2.
+Examples: HURRICANE24 #16/#33 job spec Door vs catalog Window; #2 job spec Window
+vs catalog Door. #16 supplier description includes a parenthetical reference to
+a door, so shared word-based derivation itself is evidence, not certified truth.
+No live records, migrations, signatures, mappings or catalog rows were changed.
+
+2026-10-24 — Expanded weekly plot height
+Expanded chart content flexes the weekly plot into the remaining panel height.
+A ResizeObserver updates SVG height coordinates so labels and dots retain their
+shape while Y spacing grows. Controls, legend and selected-unit detail retain
+natural height. Normal panel keeps the 740:330 compact ratio. Browser verified
+expanded and restored layouts; no query or data changes.
+
+2026-10-24 — Compact weekly controls
+Weekly activity toggles, recorded-person selector, color selector and info icon
+share a compact wrapping row. Job legend stays toggleable below. Coverage,
+limitations and axis explanation moved into a native light-dismiss info popover.
+Compression marker remains on plot. Unselected shared scope help is hidden only
+for this view; explicit selected-row scope remains visible. Browser verified.
+
+2026-10-24 — Fit weeks, linear main range, no medians
+Weekly plot uses one responsive SVG with all weeks fitted to the panel; job
+lanes/jitter shrink with week width. No horizontal plot scroller. Dense ranges
+thin date labels only; all unit-week points remain. Removed scale selector,
+median ticks/sample labels and median trend connections from the view.
+Automatic display compression preserves a linear 75% lower range and uses a
+separate linear upper 25% when a large tail would flatten it. Divider, zigzag
+and explicit compressed-range label mark the change. Cutoff is a rounded bound
+based on Q3/IQR, with at least 5 samples and a >2x tail; this is a visual heuristic,
+not an outlier classification. Exact point rates and records remain accessible.
+Earlier Log/median UI notes are superseded.
+
+2026-10-24 — Weekly-only rates, scale and median trends
+Removed standalone unitRates from the floating panel (calculation helper remains
+shared). Weekly rates now offer Linear / Log Y scale, both retaining every
+eligible point. Log uses explicit power-of-ten ticks; any zero is disclosed at
+the baseline. Optional dashed lines connect adjacent measured medians per job,
+never across missing weeks; default on. Lines are descriptive, not regression,
+forecast or crew-performance attribution. Small sample n remains visible.
+
+2026-10-24 — Weekly unit rates
+Floating chart view weeklyUnitRates groups physical-opening activity rate dots
+by Monday Denver week, with separate job lanes, median lines and unit-week n.
+Empty weeks remain empty, partial date/current weeks have *. Cross-week timers
+split captured seconds proportionately across Denver boundaries (DST tested).
+An opening may recur across weeks: these are weekly contributions, not completed
+installations. Medians are unweighted medians of eligible unit-week rates.
+Activity toggles, recorded-person multiselect, job toggles and color-by-job/person
+are local to the chart. Multi-person points show all contributors on inspection;
+inspection uses original IDs and the selected week interval. Rates use selected
+people's minutes only, with one stored opening area per unit-week. Missing and
+conflicting area, unlinked records and invalid intervals are excluded/disclosed.
+Current profile roles are labels only: adapter does not establish historical
+supervisor-to-crew assignments. No supervisor crew filter is inferred. Existing
+page dimensions/source filters still apply. No new DB queries or schema changes.
+Live ESH-18/HURRICANE24 past-month review: 15 plotted unit-weeks, 15 excluded
+unit-weeks (area), 2 unlinked weekly records. Pilot data was not used.
+
+2026-10-24 — Unit rates floating chart
+Added unitRates view: one dot per physical opening, selected recorded activity
+minutes divided by stored opening area. Activity toggles are chart-local; jobs
+have stable distinct colors within the current cohort. X order is job then unit
+identifier, not time or phase. Tap/keyboard select a dot for minutes, area, rate
+and contributing record inspection. Reuses enriched opening/spec/custom facts
+and laborMetricContext area eligibility; missing/conflicting dimensions and
+unlinked records are disclosed. No completeness/productivity claim. Live review
+of ESH-18 + HURRICANE24 past month: 12 plotted, 14 missing/conflicting area,
+2 unlinked records. Pilot fixtures were not used as evidence.
+
+CHART GROUPING AND AMMON REVIEW — October 24, 2026
+Grouped comparisons in the floating chart panel now includes the same compact
+reorderable grouping/filter row as records: Floor, Activity, Person, Job,
+Unit category, Unit subtype, Material. Unknown facts remain Unknown; General
+labor is Not allocated for unit classification dimensions. Grouping changes keep
+the selected record cohort, while filter/page-scope changes still reset selection.
+Existing minutes/ft² and minutes/opening controls retain matched numerator and
+non-conflicting denominator coverage. No new backend reads or schema changes.
+Browser automation was blocked by browser security, so this turn did not change
+the live job selection or visually verify the new row. Regression tests passed.
+
+Questions for Ammon:
+- What decision should time/ft² improve first: estimates, staffing, scheduling,
+  diagnosing overruns, or understanding work mix?
+- Which labor belongs in the rate: installation/flashing only, or prep, delivery,
+  travel, general labor and rework as well? Whole-job rate vs captured unit work?
+- What physical area should ft² mean: opening rectangle, product/frame area,
+  installed glass area, or something else? How should doors/packages be handled?
+- For shared work, does each person's rate use the full area of openings they
+  touched, an explicit allocation, or a crew-level rate?
+- Which comparisons are fair: same category/subtype/material, size, floor,
+  machinery/access, or job phase? Which known differences should exclude peers?
+- Completed units only, or in-progress work shown separately? Minimum sample and
+  coverage before a comparison is useful?
+- Should the headline be total labor / total matched area, median unit rate,
+  or both? What are the first two real job examples he wants to compare?
+
+CASCADING GROUP SELECTION — October 23, 2026
+Group selection now uses underlying record coverage: selecting a group selects
+all nested groups/records, deselecting a group removes its records from every
+ancestor selection. Partial descendants produce indeterminate parent checkboxes.
+Unrelated selections survive these operations and chart totals deduplicate IDs.
+Removed select-all from detail table headers; individual record checkboxes remain.
+Nested group checkboxes follow label indentation; detail checkbox gutters also
+receive a small inset to continue the hierarchy.
+
+DETAIL TABLE HEADER ACTION — October 23, 2026
+Moved the optional-column toggle from a standalone More columns row into a small
+Columns icon in the Hours header. Accessible Show more/fewer columns labels and
+pressed state retained; the control stays mounted as optional columns change.
+Tightened detail header/cell padding, unit-link height and the nested-table inset.
+
+ACCORDION DEPTH STYLING — October 23, 2026
+Tightened group-label left padding from 12px + 20px/level to 6px + 10px/level,
+reduced checkbox gutter and chevron gap, and tightened expanded-record inset.
+Deeper levels receive a small capped blue-grey lightening on the dark background;
+hover/selection layer over that depth tint. Indentation remains the primary depth
+cue; no reporting, query or selection semantics changed.
+
+ACTIVITY SHARE EXCEPTION — October 23, 2026
+When Activity is grouped, keep its identifier in the group label and an Activity
+share column with a single proportional bar plus percentage. Denominator is the
+immediate parent group's captured activity seconds; top-level activity uses all
+filtered captured activity seconds. Tooltip/accessibility text names the parent
+and numerator/denominator hours, including partial-evidence status. It never uses
+full clocked labor or a unit/area rate. Non-activity rows in this column show a dash.
+When Activity is not grouped, existing group activity-mix pies remain available.
+
+GROUPED COLUMN VISIBILITY — October 23, 2026
+Active grouping dimensions no longer repeat as table columns. Grouped Job,
+Activity and Person hide the corresponding Job, Activity mix and People columns;
+expanded record tables also omit grouped Floor, Job, Activity and Person fields.
+Headers, cells and expansion spans use the same visibility rules. Removing a
+group restores its column. Clocked job expansions omit their redundant Job column.
+Selection, numeric totals and record/unit inspection remain available.
+
+REPORTING-LOCAL MULTISELECT — October 23, 2026
+Added ReportingMultiSelect, reused by Proposed page jobs, grouping/filter controls,
+and unit filters. Existing MultiSelect is unchanged. Neutral tab outlines remain;
+subset selections show removable value tabs. A header checkbox selects/deselects
+all options. Both all checked and all cleared mean no filter (null); empty arrays
+are normalized. No search field, Done button or None button. Outside click and
+Escape close the list. Page-job scope and independent table-job filtering remain.
+
+COMPACT HEADER CONTROLS — October 23, 2026
+Grouping/filter controls are neutral inline controls in a wrapping grid, without
+colored cards or horizontal control-strip scrolling. The grip still supports
+keyboard ordering and pointer ordering across wrapped rows. Scope controls are
+removed for now; no hidden Scope filter excludes activity evidence. Popovers,
+wide tables, charts and this comparison page use thin muted scrollbars.
+
+RECORDS HEADER SIMPLIFICATION — October 23, 2026
+Unit filters sit above and outside the records frame. The records table and its
+grouping controls are always shown when the outer unit/activity section is open;
+removed the extra records disclosure and grouping/filter disclosure.
+Page job selection is now separate from the table Job filter. Only page-selected
+jobs appear in that filter; changing it filters loaded rows without broadening or
+reissuing page data reads. Changing page jobs resets the table Job subset to All.
+Chart drill-through opens the outer evidence section and scrolls to records.
+
+JOB GROUPING AND RECORD HEADER — October 23, 2026
+Job is an optional grouping/filter dimension appended after Floor, Activity and
+Person. It can be reordered to any level; enabling it does not force it primary.
+Multi-job page scopes show a Job column on grouped records (one job name or a
+count with names in the title), while individual records retain their Job column.
+Grouping, dimension filters and unit filters now share the records header frame.
+Job filter choices use the existing page job list, including jobs without timers.
+No additional evidence queries or changes to clocked/activity attribution.
+
+TABLE REFINEMENT — October 23, 2026
+Replaced accordion card summaries and per-row chart shortcuts with native tables.
+Clocked jobs: checkbox / Job / Shifts / People / Hours, with expandable shift rows.
+Activity groups: checkbox / Group / Records / Activity / People / Hours, with
+nested grouping rows and the existing Unit / Activity / Person / Hours / Job leaves.
+Headers select or deselect all groups/jobs; partial selection is indeterminate.
+Native record tables also support row selection and scoped header selection.
+Group selection is independent of expansion and descendant selection. Chart totals
+still deduplicate record IDs. Floating View charts appears only for selected rows.
+Clocked jobs and partial activity evidence remain separate selection sources.
+Removed superseded accordion card/row-action CSS. Phone tables scroll internally.
+
+IMPLEMENTATION UPDATE — October 23, 2026
+The owner Proposed view now keeps filters and tables on the page. Parent rows
+have independent selection and chart shortcuts. One nonmodal floating panel
+reuses clocked labor over time, activity mix, activity over time, General labor,
+unit peer review and older comparison components. On phones it is a bottom sheet.
+Activity row selections combine underlying record IDs once; overlapping groups
+are not separate additive totals. Changing page/table filters clears those scopes.
+Clocked job groups select clocked chart scope independently of activity evidence.
+Chart inspection closes the panel and opens the source table. Inactive tabs close
+the panel; only the current view mounts. Existing report caches/read bounds remain.
+Relative weeks retain the scoped first-work lookup; other chart views need no reads.
+No schema, incident-fix, production-data, deployment or push changes performed.
+
+PROPOSED DATA — NEXT LAYOUT OUTLINE — October 23, 2026
+Design proposal for review; this outline is not a new schema or deployed layout.
+
+REVISED DIRECTION AFTER TOPP SOLUTION REVIEW
+This table-first proposal supersedes the fixed inline-chart order below.
+Reference inspected in the user's signed-in Chrome tab at
+https://www.toppsolution.com/dashboard/dashboard-v1, October 23, 2026.
+No Topp business records were edited. Original Trade-only grouping and empty
+selection were restored after examining the view controls.
+
+Observed reference interactions
+- Table Order controls activate grouping dimensions. Trade + Region produces
+  nested aggregate rows with projects beneath; aggregate values stay in columns.
+- Expanding a row and selecting it are distinct actions. Selecting the HVAC
+  parent did not check its children. Multiple parent rows can be selected.
+- View Charts opens a floating chart dialog inheriting selected groups and dates.
+- A row's show_chart icon opens charts scoped to that row alone.
+- The dialog has chart-family tabs, a selection picker for multi-selection,
+  date controls, individual chart controls and enlarge affordances.
+- This is an interaction reference, not evidence for Forge metrics or schema.
+
+Recommended Forge adaptation (not yet implemented)
+1. Page bar: selected jobs, date range, Refresh.
+2. Compact totals, then the persistent grouped records table and its filters.
+3. Explicit table source: Clocked labor | Unit/activity evidence (partial).
+4. Separate chevron expansion, row selection, and row-level chart shortcut.
+5. One reusable chart panel: scope chips + view selector + metric controls.
+   Views: Compare, Labor over time, Activity mix; preserve existing components.
+   Metrics: Total time, Time per opening, Time per ft², Share where meaningful.
+   Minutes/Hours is a display-unit control, separate from the denominator.
+6. Wide screens: floating or dockable panel preserving table context. Phones:
+   a full-width sheet that returns to the same table selection and scroll state.
+7. Parent selection stands for underlying records. Deduplicate overlapping row
+   sets for combined totals; distinguish separate comparison series explicitly.
+8. Rates use matched unit-linked numerator/denominator cohorts only. General
+   and unmatched clocked labor never acquire an invented opening/area allocation.
+9. Charts reuse loaded scoped evidence; changing view/selection should not
+   initiate broad reads. Closing the panel stops its view work.
+
+The next implementation component should be row selection plus the shared
+chart panel, before moving or removing current report sections.
+
+EARLIER INLINE-CHART OUTLINE (retained for context)
+
+1. Page scope
+   One compact bar for Jobs + Dates, with Refresh nearby.
+   This week / Last week: Monday–Sunday, default Daily.
+   This month / Last month: full calendar month, default Weekly.
+   Retain rolling ranges, All time and custom calendars.
+   Jobs and dates apply to all report sections. No chart/table settings here.
+
+2. Headline totals
+   Clocked hours after breaks, unique people, finished shifts.
+   Running/unresolved status stays adjacent. No unit timer hours added to shifts.
+
+3. Records (collapsed near the top)
+   Make the source choice explicit: Clocked shifts | Unit activities (partial).
+   These remain separate datasets with separate totals; no invented unit link
+   for a clock shift. The two tables should not be easy to mistake for one another.
+   Show grouping, row filters, sorting and column options within this section.
+   Unit rows retain Unit / Activity / Person / Hours / Job, unit inspection,
+   grouped recorded hours, people counts and compact clickable activity pies.
+   Floor/category/subtype/material/area apply only where unit facts support them.
+   No new opening counts in summaries in this iteration.
+
+4. Labor over time (primary chart)
+   Chart-local: Daily / Weekly, Hours / Share, Separate / Combined jobs.
+   Relative job weeks available only under Weekly; not proof of equivalent phase.
+   Directly clickable cost-code legend; shared day/week label below each job pair.
+   Tap a segment to inspect matching source records; clear selection nearby.
+   Percent denominator is the whole job-period's recorded clocked labor,
+   including hidden cost codes. Finished shifts belong to their clock-in day.
+
+5. Unit/activity insights (secondary, partial evidence)
+   Activity labor mix, General labor, and unit peer review.
+   Local unit dimensions and rates; denominator/coverage shown where relevant.
+   Keep supported insights visible; move older duplicate comparisons out of the
+   primary reading path. Do not silently merge or discard them during cleanup.
+
+Next implementation boundary
+   Agree this hierarchy, then simplify one section at a time. Start with the
+   shared page bar and Records source labels before rearranging charts.
+   Keep owner comparison tabs and Steel's mobile/tablet foundation.
+
+Daily / calendar presets are implemented locally. The broad layout above remains
+a proposal. No pushes, deployments, migrations, or production writes performed.
+
+2026-10-25 — Proposed taxonomy separation (local reporting only)
+Category remains Window/Door, with Combination assembly mapped only when explicitly named; disagreements remain conflicts. Subtype is operation (Fixed, Sliding, Hinged, Folding, Casement/Awning/Hung where recorded). French and Pivot are configuration features, not separate operation labels. Configuration preserves explicit sidelights, transoms, opening direction and panel/track counts; different feature evidence supplements rather than conflicts, contradictory counts/directions remain conflicts. French alone does not prove paired leaves. Storefront and Curtain wall are system labels only when explicitly named; aluminum/thermal break/brand do not establish system.
+Added configuration/system to unit filters, table/chart grouping, optional record columns, coverage and raw source inspection. Existing material remains separate. Existing category conflicts are retained rather than auto-corrected. No new DB reads, schema changes, writes or deployment.
+
+2026-10-25 — Drawing-reviewed Proposed overlay
+Added local drawingReviews.ts ledger for HURRICANE24 marks 2/3/14/16/23/33. Exact project + source planset UUID + mark + reviewed style/operation/dimensions must match; a changed source falls back to unresolved reporting facts. Effective filters/groupings use reviewed Window/Fixed for 2/3/14/16 and Door/Sliding or Door/Hinged for 23/33. Original classification evidence/status conflicts remain visible in warnings, details and coverage. Configuration adds fixed panels for 2/3/14/16, single-leaf French inward-opening for 33; 23 configuration remains conflicting (elevation 2 fixed panels vs text 1). #14 dimension review forces no area denominator even without custom dimensions; original custom/spec dimension conflicts remain. No business writes/schema/deploy. No inferred shift-to-unit allocation; full clocked shifts remain separate from partial attributed timers. Next recommendation: present chart choices to Ammon, agree decisions, activities, area definition and capture completeness before expanding cleanup.
+
+2026-10-25 — Broader comparison + latest-focused time charts
+Checked selected ESH-18/HURRICANE24 over 3 months and all available history: same 743.0 finished clocked hours; ESH-18 still one approximately 12-second unit-timer record, HURRICANE24 74 activity records / approximately 6.86 hours. Left bounded Jul25-Oct25 range selected. Broader weekly rate chart: 15 eligible unit-weeks, 22 excluded for area, 4 unlinked weekly records; includes Flashing. No defensible two-job productivity comparison.
+WeeklyLaborPlot remains chronological left-to-right but opens scrolled to latest end. Changed time/job/period window resets end; polling/metric/legend changes preserve earlier inspection. Resize keeps end pinned only if user was already there. Unit-week dot plot still fits all weeks without horizontal scrolling.
+
+2026-10-25 — Third job and bounded relative clocked weeks
+Added SSSIMISTER to live comparison; overlapping unit evidence Sep28/Oct12. Chart-local relative week count now derives each selected job's first N Denver weeks from first finished shift, using existing compatible reportShifts caches and per-job bounded reads rather than all-history scans. Page calendar scope stays intact for totals/tables/unit dots. Relative drill-down retains matching records outside page dates. First8weeks staged. No equivalent-phase/crew/productivity inference.
+
+2026-10-25 — Relative weekly unit rates + simpler labor formats
+Added WeeklyUnitRatesReport mounted only inside active chart slot. Uses shared first-finished-shift origins/cache and per-job bounded first-N-week timer/history reads, explicit unit/opening context, original taxonomy/drawing review, and existing conservative source reconciliation. Page calendar scope stays intact. Relative dots split at each job's Denver seven-day boundary, not Monday; no equivalent-phase inference. Full raw timer seconds are clipped proportionally by the relative helper; drill-down carries the corresponding source rows and real dates beyond page scope. Missing origins are not invented. Activity/person filters do not renumber origins.
+Reused JobWeekControls in both clocked and unit-rate charts. Removed daily control and automatic daily preset behavior; preserved date presets/backend daily helpers. Hours/Percent now inline ChartFormatToggle in clocked and General/activity labor charts; not page settings. Unit rates remain min/ft². Current staging HURRICANE24 + SSSIMISTER, relative First8weeks: 20 eligible unit-week dots, 23 area-excluded unit-weeks, 4 unlinked weekly records. 107 reporting tests passed.
+
+2026-10-25 — Unified Labor over time
+Floating chart selector now has one Labor over time entry; legacy clocked/weeklyUnitRates slot identifiers stay internal. Source (Clocked shifts / Unit-linked timers partial) and measure (Total time / Minutes per opening / Minutes per ft²) controls live in that panel. Clocked shifts can only use Total time, enforced by both disabled options and guarded state; returning to clocked source resets an incompatible rate. Hours/Percent format remains an inline toggle for Total time. Shared calendar/relative axis and first-N-week count persist across sources.
+Unit-linked Total time is stacked per job/week by activity, excludes General and records without defensible physical opening links. Percent denominator is that job-week's selected unit-linked timer hours. Per-opening rates do not require area; per-ft² retains area exclusions. Dot rates are weekly contributions, not completed installations. Original drawing/source conflicts and dimension holds preserved. Selected activity row scopes remain visible/apply to relative timer evidence; clocked records never inherit a unit allocation. Relative queries unmount/disable on source/view changes. Scoped HURRICANE24 + SSSIMISTER retained for live verification.
+Unified chart validation: 109 reporting tests passed (bounded worker run), TypeScript passed, touched-file lint clean. Live verification: clocked rate options disabled; timer Hours stacked correctly; per-opening includes 43 linked unit-weeks without requiring area; min/ft² includes 20 and excludes 23 area-problem unit-weeks, with 4 unlinked weekly records disclosed. Final staged view: Labor over time / Unit-linked timers partial / Minutes per ft² / Relative First8weeks, HURRICANE24 + SSSIMISTER.
+
+2026-10-25 — Explicit relative alignment basis
+Added Align from independently of Source: Project work start = first finished clocked shift; Unit work start = first recorded closed unit timer with an explicit current opening link across custom/historical sources. Bounded origin reads use limit1 per job/source with same-job/opening checks, no activity/person/area/date filter, cancellation and private cache. Invalid first candidate makes origin unavailable, not guessed. Both projects' own Week1 is grouped together, then Week2, etc.; gaps remain elapsed seven-day weeks. Clocked labor can also use unit-start alignment, with explicit notice that earlier clocked work is outside that window. Source changes retain basis and N.
+Live HURRICANE24 vs SSSIMISTER unit starts: Sep21 and Sep30, respectively. Both now have Week1 unit-rate dots together; 21 eligible unit-weeks, 23 excluded for area, 4 unlinked weekly records. Project-start alternative retains Sep2/Sep28 and exposes delayed unit capture. First recorded unit work is not a verified install start or comparable phase. Server was stopped with stale page still loaded; verified matt/forge-synthesis checkout and restarted Vite5174, then reloaded/staged. No schema or production writes.
+
+2026-10-26 - Proposed work-attribution labels
+Reporting-only workAttribution adapter distinguishes Unit-linked work (explicit opening link, no known job/link conflict), Job-level work (explicit General timer with job and no unit target), and Missing attribution (missing/contradictory job or opening attribution). Source Specific/General values remain intact for reconciliation and coverage; no schema changes or clocked-hour allocations. Activity legends, breakdowns, overview, and dimension labels use these terms. Job-level chart excludes contradictory General records rather than quietly treating them as job-level. Shared work remains future scope. No new database reads.
+
+2026-10-26 - Attribution review HURRICANE24 + SSSIMISTER
+Exposed Work attribution grouping/filter control (previous scope dimension was hidden/ignored). Unit detail inspector now states absent physical opening link instead of displaying a custom label as an opening, and shows selected timer source/ID, bounds, person and minutes. Jul26-Oct26 combined: 84 records/7.83h; 79 linked/7.80h, 1 job-level/<0.01h, 4 missing/~1.51min. HUR linked69/6.83h + job-level1 + missing4; SS linked10/0.96h, no job-level or missing timers. Missing custom unit labels 19 A and 12b, with existing facts but no opening ID. No inferred matches or data changes. Clocked baseline remains533.2h.
+
+2026-10-26 - Existing-job comparison summary after Ammon transcript
+Priority is whole-job scope/labor comparison while waiting for Tech Ridge source docs. Added explicit Compare selected jobs shortcut and Comparison summary in the floating panel. Default whole-job clocked history; page-date alternative clearly labeled. Summary uses page jobs (and selected clocked jobs if present), not timer-row/group/unit filters; this separation is stated. Finished net clocked total and installation-coded subset shown side by side; default exact Installation/Install/Installing cost labels, user-adjustable code membership. Code evidence is a proxy for direct installation, not verified unit attribution. No unit timer addition or allocation.
+Current nonremoved opening inventory is queried only while summary is mounted and explicit jobs are selected; complete paginated counts/cancellation, existing private units/opening context/shift caches reused, no historical timer polling. Unique opening identities include untimed openings. Area uses conservative facts/spec/drawing conflicts and all linked custom siblings; known area and avg-known opening area carry usable-opening counts. Whole-job scope rates withheld unless all inventory openings have usable area and whole history selected; rates are job ratios, not floor/unit allocations. Assemblies and pieces remain separate Not established values, never inferred from opening signatures/qty/components. Opening list supports auditing scope.
+Live HURRICANE24:36openings,19usable-area,658.38knownft2,319.89clockedh,258.01installation-codedh; SSSIMISTER:35openings,29usable-area,740.01knownft2,213.30clockedh,133.95installation-codedh. Area averages34.65 and25.52 are only eligible openings; no complete-job min/ft2 claim.
+Transcript direction: retain useful cost-code library but define controlled activities; warranty/billability context separate from timed activities; multi-job material-drop event context before allocation; foreman-reviewed rework feedback; personal learning/benchmarks later. Distinguish physical openings, assemblies and pieces; quantity-expanded suffixes are not positions. No schema changes, production writes or push in this implementation turn.
+
+2026-10-28 - Dashboard batches: identity, hierarchy, comparisons and rework
+Selected openings now persist as IDs; a current inventory/timer evidence registry recomputes summary facts after refresh, dates or source changes. Loading clears derived evidence instead of displaying old totals; complete reads prune removed IDs. Job changes clear selection. Record drill-down scopes remain date/filter-local.
+Units are the main page table, no competing activity-table mode. Inventory grouping/filter controls remain; chart grouping remains chart-local. Job-level timers show a total on the page and a chart shortcut, with records inspected on demand. Clocked labor stays job-scoped.
+Selected-unit summary compares cohorts side by side by job/category/subtype/floor, with unique openings, usable area coverage, linked timer hours/people, and timer-record coverage. No matched-peer or field-verification claim.
+Including rework / Excluding identified rework affects timer outcomes/activity labels and explicitly rework-labeled clocked cost codes independently; relative timer/chart filters and whole-job comparison apply the same control. Service/warranty/QC and unlabeled work are not presumed rework. Original dimension conflicts and #14 hold unchanged. No schema/production writes.
+
+2026-10-28 - Comparison presentation pass
+Selected-unit summary now shows page-date whole-job clocked hours in a separate section from selected units' partial timer evidence. Shares reportShifts cache, no additional inventory fanout or polling. Job names included in selected opening detail to disambiguate repeated marks. Coverage notes collapsed. Whole-job comparison defaults to page dates (whole history remains explicit), with concise labor/area table; unestablished assembly/piece counts retained in coverage rather than repeated empty metric rows. Unit selection banner distinguishes separate job context from timer chart scope. No schema, migration, production writes or push.
+Unit detail card: expanded unit row now shows physical identity, source-qualified size, known required stage progress, and activity timer hours/shares. Records and source/conflict evidence collapsed. Uses existing inventory/facts/phase/timer reads; no storage/delivery assertion without evidence and no clocked allocation.
+2026-10-28: Shared enrichActivityRows canonicalizes reviewed activity aliases and retains originalActivity for record tables/detail intervals. Unit pane sources/conflicts section removed; dimension evidence uses title tooltip. Inventory reader optionally includes recorded RO judgments and planset/page links with missing-column fallback. Known required phases remain flashing (conditional) + installation; no inferred extra phases or timer-based completion. Recorded RO checklist is evidence, not an invented universal process. Document references are conditional, not a claim that all units appear in a specific drawing.
+Unit pane workflow: three read-only phase checklists (preparation, opening preparation, installation/closeout). Unit-scoped opening, installation events, latest nonvoided event photo count and assigned physical inventory read only while pane mounted; missing/error evidence never flips completed installation. Uses existing RO measurement referee. Explicitly linked project plansets open in existing PlansetViewer; opening page passed as optional initialPage with bounds clamping. No schema or business-data writes.
+Unit documentation review: explicit read-only action mounts existing UnitRecordCard expanded, plus saved RO judgments/measurements and flashing evidence. Existing record readers provide media, sessions/block reasons, redos and assignment history. Reference links point to job, operational opening screen and job plans/map; assigned physical inventory ID exposed where present. Missing/error evidence is not treated as unfinished work. No capture controls, schema changes, backfills or production data writes.
+Clock records: display cost-code label with saved code as tooltip; ordered Job/Cost code/Person grouping toggles, nested totals and records, stable-ID grouping, existing job chart selectors retained when Job is first. Unit pane omits Unknown system boilerplate; supported system values remain. Documentation note distinguishes install-event/opening-phase evidence from custom/unit-session timers; no duration summation across potentially overlapping sources.
+2026-10-28 - Reconciled phase labor and workflow focus
+Proposed historical labor optionally reads submitted opening_phases/Flashing, scoped to selected jobs and date window with checked pagination/cancellation. Saved whole-minute phase duration retained; custom and unit_sessions intervals retain subminute precision. Installed events are completion evidence only, never another time source. Repeated source IDs count once. Same-person overlaps (including within-source), uncertain phase worker identity, invalid duration and date-boundary phase allocation are held outside totals with source IDs/reasons. No label-only opening mapping. Source details exposed in record extra columns and held-record evidence sections. Calendar and relative unit charts use reconciliation; relative first-unit origin considers flashing. HURRICANE24 #2 verified in live Proposed: six records /1.06h, Flashing0.68h +Install0.38h; clocked job baseline remains535.1h. This is partial linked evidence, not full labor coverage.
+Three pane phases now collapse independently with one open by default, based on latest recorded phase/install timestamps; original installation completion and documentation states remain separate. Phase layout is our presentation of existing Check/Install/Capture forms, RO referee, opening_phases and submit-proof requirements, not sourced from company training. Future linkage tools: source-ID audit queue, explicit job/opening picker with plan placement, reviewer-confirmed mappings with provenance; no mappings or data corrections invented here.
+Read-only review queue added above unit inventory: page job/date/source evidence, held/missing category selector, original source records and overlapping intervals, same-job candidate openings with explicit mark-family/dimension reasons and contradictions. No mapping controls, writes or new DB queries. Candidate inspection reuses UnitPane; mark-family hints do not infer an opening instance. Horizontal phase accordion now expands focused content left/right with narrow vertical labels for collapsed phases. Live verified 27 queued records (23 held +4 missing links) for HURRICANE24/SSSIMISTER; 19 A shows 19-1/19-2/19-3 unverified candidates.
+
+2026-10-28 - Timecard coverage in Record scatter
+Read-only matching by explicit person/job and overlapping intervals; unions timers, clips page dates, holds ambiguous overlapping timecards, held evidence and unplaceable phase durations. Break totals lack timestamps, so net matched/unmatched coverage uses bounds rather than invented placement. Running/unfinished cards excluded pending closure. Expand coverage to inspect timecard IDs, matched timers and unmatched/held reasons. No remaining-hour allocation, payroll writes or new queries.
+
+2026-10-28 - Activity coverage funnel: recorded records -> accepted positive duration -> same-person/job timecard overlap. Each transition shows exclusion reasons; zero-duration evidence stays separate from measured labor. Installers-only toggle uses current explicit profile role, scopes funnel/timecard details together and discloses unknown roles; foremen are excluded even if they performed installation. Existing people cache reused, no new queries or DB writes. Two-job Sep28-Oct28:127 recorded,67 positive accepted/3.68h,49 matched/1.61-1.82h. Installers-only:0 activity records against191.29 closed clocked hours; source records currently attributed to foremen.
+
+2026-10-28 - Scatter worker filters corrected: only Installers only + Unknown worker controls. Clock rows use timecard worker; timer visibility uses unique install credit tied to same job/opening/filer/exact finish timestamp, or nonvoid partial/finished crew contributors for same unit/stage/Denver work date. After-the-fact dates do not supply crew work date. No logger fallback, no duration reassignment/splitting, no payroll coverage changes. Worker evidence refs shown in dot inspector. Read-only paginated/cancellable scoped credit queries only while scatter active, private cache, no polling/schema changes. Live SS2-1 shows Jedidiah credit with original Jordan timer account.
+
+2026-10-28 - Separate timecards/activity records: ActivityRow preserves custom session shift_id as shiftId. Explicit source links shown even for held durations. Only valid same-account/job explicitly linked intervals contribute to coverage; interval-only matches become candidates and contribute zero confirmed coverage. Missing/conflicting explicit references are never remapped. Separate activity table retains unknown worker, original timer account, reported duration/phase-placement uncertainty and source link; timecard detail lists explicit links separately from candidates. Removed legacy logger-role funnel filter. No leftover allocation, schema, DB writes or added queries. 17 focused tests and TypeScript passed.
+
+2026-10-28 - Keep area-normalized labor at job scope
+Removed recorded min/ft2 beneath unit/activity hours and disabled unit-rate measures across Proposed chart controls. Unit comparisons retain raw recorded minutes; labor-over-time unit timers retain hours/share and relative alignment. Unit area, activity records, source details and progress remain. Job comparison summary retains whole-job clocked/installation-coded min/ft2 with whole-history and complete-area safeguards; no allocation to units, new reads, schema or production writes.
+
+2026-10-28 - Recent Jobs table first
+Jobs table above clock record drill-down, default existing Past month/all available work jobs. Reuses scoped clock cache and project status/name metadata, no additional reads. Rows: recorded status, finished net clocked hours, installation-coded subset, distinct clocked people, last clock-in in page window; running/unresolved counts separate. Activity-only jobs remain visible with no clocks. Expand cost-code totals/shares and source timecards. Header selection and row checkboxes feed clockedJobs; Compare jobs opens existing summary for chosen jobs after clearing unit/activity scopes. Sort recent/hours/name. Existing unit inventory/activity evidence remains separate. No opening fanout added to the Jobs table; inventory details remain in units and on-demand comparison. Tests cover deduplication, code sums/shares, activity-only jobs, select-all and comparison, existing lifecycle updated. No DB writes, migrations, incident changes or push.
+
+2026-10-28 - Consolidate clocks under Jobs
+Removed subsequent standalone clock-record section. Jobs > cost codes > original timecards is the page drill-down; chart segment inspection remains conditional inside chart panel. All-jobs scope includes explicit Unassigned work row (even zero) and bounded paginated null-project clock read, private cache, active-only five-minute refresh for <=45-day windows; historical windows do not interval-poll. Specific job filters exclude unassigned. Unassigned contributes to overall baseline/table/calendar chart, never job area comparisons or synthetic project queries. Current Sep28-Oct28 read returned no unassigned rows. No DB writes.
+
+2026-10-28 - Job scope in Jobs table
+Added current opening count, known area with usable/total coverage and complete/incomplete label, and recorded installed-opening progress bar/count. Shared comparisonInventory progress-v2 / units / openingReview taxonomy-v3 caches with unit table; no per-job fanout or new timer reads. Area resolution reuses comparisonSummary and preserves missing/conflicting dimensions; incomplete context cannot establish complete coverage. Loading/errors show unknown/unavailable scope without hiding independently loaded clock totals. No inventory is shown for unassigned. Current inventory is independent of labor window; installed progress is not job closeout. Eight focused tests passed; scope coverage and progress rendering tested. No DB writes.
+
+2026-10-28 - Known opening area review
+Renamed Jobs area column Known opening area. Clickable measured/total count opens a read-only coverage pane of excluded openings, with missing vs conflict status, adapter-derived reasons, and available job-spec/custom dimensions. Includes missing opening contexts instead of dropping them; complete/no-inventory states explicit. Reuses already-loaded facts with no new reads. Source dimension conflicts preserved. Four focused tests passed, including reason propagation and open/close interaction without expanding the cost-code row. No schema or DB changes.
+
+2026-10-28 - Compact cost-code allocation rows
+Replaced separate opening count column with Installed count/progress in its place. Job Total hours moved furthest right. Removed cost-code caption/visible column headers and extra people/share/count columns. Compact expandable code rows show code label, relative bar (largest finished net allocation in that job = 100%, not percent of total), hours right; original timecards remain underneath each code. Bars sized to visible table container for tablet access. Zero allocations render empty bars without division by zero. No data reads or writes added.
+
+2026-10-28 Jobs table: replaced installation-coded hours with Known min/ft2 (all finished net clocked minutes in page dates / known opening inventory area). Partial area labeled; no unit timer allocation. Removed sort dropdown; sortable column headers, latest clocked work descending by default. Unknown values last. No DB/schema changes.
+
+2026-10-28 Cost-code rows now show finished clocked minutes / job known opening area (two decimals). Area display rounded to whole sq ft; shortened coverage text, denominator warnings retained in tooltips. No DB changes.
+
+2026-10-28 Jobs formatting: comma-separated whole sq ft, month-day dates, capitalized clock-record name initials. Cost-code rates have no tooltip; parent job rate retains denominator explanation. Corrected corrupted unit characters using Unicode escapes.
+
+2026-10-28 Compact nested timecards hide visible column headers (retained for screen readers), hours include h. Jobs People column removed; distinct clocked people count beneath status with person/team icon. No DB changes.
+
+2026-10-28 Removed Jobs and clocked-summary explanatory paragraphs. Combined total hours and secondary min/ft2 in job and cost-code rows; narrower Jobs table. Parent rate tooltip retains scope/coverage explanation.
+
+2026-10-28 Hidden Last clocked work column, retained descending default. Header sort cycles initial direction / reverse / off (default latest). New column selection replaces previous sort. Verified reset and exclusive sorting in JobsTable test.
+
+2026-10-28 Combined hours header now has independent min/ft2 sort button, exclusive sort and reset retained. Tightened job row/header/checkbox padding, secondary values and cost-code spacing, aligned numeric header and values right.
+
+2026-10-28 Rate promoted above total hours with steel accent and independent Rate/Total hours sorting. Nested code rows stretch full table width so metric endpoints align even with horizontal overflow. Restored minimum table width; no performance thresholds inferred.
+
+2026-10-28 Removed Jobs minimum width; fixed proportional columns, natural left alignment for metric header/values, wrapping job labels and compact mobile spacing. Rate header neutral; rate values retain accent, no good/poor thresholds. CSS-only change.
+
+2026-10-28 Footer now shows area-weighted rate (sum finished minutes / sum known area for jobs with usable area and finished clocks), above all clocked hours. Unassigned/missing-area hours excluded from rate, retained in total hours; incomplete denominator warning in tooltip. Shifted nested metric track right.
+
+2026-10-29 Catalog-linked area fallback: live window_types width/height now read in shared opening context (v4 cache). Complete job specs/reviewed drawings/custom facts retain priority; catalog supplies usable area only when these are unavailable, labeled unconfirmed catalog. Partial-spec disagreements retained as source conflicts without hiding recovered area. Job measurement review includes unconfirmed recovered areas separately from missing/conflicting exclusions; rate tooltips disclose catalog counts. No DB/schema changes. Focused tests cover fallback, mismatch, complete spec precedence, missing dimensions and wrong-job context.
+
+2026-10-29 Compact top stats: rounded comma-formatted hrs, people/finished-shift icons, installed opening count scoped to page dates using installed status + work_ended_at, with current count and missing-timestamp caveat on hover. No inferred installation from payroll. Measurements retain recorded totals and source-disagreement review links; no catalog remapping, DB writes or correction UI added.
+
+2026-10-29 Compact Proposed toolbar: jobs + icon date selector + raised Record scatter/Compare jobs, date scope on hover, custom calendars retained. Removed redundant top chart shortcuts. Include rework checkbox defaults included, only explicit code/outcome evidence excluded; warranty/service/QC not assumed rework. JOBS count moved into sortable header. No DB writes.
+
+2026-10-29 Jobs breakdown now partitions explicitly rework-coded clocks into Identified rework, expandable with original code labels and records. Other code buckets exclude those records; job/footer totals unchanged, include-rework default retained. Activity outcomes cannot silently relabel unrelated payroll. Test verifies disjoint bucket record count and unchanged total.
+
+2026-10-29 Unit table polish: merged group toggle/drag grip, tap toggles, drag and keyboard reorder enable grouping. Dropdowns retained with compact spacing and labels. Removed about-coverage text and inventory explanatory line; group people count removed, Area header simplified and group totals rounded/comma formatted. No change to labor sources or DB.
+
+2026-10-29 Unit group progress now installed-status count / group inventory total; filter/header spacing tightened. Per-cost-code Compare action temporarily filters existing clock cache by stable code ID, isolates jobs with matching records, opens breakdowns, shows job label over code, scopes hours/rates/footer to matching clocks, preserves inventory area. Clear restores full table and previous expand state; no new reads or DB changes. Test covers filtered totals and reset.
+
+2026-10-29 Cost-code comparison is now a temporary replacement view: only matching code rows with project labels, no parent job rows/header. Rate default, Hours toggle, bars scale to max matching job metric, missing rates explicit, coverage asterisk retained. Back to jobs or Escape restores original table state. No new DB reads/writes.
+
+2026-10-29 Comparison navigation retains scroll ancestors and invoking code-row offset/focus; comparison toolbar sticky. Reporting snapshots now memory-only for sign-in session (gc Infinity), retained on Data unmount, canceled/purged on auth identity/generation changes. Fresh exact-scope clocked range coverage reused; expansion fetches only gaps, stale/invalidated coverage reread authoritatively. Freshness watermark prevents chained expansions renewing old data; newer empty coverage supersedes older rows. Existing bounded polling and inactive-tab rules retained. Same-session placeholder snapshots keep existing date-filtered data visible during range loading; polling waits for actual snapshot. No disk persistence/DB writes.
+
+2026-10-29 Cost-code compare button aligned within flex label area with padding before bar. Comparison now body-portal overlay above sidebar, dimmed outside-click backdrop, modal semantics/focus wrapping, sticky Back toolbar and background scroll lock. Existing back/Escape restores invoke position/focus. Test covers backdrop dismissal and scroll-lock cleanup. No DB changes.
+
+2026-10-29 Comparison mobile names get larger grid track, repeated cost-code label removed (header retains it). Unit Person grouping/filter added from exact installation credits and matched crew contributors, never logger fallback. Unknown/no-attributed/evidence-error states distinct. Worker evidence loads only when Person grouping/filter active, in private session cache; units may appear under multiple known contributors, selected inventory remains identity-deduplicated. Group tooltip clarifies unit timer hours are not individual payroll allocation. No DB writes.
+
+2026-10-29 Unit inventory default sorts every group level and leaf units by latest recorded activity/phase/opening work timestamp, unknown last; no clock hours allocated to units. Header sorting (Unit, Job, Type, Area, Progress, Linked hours) exclusive three-state cycle resets to recent; numeric group metrics use summed areas/hours and installed proportion. Existing grouping and selection identities preserved.
+
+2026-10-29 Unit row diagnostic prose replaced with count of problems to review, reasons on hover. Counts held uncertain/timer records (dedup by source ID; confirmed duplicates not unresolved), manual flags if no held record, measurement issues and taxonomy conflicts. After-the-fact documentation does not imply rework; measured-labor exclusion and completion evidence unchanged. No DB writes.
+
+2026-10-30 closeout / next chart pass
+- Unit table: grouped fields hidden on leaf rows; floor inline only when known and not grouped. Area is not a grouping/filter control. Size remains in the unit pane. Category conflicts display as Conflict; original evidence retained.
+- Next session: retain record scatter; reconsider other chart ideas. Unit charts should use installed units. Develop useful clock-record charts separately, keeping clocked labor separate from unit timers. No chart removals or installed-only changes applied in this closeout.
+
+2026-10-30 Charts pass
+- Steel synthesis restarted from matt/forge-synthesis on 5174. Record scatter preserved with all source/held records.
+- Unit chart rows require explicit installed project_openings status, same job and opening ID, and no conflicting link. Unknown/noninstalled records stay in tables/scatter. Relative unit timer windows apply same gate. Selected inventory summary remains an inventory summary.
+- Added Clocked job comparison, using existing page-date shift cache and opening-area scope cache. Per-job horizontal cost-code stacks; Hours / Share of job hours / Minutes per known sq ft. Finished shifts net of breaks, ID deduped; running/unresolved excluded and counted. Rework remains included.
+- Cost-code legend toggles preserve full-job denominator for share. Known-area rate uses all known opening area, never installed-only area; coverage and unconfirmed counts disclosed. This is period labor intensity, not complete-job productivity or allocated unit labor. Tap segments for original matching timecards. No new query path or DB changes.
+
+2026-10-30 Reporting cleanup checkpoint
+- Current chart selector: Record scatter and Clocked labor by job only. Retired chart modules removed, with obsolete weekly/source/measure and unit-selection provider state. No local archive.
+- Activities default, cost-code visibility drives clocked totals and Jobs view. Unit inventory remains separate from clocked labor. Review queue and source conflicts retained read-only.
+- Unit records, phases, facts, and enrichment indexed/memoized. Review queue builds details only when opened; 3,756 hidden DOM elements avoided in the observed 45-record queue.
+- Unit table horizontal overflow contained on desktop/mobile. Page-relative header and active group pinning uses batched layout reads and offsets inside the horizontal scroll container; vertical scrolling remains on the page.
+- Retained 12 reporting test files / 22 tests for scoped readers, lifecycle, filters, polling and session cache updates. No schema or production data changes. Daily-log/offline/schedule changes excluded from reporting commit.

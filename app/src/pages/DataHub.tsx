@@ -1,3 +1,4 @@
+import { useReportShifts } from "./dataReview/useReportShifts";
 // The DATA TAB (grilled 2026-08-17, supervisor+ only): the company's
 // ledger of where time goes. Four panels in the settled order — lost
 // time first (actionable tomorrow), true cost second, estimating health
@@ -49,6 +50,7 @@ import type { ProjectOpening } from "../lib/install/types";
 import type { ProjectMarkSpec } from "../lib/install/specs";
 import type { SignatureV1 } from "../lib/estimate/signature";
 import type { LadderRung } from "../lib/estimate/cohorts";
+import { mapReportJobs, reportOwner, reportProjects, reportQueryPolicy } from "./dataReview/reportQueries";
 
 const fmtH = (min: number) => `${Math.floor(min / 60)}h ${Math.round(min) % 60}m`;
 
@@ -94,12 +96,15 @@ const RUNG_LABELS: Record<LadderRung, string> = {
   manual: "manual estimate",
 };
 
-export function DataHub({ summary = false }: { summary?: boolean }) {
+export function DataHub({ summary = false, reporting = false, active = true }: { summary?: boolean; reporting?: boolean; active?: boolean }) {
   const t = useT();
-  const projects = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
+  const owner = reportOwner();
+  const projects = useQuery(reporting ? reportProjects(owner, active) : { queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
   const profiles = useQuery({
-    queryKey: ["profilesIncludingRemoved"],
+    ...(reporting ? reportQueryPolicy : {}),
+    queryKey: reporting ? ["dataReview", owner, "profilesIncludingRemoved"] : ["profilesIncludingRemoved"],
     queryFn: listProfilesIncludingRemoved,
+    enabled: active,
   });
   const [jobFilter, setJobFilter] = useState<JobSelection>(null);
   const [showPeople, setShowPeople] = useState(false);
@@ -109,10 +114,15 @@ export function DataHub({ summary = false }: { summary?: boolean }) {
     () => new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
     [],
   );
-  const shifts = useQuery({
+  const [until] = useState(() => new Date(Date.now() + 3600_000).toISOString());
+  const reportingShifts = useReportShifts(owner, jobFilter, Date.parse(since), Date.parse(until), reporting && active);
+  const legacyShifts = useQuery({
+    enabled: !reporting,
     queryKey: ["teamShifts30d", since],
     queryFn: () => listTeamShifts(since, new Date(Date.now() + 3600_000).toISOString()),
   });
+
+  const shifts = reporting ? reportingShifts : legacyShifts;
 
   const scope = useMemo(
     () =>
@@ -123,12 +133,14 @@ export function DataHub({ summary = false }: { summary?: boolean }) {
   );
 
   // One bundle per job in scope — a handful of jobs, fetched in parallel.
+  const bundleKey = ["dataHubBundles", scope.map((p) => p.id).join(",")];
   const bundles = useQuery({
-    queryKey: ["dataHubBundles", scope.map((p) => p.id).join(",")],
-    enabled: scope.length > 0,
-    queryFn: async (): Promise<JobBundle[]> =>
-      Promise.all(
-        scope.map(async (p) => {
+    ...(reporting ? reportQueryPolicy : {}),
+    queryKey: reporting ? ["dataReview", owner, "currentBundles", scope.map(p => p.id).sort()] : bundleKey,
+    enabled: active && scope.length > 0,
+    queryFn: async ({ signal }): Promise<JobBundle[]> =>
+      mapReportJobs(
+        scope, async (p) => {
           const [openings, sessions, redos, phases, specs, oldMinutes] =
             await Promise.all([
               listOpenings(p.id),
@@ -180,7 +192,7 @@ export function DataHub({ summary = false }: { summary?: boolean }) {
             legacyMin: legacy.minutes,
             legacyUnits: legacy.units,
           };
-        }),
+        }, reporting, signal,
       ),
   });
 
@@ -189,7 +201,7 @@ export function DataHub({ summary = false }: { summary?: boolean }) {
     sessions: sessionsEv,
     legacy: legacyEv,
     dataOff: dataOffExcluded,
-  } = useCohortEvidence();
+  } = useCohortEvidence(reporting ? { ...reportQueryPolicy, enabled: active, owner } : undefined);
 
   const all = bundles.data ?? [];
   const allSessions = useMemo(() => all.flatMap((b) => b.sessions), [all]);
@@ -309,7 +321,7 @@ export function DataHub({ summary = false }: { summary?: boolean }) {
         <JobMultiSelect projects={projects.data ?? []} selection={jobFilter} onChange={setJobFilter} loading={projects.isPending} />
       </header>
 
-      <JobHoursLedger selectedJobs={jobFilter} />
+      <JobHoursLedger selectedJobs={jobFilter} reporting={reporting} active={active} />
 
       {/* ---- The morning glance: four numbers before any reading ---- */}
       <div className="data-stats">
