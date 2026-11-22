@@ -228,7 +228,8 @@
 .ub-tiles dt { font-size: 12px; font-weight: 600; color: var(--muted); }
 .ub-tiles dd { font-size: 26px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .ub-tiles small { font-size: 12px; color: var(--muted); }
-.ub-tiles > div[data-tone=warn] dd { color: var(--warn); }
+.ub-tiles > div[data-tone=warn] dd,
+.ub-viewer-facts > div[data-tone=warn] dd { color: var(--warn); }
 .ub-tiles > div[data-tone=ok] dd { color: var(--ok); }
 .cad-review-floor-totals { display: flex; flex-wrap: wrap; gap: 6px; }
 .cad-review-floor-totals > li { display: flex; gap: 8px; align-items: baseline; padding: 6px 10px; border-radius: 999px; background: var(--card-hot); font-size: 13px; }
@@ -380,3 +381,15 @@
   /* Edit and Copy share half a tile each: keep each on one line. */
   .cad-import .cad-builder-unit-actions button { gap: 3px; padding: 4px 2px; font-size: 13px; white-space: nowrap; }
 }
+
+.cad-plan-exception { min-height: 42px; gap: 8px; padding: 6px 8px 6px 12px; }
+.cad-plan-exception-label, .cad-plan-exception-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.cad-plan-exception-label { min-width: 0; overflow: hidden; }
+.cad-plan-exception-label > strong { flex: none; }
+.cad-plan-exception-label > span { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cad-plan-exception-actions > :is(select, button) { flex: none; box-sizing: border-box; height: var(--ub-control); }
+.cad-import .cad-plan-exception-actions select {
+  width: 82px; padding: 0 6px; font: 600 14px/1.2 var(--font-body); text-overflow: ellipsis;
+}
+.cad-import .cad-plan-exception-actions button { min-width: var(--ub-control); padding: 0 8px; }
+.cad-import .cad-plan-exception-actions button[data-variant=ghost] { width: var(--ub-control); padding: 0; }

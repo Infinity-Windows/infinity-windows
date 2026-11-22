@@ -2,12 +2,15 @@ import type { CadUnitDraft } from "./cadUnitPreview";
 import { MM_PER_INCH } from "./dimensionEntry";
 import type { UnitDetails } from "./unitDetails";
 
+export type ManualImportDefinition = Pick<UnitDetails, "kind" | "width" | "height" | "basis" | "material" | "configuration" | "inset">;
+
 /** One opening of the reviewed import draft, as the Finish step sees it. */
 export type ImportOpening = {
   key: string;
   mark: string;
   floor: string | null;
   sheet?: number;
+  manualDefinition?: ManualImportDefinition;
   draft?: Pick<CadUnitDraft, "kind" | "label" | "sheet" | "widthMm" | "heightMm" | "configuration" | "material">;
 };
 
@@ -41,19 +44,25 @@ export function planImportUnits(openings: readonly ImportOpening[], existingCode
   const next = new Map<string, number>();
   for (const opening of ordered) {
     const mark = opening.mark.trim().replace(/^#/, "");
-    const kind = opening.draft?.kind;
-    if (!opening.draft) { leftOut.push({ key: opening.key, mark, floor: opening.floor, why: "no-definition" }); continue; }
+    const kind = opening.manualDefinition?.kind ?? opening.draft?.kind;
+    if (!opening.draft && !opening.manualDefinition) { leftOut.push({ key: opening.key, mark, floor: opening.floor, why: "no-definition" }); continue; }
     if (!kind) { leftOut.push({ key: opening.key, mark, floor: opening.floor, why: "type-unclear" }); continue; }
     let number = next.get(mark.toLowerCase()) ?? 1;
     while (taken.has(`${mark}-${number}`.toLowerCase())) number++;
     const code = `${mark}-${number}`;
     taken.add(code.toLowerCase());
     next.set(mark.toLowerCase(), number + 1);
-    const { widthMm, heightMm, configuration, material, label, sheet } = opening.draft;
+    const { widthMm, heightMm, configuration, material, label, sheet } = opening.draft ?? {};
     const floor = floorNumber(opening.floor);
     units.push({
       key: opening.key, code, mark, floor: opening.floor,
-      details: {
+      details: opening.manualDefinition ? {
+        ...opening.manualDefinition,
+        placeholder: false, kind,
+        ...(floor ? { floor } : {}),
+        material: opening.manualDefinition.material?.trim() || undefined,
+        configuration: opening.manualDefinition.configuration?.trim() || undefined,
+      } : {
         placeholder: false, kind,
         ...(floor ? { floor } : {}),
         ...(widthMm ? { width: widthMm / MM_PER_INCH } : {}),
@@ -62,7 +71,7 @@ export function planImportUnits(openings: readonly ImportOpening[], existingCode
         ...(configuration ? { configuration } : {}),
         ...(material ? { material } : {}),
       },
-      reason: `Imported from drawings: plan mark ${mark}${opening.sheet ? `, plan sheet ${opening.sheet}` : ""}; CAD sheet ${sheet}: ${label}`.slice(0, 500),
+      reason: `Imported from drawings: plan mark ${mark}${opening.sheet ? `, plan sheet ${opening.sheet}` : ""}; ${opening.manualDefinition ? "unit defined by hand" : `CAD sheet ${sheet}: ${label}`}`.slice(0, 500),
     });
   }
   return { units, leftOut };

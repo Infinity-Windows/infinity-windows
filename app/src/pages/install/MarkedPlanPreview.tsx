@@ -7,19 +7,20 @@ import { AI_POOL, reviewOpeningWithAi, runPool, type AiMatch } from "./aiCadRevi
 import { DrawingCompare, type CompareTarget } from "./DrawingCompare";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "../../lib/errors";
-import { planImportUnits } from "../../lib/install/unitImportFinish";
+import { planImportUnits, type ManualImportDefinition } from "../../lib/install/unitImportFinish";
 import { unitKindLabel } from "../../lib/install/unitDetails";
 import { refreshUnitDetails, saveUnitDetails } from "../../lib/install/unitDetailsApi";
 import { UnitBuilderFile } from "./UnitBuilderFile";
 import { matchPlanOpening, type PlanDrawingLabel } from "../../lib/install/matchCadPlanOpening";
 import type { CadUnitDraft } from "../../lib/install/cadUnitPreview";
 import { readOpeningSpans, sharesOpeningSpan } from "../../lib/install/planOpeningLinework";
+import { ManualImportUnitFields, NO_CAD } from "./ManualImportUnitFields";
 import { PlanMatchEvidence } from "./PlanMatchEvidence";
 import { markedPlanElevation, markedPlanFloor } from "../../lib/install/markedPlanFloor";
 import { splitCalloutsByFloorPlan } from "../../lib/install/planDetails";
 import { extractAllText, extractPlanMarkCallouts, loadPdfTask } from "../../lib/install/pdf";
 
-type Review = { mark: string; floor: string | null; drawing: string };
+type Review = { mark: string; floor: string | null; drawing: string; manualDefinition?: ManualImportDefinition };
 type ManualOpening = Review & { key: string; source?: { sheet: number; x: number; y: number } };
 type Opening = { key: string; x: number; y: number; mark: string; sheet: number; floor: string | null; labels: PlanDrawingLabel[] };
 type Result = { openings: Opening[]; repeats: number; source: string; pdf: PDFDocumentProxy; floorSheets: { floor: string; page: number }[]; nativeLabels: Record<number, PlanDrawingLabel[]>; building3: boolean };
@@ -67,7 +68,7 @@ export function MarkedPlanPreview({ drafts, cadSource, cadPdf, projectId, existi
   const [notOnJob, setNotOnJob] = useState<string[]>([]);
   const [excluded, setExcluded] = useState<string[]>([]);
   const [manual, setManual] = useState<ManualOpening[]>([]);
-  const [adding, setAdding] = useState<ManualOpening>();
+  const [adding, setAdding] = useState<ManualOpening & { inlineFor?: string; validDimensions?: boolean }>();
   // Finish is the only place the import writes to the job. `added` remembers
   // which openings already became units so a retry after a dropped connection
   // picks up where it stopped instead of adding the first ones twice.
@@ -205,18 +206,29 @@ export function MarkedPlanPreview({ drafts, cadSource, cadPdf, projectId, existi
   // item numbers (Matt, 2026-11-20: work from CAD quantities on every job).
   const quantityCheck = compareCadQuantities(
     [...preview.map(row => row.drawing?.key), ...manual.map(row => row.drawing || undefined)], drafts);
+  const quantitiesByKey = new Map(quantityCheck.map(({ draft, expected, found }) => [draft.key, { expected, found }]));
+  const quantitiesFor = (opening: Opening) => {
+    const current = preview.find(row => row.key === opening.key)?.drawing?.key;
+    return Object.fromEntries([...quantitiesByKey].map(([key, quantity]) => [key, {
+      ...quantity, found: quantity.found - Number(key === current),
+    }]));
+  };
   const quantityOff = quantityCheck.filter(row => row.found !== row.expected);
-  const attention = (row: typeof preview[number]) => row.overlap || !row.floor || (drafts.length > 0 && !row.drawing);
-  const needsAttention = preview.filter(attention).length + shortage +
-    manualRows.filter(row => !row.floor || (drafts.length > 0 && !row.drawingLabel)).length;
-  const filter = picked ?? (needsAttention ? "attention" : "all");
+  const attention = (row: typeof preview[number]) => row.overlap || !row.floor || (!row.review?.manualDefinition && !row.drawing?.kind);
+  const manualNeedsAttention = (row: typeof manualRows[number]) =>
+    !row.floor || (!row.manualDefinition && !drafts.find(draft => draft.key === row.drawing)?.kind);
+  const openingAttention = preview.filter(attention).length + missing.length + manualRows.filter(manualNeedsAttention).length;
+  const needsAttention = openingAttention;
+  const filter = picked ?? (openingAttention ? "attention" : "all");
   const floorTotals = new Map<string, number>();
   for (const row of [...preview, ...manualRows]) {
     const floor = row.floor ?? "Floor unclear";
     floorTotals.set(floor, (floorTotals.get(floor) ?? 0) + 1);
   }
-  const startManual = (mark = "", floor: string | null = null) =>
-    setAdding({ key: crypto.randomUUID(), mark, floor, drawing: "" });
+  const startManual = (mark = "", floor: string | null = null, inlineFor?: string) => {
+    setReviewing(undefined);
+    setAdding({ key: crypto.randomUUID(), mark, floor, drawing: "", inlineFor });
+  };
   const downloadReview = () => {
     const payload = {
       source: file?.name, openingCallouts: result?.openings.length ?? 0,
@@ -224,7 +236,7 @@ export function MarkedPlanPreview({ drafts, cadSource, cadPdf, projectId, existi
       discrepancies, quantityDifferences: quantityOff.map(row => ({ drawing: row.draft.label, expected: row.expected, matched: row.found })), ignoredCallouts: (result?.openings ?? []).filter(row => excluded.includes(row.key)).map(({ labels: _, ...row }) => row),
       openings: preview.map(row => ({
         mark: row.mark, floor: row.floor, sheet: row.opening.sheet, x: row.opening.x, y: row.opening.y,
-        drawing: row.drawing?.label ?? null, reviewed: !!row.review, possibleDuplicate: row.overlap,
+        drawing: row.drawing?.label ?? null, manualDefinition: row.review?.manualDefinition, reviewed: !!row.review, possibleDuplicate: row.overlap,
       })),
       addedByReviewer: manualRows,
     };
@@ -236,18 +248,14 @@ export function MarkedPlanPreview({ drafts, cadSource, cadPdf, projectId, existi
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   const visible = preview.filter(row => filter === "all" || attention(row));
-  const groups = new Map<string, typeof preview>();
-  for (const row of visible) {
-    const floor = row.floor ?? "Floor unclear";
-    const group = groups.get(floor) ?? [];
-    group.push(row);
-    groups.set(floor, group);
-  }
+  const visibleManual = manualRows.filter(row => filter === "all" || manualNeedsAttention(row));
+  const matchFloors = new Set([...visible, ...visibleManual, ...missing].map(row => row.floor ?? "Floor unclear"));
+  const sortedMatchFloors = [...matchFloors].sort((a, b) => Number(a === "Floor unclear") - Number(b === "Floor unclear") || a.localeCompare(b, undefined, { numeric: true }));
 
   // The family drawing a lettered mark belongs to ("1-A" belongs with item 1),
   // and how many plain marks of that family the plan has.
   const familyOf = (opening: Opening) => ({
-    relatedDraft: result?.building3 && /^(\d+)-[A-Z]$/i.test(opening.mark)
+    relatedDraft: /^(\d+)-[A-Z]$/i.test(opening.mark)
       ? drafts.find(draft => draft.itemNumber === opening.mark.split("-")[0]) : undefined,
     familyCount: openings.filter(row => row.mark === opening.mark.split("-")[0]).length,
   });
@@ -264,7 +272,7 @@ export function MarkedPlanPreview({ drafts, cadSource, cadPdf, projectId, existi
     setAiRun({ working: [], queued: rows.map(row => row.key), done: 0, total: rows.length });
     await runPool(rows, AI_POOL, async row => {
       setAiRun(now => now && { ...now, working: [...now.working, row.key], queued: now.queued.filter(key => key !== row.key) });
-      const answer = await reviewOpeningWithAi({ projectId, opening: row.opening, plan: result.pdf, cad: cadPdf, drafts, ...familyOf(row.opening) });
+      const answer = await reviewOpeningWithAi({ projectId, opening: row.opening, plan: result.pdf, cad: cadPdf, drafts, quantities: quantitiesFor(row.opening), ...familyOf(row.opening) });
       setAiAnswers(old => ({ ...old, [row.key]: answer }));
       setAiRun(now => now && { ...now, working: now.working.filter(key => key !== row.key), done: now.done + 1 });
     }, () => stopAi.current);
@@ -291,6 +299,7 @@ export function MarkedPlanPreview({ drafts, cadSource, cadPdf, projectId, existi
         reviewed={reviewed[reviewing.key]}
         ai={aiAnswers[reviewing.key]} onAi={answer => setAiAnswers(old => ({ ...old, [reviewing.key]: answer }))}
         onFullScreen={(draft, focus) => fullScreen(reviewing, draft, focus)}
+        quantities={quantitiesFor(reviewing)}
         {...familyOf(reviewing)}
         onReviewed={value => {
           if (reviewing.key.startsWith("candidate:")) {
@@ -302,18 +311,19 @@ export function MarkedPlanPreview({ drafts, cadSource, cadPdf, projectId, existi
         onClose={() => setReviewing(undefined)} />;
 
   const total = preview.length + manual.length;
+  const matched = preview.filter(row => row.drawing).length + manualRows.filter(row => row.drawingLabel).length;
   const loaded = !!result;
   const addedCount = Object.keys(added).length;
   useEffect(() => {
     onSummary({ loaded, openings: total, attention: needsAttention, added: addedCount });
   }, [loaded, total, needsAttention, addedCount, onSummary]);
   const toFinish = planImportUnits([
-    ...preview.map(row => ({ key: row.key, mark: row.mark, floor: row.floor, sheet: row.opening.sheet, draft: row.drawing })),
-    ...manualRows.map(row => ({ key: row.key, mark: row.mark, floor: row.floor, sheet: row.sheet, draft: drafts.find(draft => draft.key === row.drawing) })),
+    ...preview.map(row => ({ key: row.key, mark: row.mark, floor: row.floor, sheet: row.opening.sheet, draft: row.drawing, manualDefinition: row.review?.manualDefinition })),
+    ...manualRows.map(row => ({ key: row.key, mark: row.mark, floor: row.floor, sheet: row.sheet, draft: drafts.find(draft => draft.key === row.drawing), manualDefinition: row.manualDefinition })),
   ].filter(row => !added[row.key]), [...existingCodes, ...Object.values(added)]);
   const possibleDuplicates = preview.filter(row => row.overlap && !added[row.key]).length;
   const finish = async () => {
-    if (finishing) return;
+    if (finishing || needsAttention) return;
     // The numbers are fixed here, before the first write, so the list the
     // person confirmed is the list that gets added even as the job's own unit
     // list refreshes underneath.
@@ -351,6 +361,7 @@ export function MarkedPlanPreview({ drafts, cadSource, cadPdf, projectId, existi
     // The evidence opens under its row, so the row has to be in the list.
     const row = preview.find(item => item.key === opening.key);
     if (row && filter === "attention" && !attention(row)) setFilter("all");
+    setAdding(undefined);
     setReviewing(opening);
   };
   // Wherever it was opened from, bring the evidence into view: its row may be
@@ -369,6 +380,40 @@ export function MarkedPlanPreview({ drafts, cadSource, cadPdf, projectId, existi
       <button type="button" data-variant="primary" onClick={() => onStep("plan")}>Go to floor plan</button>
     </div>
   </div>;
+
+  const addingWithoutCad = adding?.drawing === NO_CAD;
+  const addingHasDefinition = addingWithoutCad
+    ? !!adding?.manualDefinition?.kind && adding.validDimensions !== false
+    : !!drafts.find(draft => draft.key === adding?.drawing)?.kind;
+  const manualForm = adding && <form className="cad-plan-evidence ub-inline-form" onSubmit={event => {
+    event.preventDefault();
+    const mark = adding.mark.trim();
+    const floor = adding.floor?.trim();
+    if (!mark || !floor || !addingHasDefinition) return;
+    const { inlineFor: _, validDimensions: __, ...opening } = adding;
+    setManual(old => [...old.filter(row => row.key !== adding.key), { ...opening, mark, floor, drawing: opening.drawing === NO_CAD ? "" : opening.drawing }]);
+    setAdding(undefined);
+  }}>
+    <h3>Define opening</h3>
+    <label>Opening mark <input required autoFocus value={adding.mark} onChange={event => setAdding({ ...adding, mark: event.target.value })}/></label>
+    <label>Floor <input required value={adding.floor ?? ""} onChange={event => setAdding({ ...adding, floor: event.target.value })}/></label>
+    <label>CAD drawing <select value={adding.drawing}
+      onChange={event => setAdding({ ...adding, drawing: event.target.value, manualDefinition: undefined, validDimensions: true })}>
+      <option value="">Choose a drawing</option><option value={NO_CAD}>No CAD</option>
+      {drafts.map(draft => <option key={draft.key} value={draft.key}>{draft.label}</option>)}
+    </select></label>
+    {addingWithoutCad && adding.manualDefinition && <ManualImportUnitFields value={adding.manualDefinition}
+      onChange={manualDefinition => setAdding(current => current && { ...current, manualDefinition })}
+      onValidChange={validDimensions => setAdding(current => current && { ...current, validDimensions })}/>}
+    <div className="ub-actions">
+      <button type="button" data-variant="ghost" onClick={() => setAdding(undefined)}>Cancel</button>
+      {addingWithoutCad && !adding.manualDefinition
+        ? <button type="button" data-variant="primary" onClick={() => setAdding({ ...adding, manualDefinition: {} })}>Define Unit</button>
+        : <button type="submit" data-variant="primary" disabled={!adding.mark.trim() || !adding.floor?.trim() || !addingHasDefinition}>
+          {addingWithoutCad ? "Add to units" : "Link opening"}
+        </button>}
+    </div>
+  </form>;
 
   return <>
     {viewing && <DrawingCompare target={viewing} onClose={() => setViewing(undefined)}/>}
@@ -431,119 +476,143 @@ export function MarkedPlanPreview({ drafts, cadSource, cadPdf, projectId, existi
           <button type="button" onClick={() => void askAiForUnclear()}><Sparkles size={16} aria-hidden="true"/>Ask AI about {unclearForAi.length === 1 ? "it" : `all ${unclearForAi.length}`}</button>
         </div>}
 
-        {(reference.length > 0 || quantityCheck.length > 0) && <section className="ub-panel" aria-label="Count check">
-          <h3>Count check</h3>
-          <dl className="ub-viewer-facts">
-            <div><dt>On plan</dt><dd>{total}</dd></div>
-            {reference.length > 0 && <div><dt>Expected</dt><dd>{reference.reduce((sum, row) => sum + row.count, 0)}</dd></div>}
-            {reference.length > 0 && <div data-tone={shortage ? "warn" : undefined}><dt>Not found</dt><dd>{shortage}</dd></div>}
-            {quantityCheck.length > 0 && <div data-tone={quantityOff.length ? "warn" : undefined}><dt>CAD quantities agree</dt>
-              <dd>{quantityCheck.length - quantityOff.length} of {quantityCheck.length}</dd></div>}
-          </dl>
-          <ul className="ub-rows">
-            {quantityOff.map(({ draft, expected, found }) => <li key={draft.key}>
-              <span className="ub-row-main">CAD {draft.label} · {found} / {expected}
-                <span className="ub-count" data-tone="warn">{found < expected ? `${expected - found} short` : `${found - expected} over`}</span></span>
-              {found < expected && <button type="button" data-variant="ghost" onClick={() => startManual()}>Add one</button>}
-            </li>)}
-            {preview.filter(row => !row.review && !row.drawing && /^(\d+)-[A-Z]$/i.test(row.mark)).map(row =>
-              <li key={row.key}>
-                <span className="ub-row-main">{row.floor} · {row.mark} · Confirm CAD variant</span>
-                <button type="button" onClick={() => openEvidence(row.opening)}>Review {row.mark}</button>
-              </li>)}
-            {discrepancies.filter(row => row.found > row.count || missing.includes(row)).map(row => <li key={openingCountKey(row.mark, row.floor)}>
-              <span className="ub-row-main">{row.floor} · {row.mark} · {row.found} / {row.count}
-                <span className="ub-count" data-tone="warn">{row.found < row.count ? "Not found" : "Extra"}</span></span>
-              {row.found < row.count && missingCandidates(row.mark, row.floor).map((candidate, index) =>
-                <button type="button" key={candidate.key} onClick={() => setReviewing(candidate)}>
-                  Show {row.mark}{index ? ` (${index + 1})` : ""}
-                </button>)}
-              {row.found < row.count && <button type="button" data-variant="ghost" onClick={() => startManual(row.mark, row.floor)}>Add {row.mark}</button>}
-              {row.found < row.count && <button type="button" data-variant="ghost" onClick={() => setNotOnJob(old => [...old, openingCountKey(row.mark, row.floor)])}>Not on this job</button>}
-              {row.found > row.count && <button type="button" onClick={() => {
-                const first = preview.find(item => openingCountKey(item.mark, item.floor) === openingCountKey(row.mark, row.floor));
-                if (first) openEvidence(first.opening);
-              }}>Review</button>}
-            </li>)}
-          </ul>
-        </section>}
-
-        {adding && <form className="ub-panel ub-inline-form" onSubmit={event => {
-          event.preventDefault();
-          if (!adding.mark.trim()) return;
-          setManual(old => [...old.filter(row => row.key !== adding.key),
-            { ...adding, mark: adding.mark.trim(), floor: adding.floor?.trim() || null }]);
-          setAdding(undefined);
-        }}>
-          <h3>Opening the plan read missed</h3>
-          <label>Missed opening mark <input required autoFocus value={adding.mark} onChange={event => setAdding({ ...adding, mark: event.target.value })}/></label>
-          <label>Floor <input value={adding.floor ?? ""} onChange={event => setAdding({ ...adding, floor: event.target.value })}/></label>
-          <label>CAD drawing <select value={adding.drawing} onChange={event => setAdding({ ...adding, drawing: event.target.value })}>
-            <option value="">Unspecified</option>{drafts.map(draft => <option key={draft.key} value={draft.key}>{draft.label}</option>)}
-          </select></label>
-          <div className="ub-actions">
-            <button type="button" data-variant="ghost" onClick={() => setAdding(undefined)}>Cancel</button>
-            <button type="submit" data-variant="primary">Keep in preview</button>
-          </div>
-        </form>}
-
-        {manualRows.length > 0 && <section className="ub-panel" aria-label="Added in review"><h3>Added in review</h3><ul className="ub-rows">
-          {manualRows.map(row => <li key={row.key}>
-            <span className="ub-row-main"><strong>{row.mark}</strong><small>{row.floor ?? "Floor unclear"} · {row.drawingLabel ?? "CAD drawing unspecified"}</small></span>
-            {row.sheet && <a href={`${result.source}#page=${row.sheet}`} target="_blank" rel="noreferrer">Plan sheet {row.sheet}</a>}
-            <button type="button" onClick={() => setAdding(row)}>Edit {row.mark}</button>
-            <button type="button" data-variant="ghost" onClick={() => setManual(old => old.filter(item => item.key !== row.key))}>Remove from preview</button>
-          </li>)}
-        </ul></section>}
-
-        {reviewing?.key.startsWith("candidate:") && evidence}
+        <dl className="ub-viewer-facts">
+          <div><dt>Matched Opening:</dt><dd>{matched} / {total}</dd></div>
+          {reference.length > 0 && <div data-tone={shortage ? "warn" : undefined}>
+            <dt>Openings not found:</dt><dd>{shortage}</dd>
+          </div>}
+          {quantityCheck.length > 0 && <div data-tone={quantityOff.length ? "warn" : undefined}
+            title={quantityOff.length ? quantityOff.map(({ draft, found, expected }) =>
+              `${draft.label}: ${found} matched / ${expected} expected`).join("\n") : undefined}>
+            <dt>CAD Quantities:</dt><dd>{quantityCheck.length - quantityOff.length} / {quantityCheck.length}</dd>
+          </div>}
+        </dl>
 
         <div className="ub-toolbar ub-match-tools">
           <div className="ub-seg" role="group" aria-label="Openings shown">
-            <button type="button" aria-pressed={filter === "all"} onClick={() => setFilter("all")}>All openings<span className="ub-count">{preview.length}</span></button>
+            <button type="button" aria-pressed={filter === "all"} onClick={() => setFilter("all")}>All openings<span className="ub-count">{total + missing.length}</span></button>
             <button type="button" aria-pressed={filter === "attention"} onClick={() => setFilter("attention")}>
-              Needs attention<span className="ub-count" data-tone={needsAttention ? "warn" : "ok"}>{needsAttention}</span></button>
+              Needs attention<span className="ub-count" data-tone={openingAttention ? "warn" : "ok"}>{openingAttention}</span></button>
           </div>
           {nextUnclear && <button type="button" onClick={() => openEvidence(nextUnclear.opening)}>Review next unclear</button>}
-          <button type="button" data-variant="ghost" onClick={() => startManual()}><Plus size={16} aria-hidden="true"/>Add missed opening</button>
         </div>
 
-        {filter === "attention" && !visible.length && <p className="ub-note">No openings match this view.</p>}
-        {[...groups].sort(([a], [b]) => Number(a === "Floor unclear") - Number(b === "Floor unclear") ||
-          a.localeCompare(b, undefined, { numeric: true })).map(([floor, rows]) => <section
-            key={floor} aria-label={floor} className="cad-builder-floor">
-          <h3>{floor} <span>{rows.length} openings{drafts.length ? ` · ${rows.filter(attention).length} need attention` : ""}</span></h3>
-          <div className="cad-plan-review-list">{rows.map(row => {
-            const tone = row.overlap ? "warn" : row.review ? "ok" : row.drawing ? undefined : drafts.length ? "warn" : undefined;
-            const aiDraft = !row.drawing ? drafts.find(draft => draft.key === aiAnswers[row.key]?.key) : undefined;
-            return <div key={row.key} className="cad-plan-review-item" data-open={reviewing?.key === row.key}>
-              <article className="cad-plan-mark" aria-label={`Plan mark ${row.mark}`}>
-                <button type="button" className="cad-plan-open" aria-label={`Review evidence for ${row.mark}`}
-                  aria-expanded={reviewing?.key === row.key}
-                  data-ai={aiRun?.working.includes(row.key) ? "working" : aiRun?.queued.includes(row.key) ? "queued" : undefined}
-                  onClick={() => reviewing?.key === row.key ? setReviewing(undefined) : openEvidence(row.opening)}>
-                  <strong>{row.mark}</strong>
-                  <span className="ub-count" data-tone={tone}
-                    title={row.match?.itemNumber ? `CAD item ${row.match.itemNumber}` : row.match?.linework && !row.review ? "Linework supported" : undefined}>
-                    {row.drawing ? `${row.review ? "Confirmed" : "Suggested"} · ${row.drawing.label}`
-                      : aiDraft ? `AI suggests · ${aiDraft.label}` : aiAnswers[row.key] ? "AI found no match" : drafts.length ? "CAD match unclear" : "Plan opening"}</span>
-                  {row.match?.itemNumber && !row.review && <small>Item {row.match.itemNumber}</small>}
-                  {row.overlap && <small className="cad-plan-duplicate">Possible duplicate</small>}
-                </button>
-                <div className="cad-plan-meta">
-                  <a href={`${result.source}#page=${row.opening.sheet}`} target="_blank" rel="noreferrer">Plan {row.opening.sheet}</a>
-                  {row.drawing && cadSource && <a href={`${cadSource}#page=${row.drawing.sheet}`} target="_blank" rel="noreferrer">
-                    CAD {row.drawing.sheet}</a>}
-                  <button type="button" data-variant="ghost" aria-label={`Exclude callout ${row.mark}`} title="Exclude callout" onClick={() => {
-                    if (reviewing?.key === row.key) setReviewing(undefined);
-                    setExcluded(old => [...old, row.key]);
-                  }}><X size={16} aria-hidden="true"/></button>
-                </div>
-              </article>
-              {reviewing?.key === row.key && evidence}
-            </div>;
-          })}</div>
-        </section>)}
+        {filter === "attention" && !matchFloors.size && <p className="ub-note">No openings match this view.</p>}
+        {sortedMatchFloors.map(floor => {
+          const rows = visible.filter(row => (row.floor ?? "Floor unclear") === floor);
+          const addedRows = visibleManual.filter(row => (row.floor ?? "Floor unclear") === floor);
+          const missingRows = missing.filter(row => row.floor === floor);
+          const attentionCount = rows.filter(attention).length + addedRows.filter(manualNeedsAttention).length + missingRows.length;
+          return <section key={floor} aria-label={floor} className="cad-builder-floor">
+            <h3>{floor} <span>{rows.length + addedRows.length + missingRows.length} openings · {attentionCount} need attention</span></h3>
+            <div className="cad-plan-review-list">{rows.map(row => {
+              const tone = row.overlap ? "warn" : row.review ? "ok" : row.drawing ? undefined : drafts.length ? "warn" : undefined;
+              const aiKey = aiAnswers[row.key]?.key;
+              const quantity = aiKey ? quantitiesByKey.get(aiKey) : undefined;
+              const aiDraft = !row.drawing && (!quantity || quantity.found < quantity.expected)
+                ? drafts.find(draft => draft.key === aiKey) : undefined;
+              return <div key={row.key} className="cad-plan-review-item" data-open={reviewing?.key === row.key}>
+                <article className="cad-plan-mark" aria-label={`Plan mark ${row.mark}`}>
+                  <button type="button" className="cad-plan-open" aria-label={`Review evidence for ${row.mark}`}
+                    aria-expanded={reviewing?.key === row.key}
+                    data-ai={aiRun?.working.includes(row.key) ? "working" : aiRun?.queued.includes(row.key) ? "queued" : undefined}
+                    onClick={() => reviewing?.key === row.key ? setReviewing(undefined) : openEvidence(row.opening)}>
+                    <strong>{row.mark}</strong>
+                    <span className="ub-count" data-tone={tone}
+                      title={row.match?.itemNumber ? `CAD item ${row.match.itemNumber}` : row.match?.linework && !row.review ? "Linework supported" : undefined}>
+                      {row.review?.manualDefinition?.kind ? `${unitKindLabel(row.review.manualDefinition.kind)} · Defined by hand` : row.drawing ? `${row.review ? "Confirmed" : "Suggested"} · ${row.drawing.label}`
+                        : aiDraft ? `AI suggests · ${aiDraft.label}` : aiAnswers[row.key] ? "AI found no match" : drafts.length ? "CAD match unclear" : "Plan opening"}</span>
+                    {row.match?.itemNumber && !row.review && <small>Item {row.match.itemNumber}</small>}
+                    {row.overlap && <small className="cad-plan-duplicate">Possible duplicate</small>}
+                  </button>
+                  <div className="cad-plan-meta">
+                    <a href={`${result.source}#page=${row.opening.sheet}`} target="_blank" rel="noreferrer">Plan {row.opening.sheet}</a>
+                    {row.drawing && cadSource && <a href={`${cadSource}#page=${row.drawing.sheet}`} target="_blank" rel="noreferrer">
+                      CAD {row.drawing.sheet}</a>}
+                    <button type="button" data-variant="ghost" aria-label={`Exclude callout ${row.mark}`} title="Exclude callout" onClick={() => {
+                      if (reviewing?.key === row.key) setReviewing(undefined);
+                      setExcluded(old => [...old, row.key]);
+                    }}><X size={16} aria-hidden="true"/></button>
+                  </div>
+                </article>
+                {reviewing?.key === row.key && evidence}
+              </div>;
+            })}
+              {addedRows.map(row => <div key={row.key} className="cad-plan-review-item">
+                <article className="cad-plan-mark cad-plan-exception" aria-label={`Added opening ${row.mark}`}>
+                  <span className="cad-plan-exception-label"><strong>{row.mark}</strong>
+                    <span title={row.drawingLabel}>{row.manualDefinition?.kind ? `${unitKindLabel(row.manualDefinition.kind)} · Defined by hand` : row.drawingLabel ?? "CAD drawing unspecified"}</span>
+                  </span>
+                  <div className="cad-plan-exception-actions">
+                    {row.sheet && <a href={`${result.source}#page=${row.sheet}`} target="_blank" rel="noreferrer">Plan {row.sheet}</a>}
+                    <button type="button" aria-label={`Edit ${row.mark}`} onClick={() => { setReviewing(undefined); setAdding({ ...row, drawing: row.manualDefinition ? NO_CAD : row.drawing, inlineFor: row.key }); }}>Edit</button>
+                    <button type="button" data-variant="ghost" aria-label={`Remove ${row.mark} from preview`}
+                      onClick={() => {
+                      if (adding?.inlineFor === row.key) setAdding(undefined);
+                      setManual(old => old.filter(item => item.key !== row.key));
+                    }}><X size={16} aria-hidden="true"/></button>
+                  </div>
+                </article>
+                {adding?.inlineFor === row.key && manualForm}
+              </div>)}
+              {missingRows.map(row => {
+                const key = openingCountKey(row.mark, row.floor);
+                const candidates = missingCandidates(row.mark, row.floor);
+                const showing = candidates.some(candidate => candidate.key === reviewing?.key);
+                return <div key={key} className="cad-plan-review-item" data-open={showing}>
+                  <article className="cad-plan-mark cad-plan-exception" aria-label={`Missing opening ${row.mark}`}>
+                    <span className="cad-plan-exception-label"><strong>{row.mark}</strong>
+                      <span className="ub-count" data-tone="warn">{row.count - row.found} not found</span>
+                    </span>
+                    <div className="cad-plan-exception-actions">
+                      {candidates.length > 0 && <select aria-label={`Plan crops for ${row.mark}`}
+                        value={showing ? reviewing?.key : ""} onChange={event => {
+                          setAdding(undefined);
+                          setReviewing(candidates.find(candidate => candidate.key === event.target.value));
+                        }}>
+                        <option value="">Views</option>
+                        {candidates.map((candidate, index) => <option key={candidate.key} value={candidate.key}>
+                          Crop {index + 1} · Sheet {candidate.sheet}
+                        </option>)}
+                      </select>}
+                      <button type="button" aria-label={`Add ${row.mark}`} onClick={() => startManual(row.mark, row.floor, key)}>Add</button>
+                      <button type="button" data-variant="ghost" aria-label={`Mark ${row.mark} not on this job`}
+                        title="Not on this job" onClick={() => {
+                          if (showing) setReviewing(undefined);
+                          if (adding?.inlineFor === key) setAdding(undefined);
+                          setNotOnJob(old => [...old, key]);
+                        }}><X size={16} aria-hidden="true"/></button>
+                    </div>
+                  </article>
+                  {showing && evidence}
+                  {adding?.inlineFor === key && manualForm}
+                </div>;
+              })}
+            </div>
+          </section>;
+        })}
+
+        <div className="ub-actions">
+          <button type="button" data-variant="ghost" onClick={() => startManual()}>
+            <Plus size={16} aria-hidden="true"/>Add missed openings
+          </button>
+        </div>
+
+        {adding && !adding.inlineFor && manualForm}
+
+        {discrepancies.some(row => row.found > row.count) && <section className="ub-panel" aria-label="Extra openings">
+          <h3>Extra openings</h3>
+          <ul className="ub-rows">{discrepancies.filter(row => row.found > row.count).map(row => {
+            const key = openingCountKey(row.mark, row.floor);
+            return <li key={key}>
+              <span className="ub-row-main">{row.floor} · {row.mark} · {row.found} / {row.count}</span>
+              <button type="button" onClick={() => {
+                const first = preview.find(item => openingCountKey(item.mark, item.floor) === key);
+                if (first) openEvidence(first.opening);
+              }}>Review</button>
+            </li>;
+          })}</ul>
+        </section>}
 
         {excluded.length > 0 && <details className="ub-disclosure"><summary>Excluded callouts ({excluded.length})</summary><ul className="ub-rows">
           {result.openings.filter(row => excluded.includes(row.key)).map(row => <li key={row.key}>
@@ -554,7 +623,7 @@ export function MarkedPlanPreview({ drafts, cadSource, cadPdf, projectId, existi
       </>}
       <footer className="ub-step-foot">
         <button type="button" data-variant="ghost" onClick={() => onStep("plan")}><ArrowLeft size={16} aria-hidden="true"/>Floor plan</button>
-        <button type="button" data-variant={result ? "primary" : undefined} disabled={!result} onClick={() => onStep("review")}>
+        <button type="button" data-variant={result ? "primary" : undefined} disabled={!result || needsAttention > 0} onClick={() => onStep("review")}>
           Continue to finish<ArrowRight size={16} aria-hidden="true"/>
         </button>
       </footer>
@@ -574,7 +643,7 @@ export function MarkedPlanPreview({ drafts, cadSource, cadPdf, projectId, existi
           <div><dt>CAD definitions</dt><dd>{drafts.length}</dd></div>
         </dl>
         {needsAttention > 0 && <p className="ub-alert" data-tone="warn"><span>{needsAttention === 1 ? "1 opening still needs attention." : `${needsAttention} openings still need attention.`}</span>
-          <button type="button" onClick={() => { setFilter("attention"); onStep("match"); }}>Review them</button></p>}
+          <button type="button" onClick={() => { setFilter(openingAttention ? "attention" : "all"); onStep("match"); }}>Review them</button></p>}
         <ul className="cad-review-floor-totals">
           {sortedFloors.map(([floor, count]) => <li key={floor}><span>{floor}</span><strong>{count}</strong></li>)}
         </ul>
@@ -591,7 +660,7 @@ export function MarkedPlanPreview({ drafts, cadSource, cadPdf, projectId, existi
               <small>{row.floor ?? "Floor unclear"} · {row.why === "no-definition" ? "No CAD match" : "Matched, but its type is unclear"}</small></span>
           </li>)}</ul>
         </details>}
-        {toFinish.units.length > 0 && <details className="ub-disclosure">
+        {toFinish.units.length > 0 && <details className="ub-disclosure" open>
           <summary>{toFinish.units.length} units to add, with their numbers</summary>
           <ul className="ub-rows">{toFinish.units.map(unit => <li key={unit.key}>
             <span className="ub-row-main"><strong>{unit.code}</strong>
@@ -608,7 +677,7 @@ export function MarkedPlanPreview({ drafts, cadSource, cadPdf, projectId, existi
                 <small>The crew will see them in Plan and Workday. A unit can be edited or removed afterwards, one at a time.</small></div>
               <div className="ub-actions">
                 <button type="button" data-variant="ghost" onClick={() => setConfirming(false)}>Not yet</button>
-                <button type="button" data-variant="primary" onClick={() => void finish()}>Add {toFinish.units.length} units</button>
+                <button type="button" data-variant="primary" disabled={needsAttention > 0} onClick={() => void finish()}>Add {toFinish.units.length} units</button>
               </div>
             </> : <>
               <div><strong>{toFinish.units.length ? `Finish: add ${toFinish.units.length} units to the job` : addedCount ? "This import is finished" : "Nothing to add yet"}</strong>
@@ -616,7 +685,7 @@ export function MarkedPlanPreview({ drafts, cadSource, cadPdf, projectId, existi
                   : addedCount ? "Every opening that could be defined is on the job." : "Match openings to CAD definitions first."}</small></div>
               <div className="ub-actions">
                 <button type="button" data-variant="ghost" onClick={downloadReview}><Download size={16} aria-hidden="true"/>Download review</button>
-                <button type="button" data-variant="primary" disabled={!toFinish.units.length} onClick={() => setConfirming(true)}>
+                <button type="button" data-variant="primary" disabled={needsAttention > 0 || !toFinish.units.length} onClick={() => setConfirming(true)}>
                   {finishError ? "Try again" : "Finish"}</button>
               </div>
             </>}

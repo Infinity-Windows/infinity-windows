@@ -21,6 +21,18 @@ describe("planImportUnits", () => {
     expect(units.map(unit => unit.code)).toEqual(["6-2", "6-4"]);
   });
 
+  it("imports a manually defined unit using its plan mark and floor", () => {
+    const { units, leftOut } = planImportUnits([
+      { ...opening("door", "D1", "Level 2", null), manualDefinition: { kind: "curtain_wall", width: 48, material: " Aluminum " } },
+    ], ["D1-1"]);
+    expect(leftOut).toEqual([]);
+    expect(units[0]).toEqual({
+      key: "door", mark: "D1", floor: "Level 2", code: "D1-2",
+      details: { placeholder: false, kind: "curtain_wall", floor: "2", width: 48, material: "Aluminum" },
+      reason: "Imported from drawings: plan mark D1, plan sheet 4; unit defined by hand",
+    });
+  });
+
   it("leaves out openings it cannot define, and says why", () => {
     const { units, leftOut } = planImportUnits([
       opening("a", "9", "Level 1", null),

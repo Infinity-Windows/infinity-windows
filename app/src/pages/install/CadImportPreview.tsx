@@ -311,7 +311,7 @@ export function CadImportPreview({ projectId, embedded = false }: { projectId: s
     { id: "plan", title: "Floor plan", done: plan.loaded,
       sub: plan.loaded ? `${plan.openings} openings` : "Where each unit goes" },
     { id: "match", title: "Match", done: plan.loaded && plan.attention === 0,
-      sub: !plan.loaded ? "Link openings to CAD" : plan.attention ? `${plan.attention} need attention` : "All openings matched" },
+      sub: !plan.loaded ? "Link openings to CAD" : plan.attention ? `${plan.attention} need attention` : "All openings resolved" },
     { id: "review", title: "Finish", done: plan.added > 0,
       sub: plan.added ? `${plan.added} units added to the job` : "Check totals, then add to the job" },
   ];
@@ -468,7 +468,8 @@ export function CadImportPreview({ projectId, embedded = false }: { projectId: s
         <div className="ub-stepper-row">
           <ol className="ub-stepper" aria-label="Import stages">
             {steps.map((step, index) => <li key={step.id} data-done={step.done} data-past={index < stageIndex}>
-              <button type="button" aria-current={stage === step.id ? "step" : undefined} onClick={() => setStage(step.id)}>
+              <button type="button" aria-current={stage === step.id ? "step" : undefined}
+                disabled={step.id === "review" && (!plan.loaded || plan.attention > 0)} onClick={() => setStage(step.id)}>
                 <span className="ub-step-dot" aria-hidden="true">{step.done ? <Check size={14}/> : index + 1}</span>
                 <span className="ub-step-text"><strong>{step.title}</strong><small>{step.sub}</small></span>
               </button>

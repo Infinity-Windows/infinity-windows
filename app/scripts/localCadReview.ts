@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Plugin } from 'vite'
 import {
-  CAD_DEFINITION_INSTRUCTIONS, CAD_REVIEW_INSTRUCTIONS, CAD_VISION_MODEL, cadDefinitionContext, cadReviewContext,
+  CAD_DEFINITION_INSTRUCTIONS, CAD_REVIEW_INSTRUCTIONS, cadDefinitionContext, cadReviewContext,
   cleanCadDefinition, type CadReviewCandidate,
 } from '../../supabase/functions/_shared/cadReviewPrompt.mts'
 
@@ -55,9 +55,12 @@ function runCodex(codex: string, dir: string, images: string[], prompt: string) 
     const out = join(dir, 'answer.json')
     // Images first: `-i` takes several files, and anything after it that is
     // not a flag would be read as another image. The prompt goes in on stdin.
+    const model = process.env.CODEX_CAD_MODEL?.trim()
+    // Use the CLI configuration unless the dev server has a CAD-specific override.
     const child = spawn(codex, [
       'exec', ...images.flatMap(file => ['-i', file]),
-      '-m', CAD_VISION_MODEL, '-s', 'read-only', '--skip-git-repo-check', '--ephemeral', '--ignore-rules',
+      ...(model ? ['-m', model] : []),
+      '-s', 'read-only', '--skip-git-repo-check', '--ephemeral', '--ignore-rules',
       '-C', dir, '--output-schema', join(dir, 'schema.json'), '-o', out,
     ], { stdio: ['pipe', 'ignore', 'pipe'] })
     let stderr = ''

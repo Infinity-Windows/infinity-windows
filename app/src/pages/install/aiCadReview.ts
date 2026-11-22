@@ -43,34 +43,55 @@ export type OpeningForAi = { x: number; y: number; mark: string; sheet: number; 
 export type AiMatch = { key: string | null; reason: string; failed?: boolean };
 
 /** The CAD "variant" of a family drawing: A-1 beside A. */
-export const variantOf = (drafts: readonly CadUnitDraft[], related: CadUnitDraft | undefined) =>
-  related && drafts.find(draft => draft.label.toUpperCase().startsWith(related.label.toUpperCase() + "-"));
+export const variantOf = (drafts: readonly CadUnitDraft[], related: CadUnitDraft | undefined, mark: string) => {
+  const suffix = /^\d+-([A-Z])$/i.exec(mark.trim())?.[1];
+  if (!related || !suffix) return undefined;
+  const base = related.label.toUpperCase();
+  const letter = suffix.toUpperCase();
+  const numbered = letter.charCodeAt(0) - "A".charCodeAt(0) + 1;
+  return drafts.find(draft => draft.label.toUpperCase() === `${base}-${letter}`)
+    ?? drafts.find(draft => draft.label.toUpperCase() === `${base}-${numbered}`);
+};
+
+export type CadQuantities = Readonly<Record<string, { expected: number; found: number }>>;
+
+export function cadIsFull(quantities: CadQuantities, key: string) {
+  const quantity = quantities[key];
+  return !!quantity && quantity.found >= quantity.expected;
+}
 
 /** Ask the AI which CAD drawing an opening is. Never throws: a failure is an answer with no key. */
 export async function reviewOpeningWithAi(args: {
   projectId: string; opening: OpeningForAi; plan: PDFDocumentProxy; cad?: PDFDocumentProxy;
-  drafts: readonly CadUnitDraft[]; relatedDraft?: CadUnitDraft; familyCount?: number; planCrop?: string;
+  drafts: readonly CadUnitDraft[]; relatedDraft?: CadUnitDraft; familyCount?: number; planCrop?: string; quantities: CadQuantities;
 }): Promise<AiMatch> {
-  const { opening, drafts, cad, relatedDraft } = args;
+  const { opening, drafts, cad, relatedDraft, quantities } = args;
   try {
     const planCrop = args.planCrop ?? await aiCrop(args.plan, opening.sheet, planCropAround(opening.x, opening.y), 1400);
-    const variant = variantOf(drafts, relatedDraft);
+    const variant = variantOf(drafts, relatedDraft, opening.mark);
+    const candidateOrder = [...new Set([variant, relatedDraft, ...drafts])].filter(draft => draft !== undefined).slice(0, 80);
+    if (candidateOrder.length > 0 && candidateOrder.every(draft => cadIsFull(quantities, draft.key))) {
+      return { key: null, reason: "The CAD choices already have their stated quantities assigned. Check the drawings and counts before linking." };
+    }
     const nearby = new Set(opening.labels.map(label => label.text.trim().replace(/^[()]|[()]$/g, "").toUpperCase()));
     // Only drawings the plan itself points at are sent as pictures: the family
     // drawing, its variant, and any whose designation is printed by the opening.
-    const evidence = !cad ? [] : await Promise.all(drafts.filter(draft => draft.key === relatedDraft?.key || draft.key === variant?.key || [...nearby].some(tag =>
+    const evidence = !cad ? [] : await Promise.all(candidateOrder.filter(draft => draft.key === relatedDraft?.key || draft.key === variant?.key || [...nearby].some(tag =>
       tag && (draft.label.toUpperCase() === tag || draft.label.toUpperCase().startsWith(tag + " ("))))
       .slice(0, 3).map(async draft => ({ key: draft.key, image: await aiCrop(cad, draft.sheet, draft.crop, 1500) })));
     const data = await askCadAi({
       projectId: args.projectId, mark: opening.mark, floor: opening.floor, familyCount: args.familyCount,
-      itemQuantity: relatedDraft?.quantity, planCrop, candidates: drafts.map(draft => ({ key: draft.key, label: draft.label })), evidence,
+      itemQuantity: relatedDraft?.quantity, variantKey: variant?.key, quantities, planCrop, candidates: candidateOrder.map(draft => ({ key: draft.key, label: draft.label })), evidence,
     });
     if (!data || data.error) {
       return { key: null, failed: true, reason: typeof data?.error === "string" ? data.error
         : "AI review is unavailable on this server. You can still compare the drawings manually." };
     }
+    if (typeof data.key === "string" && cadIsFull(quantities, data.key)) {
+      return { key: null, reason: "The suggested CAD drawing already has its stated quantity assigned." };
+    }
     return {
-      key: drafts.some(draft => draft.key === data.key) ? data.key as string : null,
+      key: candidateOrder.some(draft => draft.key === data.key) ? data.key as string : null,
       reason: typeof data.reason === "string" && data.reason ? data.reason : "AI could not establish a match from the supplied evidence.",
     };
   } catch {
