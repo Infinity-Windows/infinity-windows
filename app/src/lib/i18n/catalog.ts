@@ -19,7 +19,6 @@ import type { WorkKey } from "./workCatalog";
 import type { DesignKey } from "./designCatalog";
 import type { ScheduleConflictKey } from "./scheduleConflictCatalog";
 import type { ValuesKey } from "./valuesCatalog";
-import type { WorkDataKey } from "./workDataCatalog";
 import type { JobLocationKey } from "./jobLocationCatalog";
 import type { ClockReadKey } from "./clockReadCatalog";
 
@@ -262,6 +261,8 @@ export const CATALOG = {
     es: "Tu tarjeta de tiempo se pausa hasta que toques Reanudar.",
   },
   "clock.action.startClock": { en: "Start clock", es: "Marcar entrada" },
+  "clock.action.startToolboxTalk": { en: "Start Toolbox Talk", es: "Iniciar charla de seguridad" },
+  "clock.error.noCostCodes": { en: "No active cost code is available. Ask a supervisor to check the clock setup.", es: "No hay un código de costo activo. Pide a un supervisor que revise la configuración del reloj." },
   "clock.action.clockingIn": { en: "Clocking in…", es: "Marcando entrada…" },
   "clock.action.clockOut": { en: "Clock out", es: "Marcar salida" },
   "clock.action.clockingOut": { en: "Clocking out…", es: "Marcando salida…" },
@@ -822,6 +823,7 @@ export const CATALOG = {
     es: "Firmar la charla de seguridad",
   },
   "opening.action.startTimer": { en: "Start the timer", es: "Iniciar el cronómetro" },
+  "opening.action.reviewChecks": { en: "Review checks", es: "Revisar comprobaciones" },
   "opening.action.startInstall": { en: "Start install →", es: "Empezar instalación →" },
   "opening.action.starting": { en: "Starting…", es: "Iniciando…" },
   "opening.action.doneCapture": { en: "Done — capture it →", es: "Listo — documéntalo →" },
@@ -1265,6 +1267,8 @@ export const CATALOG = {
     es: "Tu supervisor la quita cuando se arregla el papeleo.",
   },
   "missed.add": { en: "Add a missed unit", es: "Agregar una unidad faltante" },
+  "unitDetails.title": { en: "Unit details", es: "Detalles de unidad" },
+  "unitDetails.addPlaceholder": { en: "Add placeholder unit", es: "Agregar unidad provisional" },
   "missed.title": {
     en: "A window or door that isn't on the plans",
     es: "Una ventana o puerta que no está en los planos",
@@ -1491,6 +1495,8 @@ export const CATALOG = {
   "scope.windows.many": { en: "{n} windows", es: "{n} ventanas" },
   "scope.doors.one": { en: "{n} door", es: "{n} puerta" },
   "scope.doors.many": { en: "{n} doors", es: "{n} puertas" },
+  "scope.curtainWalls.one": { en: "{n} curtain wall", es: "{n} muro cortina" },
+  "scope.curtainWalls.many": { en: "{n} curtain walls", es: "{n} muros cortina" },
   "scope.stories.one": { en: "{n} story", es: "{n} piso" },
   "scope.stories.many": { en: "{n} stories", es: "{n} pisos" },
   // A tracking job has no openings by design — nobody uploads plans for a
@@ -2944,8 +2950,8 @@ export const CATALOG = {
     es: "Guardado antes de una actualización — Forge no puede saber quién lo guardó",
   },
   "stuck.unknown.body": {
-    en: "An older version didn't note who saved these, so Forge won't send them as anyone. If one was yours, tell your foreman, then throw it away.",
-    es: "Una versión anterior no anotó quién guardó esto, así que Forge no lo enviará a nombre de nadie. Si algo era tuyo, avísale a tu capataz y luego elimínalo.",
+    en: "An older version didn't note who saved these. Forge keeps them on this device and won't send or discard them. Ask your foreman to review the original work before recovery.",
+    es: "Una versión anterior no anotó quién guardó esto. Forge lo conserva en este dispositivo y no lo enviará ni eliminará. Pide a tu capataz que revise el trabajo original antes de recuperarlo.",
   },
   // A legacy CLOCK punch with no known owner is different from every other
   // unknown-owner row: throwing it away can make a real clock-in or
@@ -4105,6 +4111,7 @@ export const CATALOG = {
   "stuck.op.dailyLog": { en: "Daily log", es: "Registro diario" },
   "stuck.op.photoUpload": { en: "Photo", es: "Foto" },
   "stuck.op.receiptUpload": { en: "Receipt", es: "Recibo" },
+  "stuck.op.unitDetails": { en: "Unit details", es: "Detalles de unidad" },
   "stuck.op.pinChange": { en: "Plan pin change", es: "Cambio de pin en el plano" },
   "stuck.op.storePackages": { en: "Packages checked in", es: "Paquetes registrados" },
   "stuck.op.checkoutPackages": { en: "Packages checked out", es: "Paquetes sacados" },
@@ -5659,7 +5666,7 @@ export const CATALOG = {
  * keys are part of this type through a type-only import, which costs the
  * entry chunk nothing, while its strings ride in the route's own chunk.
  */
-export type TKey = keyof typeof CATALOG | WorkKey | DesignKey | ScheduleConflictKey | ValuesKey | WorkDataKey | JobLocationKey | ClockReadKey;
+export type TKey = keyof typeof CATALOG | WorkKey | DesignKey | ScheduleConflictKey | ValuesKey | JobLocationKey | ClockReadKey;
 
 /**
  * Add a lazily loaded phrasebook to the live catalog. Called at module load

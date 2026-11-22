@@ -1,3 +1,4 @@
+import { subscribeSignedIn } from "./signedIn";
 import { MutationCache, QueryClient } from "@tanstack/react-query";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import type { PersistedClient, Persister } from "@tanstack/react-query-persist-client";
@@ -38,6 +39,12 @@ export const queryClient = new QueryClient({
       networkMode: "offlineFirst",
     },
   },
+});
+
+// Reporting is private memory-only state, retained only for this sign-in session.
+subscribeSignedIn(()=>{
+ void queryClient.cancelQueries({queryKey:["dataReview"]});
+ queryClient.removeQueries({queryKey:["dataReview"]});
 });
 
 /** The three calls the phone's copy needs from localStorage. */

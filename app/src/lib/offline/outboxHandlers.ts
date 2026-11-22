@@ -46,22 +46,8 @@ import {dailyLogPhotoUploader} from "./dailyLogPhotoUploader";
  */
 export type OutboxClient = typeof sharedClient;
 
-/** Resolves an offline clock-in entry id to the real server shift id. */
-export interface ShiftResolver {
-  record(clockInEntryId: string, shiftId: string): void;
-  resolve(ref: string): string | null;
-}
-
-const PENDING_PREFIX = "pending:";
-
-/** Build a clock-out/break shiftRef that points at a not-yet-synced clock-in. */
-export function pendingShiftRef(clockInEntryId: string): string {
-  return `${PENDING_PREFIX}${clockInEntryId}`;
-}
-
-export function isPendingRef(ref: string): boolean {
-  return ref.startsWith(PENDING_PREFIX);
-}
+import { isPendingRef, type ShiftResolver } from "./shiftResolver";
+export { createShiftResolver, pendingShiftRef, isPendingRef, type ShiftResolver } from "./shiftResolver";
 
 /**
  * Some errors mean the additive migration hasn't been applied yet (unknown
@@ -384,6 +370,7 @@ export function createSupabaseHandlers(
    * use), so the handlers that must know who is sending read it from here.
    */
   sender: { userId: string } | null = null,
+  beforeClockPunch?: (at: string) => Promise<void>,
 ): OpHandlers {
   /** Who this send goes out as: the bound session's person, else auth's answer. */
   const sendingAs = async (): Promise<string | null> => {
@@ -404,6 +391,7 @@ export function createSupabaseHandlers(
     };
     const note = str(p.note);
     const punch = punchOf(p, "clock-in");
+    if (punch.p_tapped_at && beforeClockPunch) await beforeClockPunch(punch.p_tapped_at);
     const mode = str(p.mode);
     // Tier 1: the keyed overload (20261028000000) — id, note, mode AND the tap
     // time, so a punch tapped at 7:02 in a dead zone is paid from 7:02.
@@ -425,8 +413,11 @@ export function createSupabaseHandlers(
       res = await supabase.rpc("clock_in", { ...base, p_client_id: punch.p_client_id });
     }
     if (res.error) throw missingGuard(res.error, "clock-in");
-    const shiftId = (res.data as { id?: string } | null)?.id;
-    if (shiftId) resolver.record(entry.id, shiftId);
+    const shift = res.data as { id?: string; clock_in_at?: string } | null;
+    if (shift?.id) {
+      if (shift.clock_in_at) resolver.record(entry.id, shift.id, shift.clock_in_at);
+      else resolver.record(entry.id, shift.id);
+    }
     // The row the server made (or already had, for a resend) — handed to
     // onSent so the clock screens show the confirmed shift at once (K0.1).
     return res.data;
@@ -447,6 +438,7 @@ export function createSupabaseHandlers(
     const p = entry.payload;
     const shiftId = resolveShift(str(p.shiftRef));
     const punch = punchOf(p, "clock-out");
+    if (punch.p_tapped_at && beforeClockPunch) await beforeClockPunch(punch.p_tapped_at);
     const base = {
       p_shift_id: shiftId,
       p_photo: null,
@@ -470,6 +462,7 @@ export function createSupabaseHandlers(
     const p = entry.payload;
     const shiftId = resolveShift(str(p.shiftRef));
     const punch = punchOf(p, "break");
+    if (punch.p_tapped_at && beforeClockPunch) await beforeClockPunch(punch.p_tapped_at);
     const base = { p_shift_id: shiftId, p_break_type: str(p.breakType) ?? "other" };
     let res = await supabase.rpc("start_break", { ...base, ...punch });
     if (res.error && isMissingFunction(res.error)) {
@@ -483,6 +476,7 @@ export function createSupabaseHandlers(
     const p = entry.payload;
     const shiftId = resolveShift(str(p.shiftRef));
     const punch = punchOf(p, "break end");
+    if (punch.p_tapped_at && beforeClockPunch) await beforeClockPunch(punch.p_tapped_at);
     let res = await supabase.rpc("end_break", { p_shift_id: shiftId, ...punch });
     if (res.error && isMissingFunction(res.error)) {
       res = await supabase.rpc("end_break", { p_shift_id: shiftId });
@@ -1767,6 +1761,13 @@ export function createSupabaseHandlers(
     pin_undo: pinUndo,
     pin_reset_project: pinResetProject,
     pin_reset_opening: pinResetOpening,
+    save_unit_details: async entry => {
+      const { saveUnitDetails, refreshUnitDetails } = await import("../install/unitDetailsApi");
+      const { queryClient } = await import("../queryClient");
+      const write = entry.payload as import("../install/unitDetails").UnitDetailsWrite;
+      const applied = await saveUnitDetails({ ...write, editId: write.editId ?? entry.id });
+      await refreshUnitDetails(queryClient, write, applied);
+    },
     store_packages: storePackages,
     checkout_packages: checkoutPackages,
     take_supply: takeSupply,
@@ -1797,40 +1798,5 @@ export function createSupabaseHandlers(
   } satisfies OpHandlers;
 }
 
-/** Persisted resolver so an offline clock-in → clock-out chain survives reload. */
-export function createShiftResolver(): ShiftResolver {
-  const KEY = "wops-outbox-shift-map";
-  const mem = new Map<string, string>();
-
-  const load = (): Record<string, string> => {
-    if (typeof localStorage === "undefined") return {};
-    try {
-      return JSON.parse(localStorage.getItem(KEY) ?? "{}") as Record<string, string>;
-    } catch {
-      return {};
-    }
-  };
-  const save = (map: Record<string, string>) => {
-    if (typeof localStorage === "undefined") return;
-    try {
-      localStorage.setItem(KEY, JSON.stringify(map));
-    } catch {
-      /* quota — in-memory copy still works this session */
-    }
-  };
-
-  return {
-    record(clockInEntryId, shiftId) {
-      mem.set(clockInEntryId, shiftId);
-      const map = load();
-      map[clockInEntryId] = shiftId;
-      save(map);
-    },
-    resolve(ref) {
-      const id = ref.startsWith(PENDING_PREFIX) ? ref.slice(PENDING_PREFIX.length) : ref;
-      return mem.get(id) ?? load()[id] ?? null;
-    },
-  };
-}
 
 export type { OutboxEntry };

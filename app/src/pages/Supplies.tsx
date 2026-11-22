@@ -306,6 +306,7 @@ export function Supplies() {
       {taking && (
         <TakeForm
           supply={taking}
+          initialProjectId={searchParams.get("job")}
           onClose={() => setTaking(null)}
           onDone={() => {
             setTaking(null);
@@ -345,17 +346,19 @@ export function Supplies() {
  * one used anywhere in the warehouse, same key as tagging. */
 function TakeForm({
   supply,
+  initialProjectId,
   onClose,
   onDone,
 }: {
   supply: Supply;
+  initialProjectId: string | null;
   onClose: () => void;
   onDone: () => void;
 }) {
   const t = useT();
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const [projectId, setProjectId] = useState<string>(
-    () => localStorage.getItem(LAST_JOB_KEY) ?? "",
+    () => initialProjectId || localStorage.getItem(LAST_JOB_KEY) || "",
   );
   const [qty, setQty] = useState("1");
   const n = Number(qty);

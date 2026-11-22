@@ -47,7 +47,7 @@ export function AppMenu({
   return (
     <div className="app-menu">
       {sections.map((section, i) =>
-        section.pill ? (
+        section.pill || section.collapsible ? (
           <MenuPill
             key={section.title ?? `pill-${i}`}
             section={section}
@@ -109,13 +109,16 @@ function MenuPill({
       (it.action && (isActionActive?.(it.action) ?? false)),
   );
   const [open, setOpen] = useState<boolean>(section.defaultOpen ?? hasActiveChild);
+  const t = useT();
   const PillIcon = section.Icon;
 
   return (
     <div className="menu-group">
       <button
         type="button"
-        className={`menu-pill${open ? " open" : ""}`}
+        // A plain collapsible section folds like a pill but keeps the quiet
+        // section-title look (the installer drawer's Me and Help).
+        className={`${section.pill ? "menu-pill" : "menu-section-title menu-fold"}${open ? " open" : ""}`}
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
@@ -124,11 +127,13 @@ function MenuPill({
             <PillIcon size={18} />
           </span>
         )}
-        <span className="menu-pill-label">{section.title}</span>
+        <span className="menu-pill-label">
+          {section.title && section.title in GROUP_TITLE_KEYS ? t(GROUP_TITLE_KEYS[section.title]) : section.title}
+        </span>
         <ChevronRight className="menu-pill-chevron" size={16} />
       </button>
       {open && (
-        <ul className="menu-list menu-pill-body">
+        <ul className={section.pill ? "menu-list menu-pill-body" : "menu-list"}>
           {section.items.map((item) => (
             <MenuRow
               key={item.to ?? item.action ?? item.label}

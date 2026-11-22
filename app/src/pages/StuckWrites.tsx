@@ -180,7 +180,7 @@ export function StuckWrites() {
   const writesQ = useQuery({ queryKey: ["queuedWrites"], queryFn: listMine });
   // ...and work saved before an update that names no one (Codex review of
   // #660, P1 #1): never sent as anyone. Legacy clock punches keep a recovery
-  // record here; other unknown writes may be discarded after two taps. One
+  // record here; other ownerless records are retained for recovery. One
   // read for both, finished units included (Codex's full re-check).
   const heldQ = useQuery({
     queryKey: ["heldWrites"],
@@ -362,7 +362,7 @@ export function StuckWrites() {
   const allUnknown = heldQ.data?.unknown ?? [];
   const unknownClockEntries = allUnknown.filter(isUnknownClockEntry);
   const unknownOtherEntries = allUnknown.filter((e) => !isUnknownClockEntry(e));
-  const unknownOwner = othersRows(unknownOtherEntries, heldQ.data?.installs.unknown ?? [], true);
+  const unknownOwner = othersRows(unknownOtherEntries, heldQ.data?.installs.unknown ?? [], false);
   const nothingToSend =
     sections.needsYou.length === 0 &&
     sections.waiting.length === 0 &&

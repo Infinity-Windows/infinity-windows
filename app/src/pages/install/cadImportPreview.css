@@ -1,0 +1,395 @@
+/* Unit Builder. The app's global controls are sized for a gloved thumb on the
+   install floor (52px inputs, 16px buttons); this is an office screen with many
+   controls on it, so it carries its own quieter scale. Base rules sit in
+   :where() so any class below overrides them without a specificity fight. */
+.cad-import {
+  --ub-control: 38px; --ub-radius: 10px; --ub-pad: 16px;
+  --ub-warn-bg: color-mix(in oklch, var(--warn) 14%, transparent);
+  --ub-ok-bg: color-mix(in oklch, var(--ok) 14%, transparent);
+  max-width: 1120px; margin-inline: auto; display: grid; gap: 14px; align-content: start;
+}
+@media (pointer: coarse) { .cad-import { --ub-control: 44px; } }
+.cad-import [hidden] { display: none !important; }
+.cad-import :is(h1, h2, h3, p, ul, ol, dl, dd, figure) { margin: 0; }
+.cad-import :is(ul, ol) { list-style: none; padding: 0; }
+
+:where(.cad-import) :is(button, .ub-btn):not(.job-planner *) {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: var(--ub-control); padding: 0 14px; border: 1px solid var(--border); border-radius: var(--ub-radius);
+  background: var(--card); color: var(--text); font: 600 14px/1.2 var(--font-body);
+  text-decoration: none; white-space: nowrap; cursor: pointer;
+}
+:where(.cad-import) :is(button, .ub-btn):not(.job-planner *):hover { border-color: var(--accent-line); }
+:where(.cad-import) :is(button, .ub-btn):focus-visible, .ub-file-pick:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cad-import :is(button, .ub-btn)[data-variant=primary] { background: var(--accent); border-color: var(--accent); color: var(--ink); }
+.cad-import :is(button, .ub-btn)[data-variant=primary]:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.cad-import :is(button, .ub-btn)[data-variant=ghost] { background: transparent; border-color: transparent; color: var(--text-secondary); }
+.cad-import :is(button, .ub-btn)[data-variant=ghost]:hover { background: var(--card-raised); }
+.cad-import :is(button:disabled, .ub-btn[aria-disabled=true]) { opacity: .45; cursor: not-allowed; }
+
+:where(.cad-import) :is(input, select) {
+  width: 100%; min-width: 0; min-height: var(--ub-control); margin: 0; padding: 6px 10px;
+  border-radius: var(--ub-radius); font-size: 15px; background: var(--card);
+}
+:where(.cad-import) :is(input, select):focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+:where(.cad-import) label { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.ub-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Header and the two views */
+.ub-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+.ub-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.ub-head :is(h1, h2) { font-size: 28px; line-height: 1.1; }
+.ub-lede { margin-top: 4px; max-width: 60ch; color: var(--muted); font-size: 14px; }
+.ub-head-actions, .ub-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ub-actions { justify-content: flex-end; }
+.ub-view, .ub-step-body { display: grid; gap: 14px; min-width: 0; }
+
+.ub-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 12px; background: var(--card-hot); max-width: 100%; }
+.cad-import .ub-seg > button { border-color: transparent; background: transparent; color: var(--text-secondary); min-height: calc(var(--ub-control) - 2px); border-radius: 9px; }
+.cad-import .ub-seg > button[aria-pressed=true] { background: var(--card); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .14); }
+.ub-views { justify-self: start; }
+@media (max-width: 560px) {
+  .ub-views { display: grid; grid-template-columns: 1fr 1fr; justify-self: stretch; }
+  .cad-import .ub-views > button { white-space: normal; flex-wrap: wrap; padding: 6px 8px; }
+  .ub-head-actions { width: 100%; }
+  .ub-head-actions > button { flex: 1; }
+}
+
+.ub-count {
+  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+  background: var(--card-hot); color: var(--text-secondary); font-size: 12px; font-weight: 600;
+  font-variant-numeric: tabular-nums; line-height: 1.35; white-space: nowrap;
+}
+.ub-count[data-tone=warn] { background: var(--ub-warn-bg); color: var(--warn); }
+.ub-count[data-tone=ok] { background: var(--ub-ok-bg); color: var(--ok); }
+.ub-count[data-tone=accent] { background: var(--accent-soft); color: var(--accent); }
+
+/* Surfaces */
+.ub-card { display: grid; gap: 14px; min-width: 0; padding: var(--ub-pad); border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.ub-card h2, .ub-sheet h2 { font-size: 18px; line-height: 1.25; }
+.ub-card h3, .ub-sheet h3 { font-size: 13px; font-weight: 700; }
+.ub-panel { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); font-size: 14px; }
+.ub-card-head { display: flex; gap: 10px; align-items: start; }
+.ub-card-head h2 { display: flex; align-items: center; gap: 8px; }
+.ub-card-head p, .ub-step-title p { margin-top: 2px; color: var(--muted); font-size: 14px; max-width: 70ch; }
+.ub-attention { border-color: color-mix(in oklch, var(--warn) 45%, var(--border)); }
+.ub-attention .ub-card-head > svg { color: var(--warn); margin-top: 3px; flex: none; }
+.ub-note { color: var(--muted); font-size: 13px; }
+.ub-notice, .ub-alert {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--ub-radius);
+  font-size: 14px; background: color-mix(in oklch, var(--danger) 12%, transparent); color: var(--text);
+}
+.ub-notice { background: var(--ub-ok-bg); }
+.ub-alert[data-tone=warn] { background: var(--ub-warn-bg); }
+.ub-alert[data-tone=info] { background: var(--card-hot); }
+.ub-alert[data-tone=ok] { background: var(--ub-ok-bg); }
+.ub-alert > svg { flex: none; color: var(--accent); }
+.ub-alert > span { flex: 1; min-width: 12ch; }
+.ub-progress { color: var(--muted); font-size: 14px; }
+.ub-progress::before {
+  content: ""; display: inline-block; width: 12px; height: 12px; margin-inline-end: 8px; vertical-align: -1px;
+  border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: ub-spin .8s linear infinite;
+}
+@keyframes ub-spin { to { transform: rotate(1turn); } }
+@media (prefers-reduced-motion: reduce) { .ub-progress::before { animation: none; } }
+.ub-empty { display: grid; justify-items: center; gap: 8px; padding: 28px 12px; text-align: center; color: var(--muted); }
+.ub-empty h2 { color: var(--text); }
+.ub-empty p { max-width: 46ch; font-size: 14px; }
+.ub-empty .ub-actions { justify-content: center; margin-top: 6px; }
+.ub-disclosure { font-size: 14px; }
+.ub-disclosure > summary { cursor: pointer; color: var(--text-secondary); font-weight: 600; padding-block: 4px; }
+.ub-disclosure > :not(summary) { margin-top: 6px; }
+
+/* Rows: one thing per line, its actions on the right */
+.ub-rows { display: grid; }
+.ub-rows > li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 14px; }
+.ub-rows > li:first-child { border-top: 0; }
+.ub-row-main { flex: 1; min-width: 12ch; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.ub-row-main small { color: var(--muted); font-size: 13px; }
+
+.ub-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cad-import .ub-search { position: relative; flex: 1 1 220px; max-width: 360px; display: block; }
+.ub-search > svg { position: absolute; inset-inline-start: 10px; top: 50%; translate: 0 -50%; color: var(--muted); pointer-events: none; }
+.cad-import .ub-search > input { padding-inline-start: 32px; }
+.ub-selection {
+  position: sticky; top: 8px; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 8px 10px; border: 1px solid var(--accent-line); border-radius: 12px; background: var(--accent-bg); font-size: 14px;
+}
+.cad-import .ub-selection label { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text); }
+.ub-selection :is(input, select) { width: auto; max-width: 150px; }
+.ub-selection > strong { margin-inline-end: auto; }
+
+/* Unit inventory (cards come from the job planner) */
+.cad-builder-inventory { padding: 0; margin: 0; }
+.cad-builder-inventory .jp-floor-list { max-height: min(60dvh, 600px); }
+.cad-builder-inventory .jp-unit-options { grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 8px; }
+.cad-builder-inventory .jp-unit-card { border: 1px solid var(--border); border-radius: 10px; background: var(--card); overflow: hidden; }
+.cad-builder-inventory .jp-unit-card[data-selected-unit=true] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.cad-builder-inventory .jp-unit-pick > button:first-child {
+  grid-template-columns: minmax(0, 42%) minmax(0, 1fr); gap: 0; text-align: start; align-items: stretch;
+  justify-items: stretch; padding: 0; min-height: 64px; overflow: hidden; border: 0; border-radius: 0;
+}
+.cad-builder-inventory .jp-unit-caption small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cad-builder-unit-actions { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--border); }
+.cad-import .cad-builder-unit-actions button {
+  min-height: 34px; padding: 4px; border: 0; border-radius: 0; background: transparent; color: var(--text-secondary);
+  display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 12px; font-weight: 600;
+}
+.cad-import .cad-builder-unit-actions button:hover { background: var(--card-raised); color: var(--text); }
+.cad-builder-unit-actions button + button { border-inline-start: 1px solid var(--border); }
+@media (pointer: coarse) { .cad-import .cad-builder-unit-actions button { min-height: 44px; } }
+
+/* Stepper */
+.ub-stepper-row { display: flex; align-items: start; gap: 12px; }
+.ub-stepper { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ub-stepper > li { position: relative; min-width: 0; }
+.ub-stepper > li + li::before {
+  content: ""; position: absolute; top: 21px; inset-inline: calc(-50% + 22px) calc(50% + 22px); height: 2px; background: var(--border);
+}
+.ub-stepper > li[data-past=true] + li::before, .ub-stepper > li[data-done=true] + li::before { background: var(--accent); }
+.cad-import .ub-stepper button {
+  width: 100%; display: grid; justify-items: center; gap: 6px; padding: 6px 4px; border: 0; border-radius: 12px;
+  background: transparent; white-space: normal; text-align: center;
+}
+.cad-import .ub-stepper button:hover { background: var(--card-raised); }
+.ub-step-dot {
+  position: relative; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
+  border: 2px solid var(--border); background: var(--surface); color: var(--muted); font-size: 13px; font-weight: 700;
+}
+.ub-stepper li[data-done=true] .ub-step-dot { border-color: var(--accent); background: var(--accent); color: var(--ink); }
+.ub-stepper button[aria-current=step] .ub-step-dot { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.ub-stepper li[data-done=true] button[aria-current=step] .ub-step-dot { color: var(--ink); }
+.ub-step-text { display: grid; gap: 1px; min-width: 0; }
+.ub-step-text strong { font-size: 14px; color: var(--text-secondary); }
+.ub-stepper button[aria-current=step] .ub-step-text strong { color: var(--text); }
+.ub-step-text small { font-size: 12px; font-weight: 500; color: var(--muted); }
+.cad-import .ub-restart { flex: none; }
+@media (max-width: 640px) {
+  .ub-stepper-row { flex-direction: column; align-items: stretch; }
+  .cad-import .ub-restart { align-self: end; }
+  .ub-step-text small { display: none; }
+  .ub-stepper button[aria-current=step] .ub-step-text small { display: block; }
+}
+.ub-step-title { padding-top: 14px; border-top: 1px solid var(--border); }
+.ub-step-foot { display: flex; justify-content: space-between; gap: 8px; padding-top: 14px; border-top: 1px solid var(--border); }
+
+/* Source files */
+.ub-file {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 20px 16px;
+  border: 1.5px dashed var(--border); border-radius: 12px; background: var(--card);
+}
+.ub-file[data-loaded=true] { padding: 10px 12px; border-style: solid; border-width: 1px; }
+.ub-file-icon { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
+.ub-file-text { flex: 1; min-width: 14ch; display: grid; gap: 2px; }
+.ub-file-text strong { font-size: 15px; overflow-wrap: anywhere; }
+.ub-file-text small { color: var(--muted); font-size: 13px; }
+.cad-import .ub-file-pick { position: relative; color: var(--text); }
+
+/* CAD definitions: list on the left, the chosen one and its drawing beside it */
+.ub-definitions { display: grid; grid-template-columns: minmax(200px, 250px) minmax(0, 1fr); gap: 14px; align-items: start; }
+.ub-draft-nav { display: grid; gap: 12px; max-height: 620px; overflow-y: auto; padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.ub-draft-nav h3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; color: var(--text-secondary); }
+.ub-draft-nav ul { display: grid; gap: 2px; }
+.cad-import .ub-draft-nav li > button {
+  width: 100%; display: grid; justify-content: stretch; justify-items: start; gap: 1px; padding: 7px 10px;
+  border-color: transparent; background: transparent; text-align: start; white-space: normal;
+}
+.cad-import .ub-draft-nav li > button:hover { background: var(--card-raised); }
+.cad-import .ub-draft-nav li > button[aria-current=true] { background: var(--accent-soft); border-color: var(--accent-line); }
+.ub-draft-nav li small { color: var(--muted); font-size: 12px; font-weight: 500; }
+.ub-pick-hint { align-self: center; justify-self: center; padding: 24px; }
+.cad-import-review { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(0, 1.2fr); gap: 14px; align-items: start; min-width: 0; }
+.cad-import-draft, .cad-import-source { display: grid; gap: 12px; min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.cad-import-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 0; margin: 0; border: 0; min-width: 0; }
+.ub-span, .cad-import-fields > h3, .cad-builder-presets, .cad-builder-diagram { grid-column: 1 / -1; }
+.cad-import-source figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: 13px; font-weight: 600; }
+.cad-import-source img { display: block; max-width: 100%; height: auto; border-radius: 6px; background: #fff; }
+.cad-import a { color: var(--accent); }
+.ub-use { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }
+@media (max-width: 980px) { .cad-import-review { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 720px) {
+  .ub-definitions { grid-template-columns: minmax(0, 1fr); }
+  .ub-draft-nav { max-height: 230px; }
+}
+@media (max-width: 480px) { .cad-import-fields { grid-template-columns: minmax(0, 1fr); } }
+
+/* Dimension entry (shared component) at this screen's scale */
+.cad-import .unit-dimension-modes { display: inline-flex; justify-self: start; gap: 2px; padding: 3px; border-radius: 10px; background: var(--card-hot); }
+.cad-import .unit-dimension-modes button { min-height: 28px; padding: 0 10px; border-color: transparent; background: transparent; font-size: 12px; border-radius: 7px; }
+.cad-import .unit-dimension-modes button[aria-pressed=true] { background: var(--card); box-shadow: 0 1px 2px rgb(0 0 0 / .14); }
+.cad-import .unit-dimension-name { font-size: 12px; color: var(--text-secondary); }
+.cad-import .unit-dimension-entry label { font-weight: 500; color: var(--muted); }
+.cad-import .unit-dimension-entry :is(input, select) { padding-inline: 6px; }
+.cad-import-review .unit-dimension-fields { grid-template-columns: minmax(0, 1fr); }
+
+/* Floor plan and verify */
+.ub-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.ub-tiles > div { display: grid; gap: 2px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.ub-tiles dt { font-size: 12px; font-weight: 600; color: var(--muted); }
+.ub-tiles dd { font-size: 26px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ub-tiles small { font-size: 12px; color: var(--muted); }
+.ub-tiles > div[data-tone=warn] dd,
+.ub-viewer-facts > div[data-tone=warn] dd { color: var(--warn); }
+.ub-tiles > div[data-tone=ok] dd { color: var(--ok); }
+.cad-review-floor-totals { display: flex; flex-wrap: wrap; gap: 6px; }
+.cad-review-floor-totals > li { display: flex; gap: 8px; align-items: baseline; padding: 6px 10px; border-radius: 999px; background: var(--card-hot); font-size: 13px; }
+.cad-review-floor-totals strong { font-variant-numeric: tabular-nums; }
+.ub-handoff, .ub-suggest {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card);
+}
+.ub-suggest { border-color: var(--accent-line); background: var(--accent-soft); }
+:is(.ub-handoff, .ub-suggest) > div { display: grid; gap: 2px; font-size: 14px; }
+:is(.ub-handoff, .ub-suggest) small { color: var(--muted); font-size: 13px; }
+
+/* Match */
+.ub-match-tools .ub-search { max-width: 240px; }
+.ub-inline-form { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; }
+.ub-inline-form > :is(h3, .ub-actions) { grid-column: 1 / -1; }
+@media (max-width: 560px) { .ub-inline-form { grid-template-columns: minmax(0, 1fr); } }
+.cad-builder-floor { display: grid; gap: 6px; scroll-margin-top: 80px; }
+.cad-builder-floor > h3 { display: flex; align-items: baseline; gap: 8px; font-size: 14px; }
+.cad-builder-floor > h3 span { color: var(--muted); font-size: 12px; font-weight: 500; }
+.cad-plan-review-list { border: 1px solid var(--border); border-radius: 12px; background: var(--card); overflow: hidden; }
+.cad-plan-review-item { min-width: 0; border-top: 1px solid var(--border); }
+.cad-plan-review-item:first-child { border-top: 0; }
+.cad-plan-review-item[data-open=true] { background: var(--card-raised); }
+.cad-plan-mark { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px; padding-inline-end: 6px; }
+.cad-import .cad-plan-open {
+  display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: center; gap: 4px 10px;
+  padding: 6px 12px; min-height: 42px; border: 0; border-radius: 0; background: transparent; text-align: start; white-space: normal;
+}
+.cad-import .cad-plan-open:hover { background: var(--card-raised); }
+.cad-plan-open strong { min-width: 5ch; font-size: 15px; font-variant-numeric: tabular-nums; }
+.cad-plan-open small { color: var(--muted); font-size: 12px; font-weight: 500; }
+.cad-plan-open .cad-plan-duplicate { color: var(--warn); font-weight: 600; }
+.cad-plan-meta { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.cad-plan-meta a { white-space: nowrap; }
+.cad-import .cad-plan-meta button { padding: 0; width: 34px; min-height: 34px; color: var(--muted); }
+.cad-plan-evidence { display: grid; gap: 12px; margin: 0 10px 10px; padding: 12px; border: 1px solid var(--accent-line); border-radius: 12px; background: var(--surface); scroll-margin-block: 80px; }
+.ub-step-body > .cad-plan-evidence { margin: 0; }
+.ub-evidence-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ub-evidence-head h3 { font-size: 15px; }
+.ub-evidence-head h3 span { margin-inline-start: 6px; color: var(--muted); font-weight: 500; }
+.cad-import .ub-evidence-head button { padding: 0; width: 34px; }
+.ub-evidence-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr); gap: 10px; }
+.ub-evidence-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: start; }
+.ub-evidence-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.ub-evidence-foot > :last-child { margin-inline-start: auto; }
+.ub-ai { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: 1; }
+.ub-ai p { flex: 1; min-width: 20ch; }
+@media (max-width: 640px) {
+  .ub-evidence-fields, .ub-evidence-pair { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Unit form: a sheet from the right, or from the bottom on a phone */
+.ub-sheet {
+  inset: 0 0 0 auto; width: min(520px, 100vw); height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0;
+  border: 0; border-inline-start: 1px solid var(--border); background: var(--surface); color: var(--text);
+}
+.ub-sheet::backdrop { background: rgb(0 0 0 / .4); }
+.ub-sheet[open] { animation: ub-sheet-in .18s ease-out; }
+@keyframes ub-sheet-in { from { transform: translateX(24px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ub-sheet[open] { animation: none; } }
+.cad-builder-form { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; margin: 0; }
+.ub-sheet-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 16px; border-bottom: 1px solid var(--border); }
+.ub-sheet-head p { margin-top: 4px; color: var(--muted); font-size: 13px; }
+.cad-import .ub-sheet-head button { padding: 0; width: var(--ub-control); flex: none; }
+.cad-import .ub-sheet-body { align-content: start; overflow-y: auto; padding: 16px; }
+.ub-sheet-body > h3 { margin-top: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border); color: var(--text-secondary); text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
+.ub-sheet-body > h3:first-child { margin-top: 0; }
+.cad-builder-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.cad-import .cad-builder-presets button { min-height: 30px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 500; }
+.cad-import .cad-builder-presets button[aria-pressed=true] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.cad-builder-diagram { justify-self: center; max-width: 100%; max-height: 160px; padding: 8px; border-radius: 8px; background: #fff; }
+.ub-sheet-foot { display: grid; gap: 10px; padding: 12px 16px calc(12px + var(--safe-bottom, 0px)); border-top: 1px solid var(--border); background: var(--card); }
+@media (max-width: 560px) {
+  .ub-sheet { inset: auto 0 0 0; width: 100vw; height: min(92dvh, 100dvh); border: 0; border-radius: 16px 16px 0 0; }
+  @keyframes ub-sheet-in { from { transform: translateY(24px); opacity: 0; } }
+}
+
+/* Full-screen drawing compare */
+.ub-viewer {
+  inset: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0;
+  background: var(--surface); color: var(--text);
+}
+.ub-viewer[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); animation: ub-viewer-in .14s ease-out; }
+@keyframes ub-viewer-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ub-viewer[open] { animation: none; } }
+.ub-viewer-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.ub-viewer-head h2 { font-size: 18px; }
+.ub-viewer-facts { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-top: 6px; font-size: 13px; }
+.ub-viewer-facts > div { display: flex; gap: 6px; }
+.ub-viewer-facts dt { color: var(--muted); }
+.ub-viewer-facts dd { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ub-viewer-tools { display: flex; align-items: center; gap: 6px; flex: none; }
+.cad-import .ub-viewer-tools button { padding: 0; width: var(--ub-control); }
+.ub-viewer-tools output { font-size: 13px; font-variant-numeric: tabular-nums; }
+.cad-import .ub-viewer-tools .ub-viewer-level { width: 6ch; }
+.cad-import .ub-viewer-close { padding: 0; width: var(--ub-control); flex: none; }
+.ub-viewer-head .ub-note { margin-top: 6px; }
+.ub-viewer-body { display: grid; gap: 1px; min-height: 0; background: var(--border); }
+.ub-viewer-body[data-panes="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ub-viewer-pane { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; background: var(--surface); }
+.ub-viewer-pane figcaption { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 16px; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.ub-viewer-scroll { overflow: auto; padding: 0 16px 16px; touch-action: none; }
+.ub-viewer-scroll img { cursor: zoom-in; user-select: none; -webkit-user-drag: none; }
+.ub-viewer-scroll[data-zoomed] { cursor: grab; }
+.ub-viewer-scroll[data-zoomed]:active { cursor: grabbing; }
+.ub-viewer-scroll img { display: block; max-width: none; height: auto; border-radius: 6px; background: #fff; }
+.ub-viewer-scroll p { padding: 24px 0; }
+.ub-viewer-missing { display: grid; place-items: center; background: var(--surface); }
+@media (max-width: 760px) {
+  .ub-viewer-body[data-panes="2"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  .ub-viewer-head { flex-wrap: wrap; }
+}
+.cad-import .ub-expand { padding: 0; width: 34px; min-height: 34px; color: var(--muted); }
+.cad-import-source figcaption .ub-expand { margin: -6px -6px -6px auto; }
+
+/* AI at work */
+.ub-bar { height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.ub-bar > span { display: block; height: 100%; border-radius: 2px; background: var(--accent); transition: width .3s ease; }
+.ub-ai-run { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--accent-line); border-radius: 10px; background: var(--accent-soft); }
+.ub-ai-run > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.ub-ai-run .ub-progress { color: var(--text); }
+:is(.ub-draft-nav li > button, .cad-plan-open)[data-ai=working]::after {
+  content: ""; flex: none; width: 12px; height: 12px; margin-inline-start: auto;
+  border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: ub-spin .8s linear infinite;
+}
+:is(.ub-draft-nav li > button, .cad-plan-open)[data-ai=queued] { opacity: .6; }
+.ub-draft-nav li > button[data-ai] { position: relative; }
+.ub-draft-nav li > button[data-ai=working]::after { position: absolute; inset: 50% 10px auto auto; margin-top: -6px; }
+[data-ai-filling=true] :is(input, select) {
+  background-image: linear-gradient(100deg, transparent 30%, var(--accent-soft) 50%, transparent 70%);
+  background-size: 220% 100%; animation: ub-shimmer 1.3s linear infinite;
+}
+@keyframes ub-shimmer { from { background-position: 120% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  :is(.ub-draft-nav li > button, .cad-plan-open)[data-ai=working]::after, [data-ai-filling=true] :is(input, select) { animation: none; }
+}
+
+/* Stepping through CAD drawings inside an opened opening. */
+.ub-carousel { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+.ub-carousel output { min-width: 7ch; text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.cad-import .ub-carousel button { padding: 0; width: var(--ub-control); }
+.cad-import img.ub-zoomable { cursor: zoom-in; }
+
+/* Two units to a row on a phone (Matt, 2026-11-20). */
+@media (max-width: 600px) {
+  .cad-builder-inventory .jp-unit-options { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .cad-builder-inventory .jp-unit-pick > button:first-child { grid-template-columns: minmax(0, 34%) minmax(0, 1fr); }
+  /* Edit and Copy share half a tile each: keep each on one line. */
+  .cad-import .cad-builder-unit-actions button { gap: 3px; padding: 4px 2px; font-size: 13px; white-space: nowrap; }
+}
+
+.cad-plan-exception { min-height: 42px; gap: 8px; padding: 6px 8px 6px 12px; }
+.cad-plan-exception-label, .cad-plan-exception-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.cad-plan-exception-label { min-width: 0; overflow: hidden; }
+.cad-plan-exception-label > strong { flex: none; }
+.cad-plan-exception-label > span { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cad-plan-exception-actions > :is(select, button) { flex: none; box-sizing: border-box; height: var(--ub-control); }
+.cad-import .cad-plan-exception-actions select {
+  width: 82px; padding: 0 6px; font: 600 14px/1.2 var(--font-body); text-overflow: ellipsis;
+}
+.cad-import .cad-plan-exception-actions button { min-width: var(--ub-control); padding: 0 8px; }
+.cad-import .cad-plan-exception-actions button[data-variant=ghost] { width: var(--ub-control); padding: 0; }

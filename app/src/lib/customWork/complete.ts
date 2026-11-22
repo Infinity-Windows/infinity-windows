@@ -16,7 +16,7 @@ import type { WorkSession, WorkUnit } from "./model";
 
 /** True once the whole install is recorded as done (all visits). */
 export function isUnitComplete(unit: Pick<WorkUnit, "facts">): boolean {
-  return unit.facts.installation_complete === "Yes";
+  return unit.facts?.installation_complete === "Yes";
 }
 
 /** The server lets only the unit's author or a foreman change its details

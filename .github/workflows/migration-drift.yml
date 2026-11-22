@@ -183,9 +183,9 @@ jobs:
           {
             echo "### Migrations in this pull request"
             if [ -z "$added" ]; then
-              echo "None added. Deploy backend will push nothing new on merge."
+              echo "None added."
             else
-              echo "Deploy backend applies these on merge, in this order:"
+              echo "Proposed migrations (only a merge to master deploys them):"
               echo '```'
               echo "$added"
               echo '```'
@@ -195,6 +195,8 @@ jobs:
       # Ask the question of MASTER's files, from a checkout of master, so the
       # PR's own unapplied migrations are not counted as drift.
       - name: Is everything already on master live in production?
+        # Integration PRs still lint/list migrations, but never query production.
+        if: github.base_ref == 'master'
         shell: bash
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

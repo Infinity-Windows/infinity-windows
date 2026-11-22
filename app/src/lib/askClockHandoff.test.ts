@@ -44,3 +44,10 @@ describe("Ask guided clock handoff", () => {
     expect(askClockEntryMode(shift(), null)).toBe("main");
   });
 });
+
+it("explicit company work requests a switch to no-job scope", () => {
+ const pick = { projectId: null, costCodeId: null, note: null, mode: null, companyWork: true, switchToProject: true };
+ expect(askClockEntryMode(shift(), pick)).toBe("switch");
+ expect(askClockEntryMode({ ...shift(), project_id: null }, pick)).toBe("main");
+ expect(askClockEntryMode(shift(OTHER, new Date().toISOString()), pick)).toBe("main");
+});

@@ -236,6 +236,7 @@ export function inferHardware(
   // Letter strings give an exact panel count.
   if (/^[XO]{2,}$/.test(op)) {
     const lights = op.length;
+    if (!op.includes("X")) return { lights, open: "fixed" };
     // A symmetric operating pair meeting in the middle parts outward.
     if (lights >= 4 && op === "OXXO") return { lights, open: "bipart" };
     // Sliders read best as bipart's arrow language; hinged pairs as leaves.
@@ -646,7 +647,12 @@ export function buildFitViewJob(
     if (!hit) continue;
     const spec = specByMark.get(markBase(o.opening_code)) ?? null;
     const type = o.window_types ?? null;
-    const wIn = spec?.width_in ?? type?.width_in ?? null;
+    // The corner assembly's overall width is unfolded. Its pin represents
+    // the south face on the flat facade, so the return belongs in the spec.
+    const faceWidth = spec?.extra?.south_face_width_in;
+    const wIn = typeof faceWidth === "number" && Number.isFinite(faceWidth) && faceWidth > 0
+      ? faceWidth
+      : spec?.width_in ?? type?.width_in ?? null;
     const hIn = spec?.height_in ?? type?.height_in ?? null;
     placements.push({
       o,

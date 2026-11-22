@@ -1,5 +1,7 @@
 # Work Data snapshot (read-only bridge)
 
+The Evidence tab and its client implementation were retired. This document records the original design and the retained database RPC.
+
 `work_data_snapshot(p_project_id, p_from, p_until)` (migration
 `20261107000000_work_data_snapshot.sql`) and `fetchWorkDataSnapshot` /
 `validateWorkDataSnapshot` (`app/src/lib/workData/api.ts`) are a read-only

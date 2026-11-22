@@ -56,8 +56,12 @@ function digestFor(records: ContribRecord[], unitId: string, stage: string, work
   return `digest:${[...new Set(evidence)].sort().join(",")}`;
 }
 
-async function setup(page: Page, opts: { role?: "foreman" | "installer"; openShift?: boolean; language?: "en" | "es" } = {}) {
-  await installFixtures(page, { role: opts.role ?? "foreman", uiDesign: "new", language: opts.language });
+// A supervisor, because since the Workday release (2026-11-22) installers and
+// foremen land on the Workday, which has no contributors panel; the Work
+// screen that carries it is what a supervisor or owner still opens. The
+// installer's read-only case went with that: an installer never reaches it.
+async function setup(page: Page, opts: { openShift?: boolean; language?: "en" | "es" } = {}) {
+  await installFixtures(page, { role: "supervisor", uiDesign: "new", language: opts.language });
   await hideWrongProjectBanner(page);
   await stubGeolocationDenied(page);
   await morningFixtures(page, { signed: true, openShift: opts.openShift ?? false, scheduleRows: [] });
@@ -93,7 +97,7 @@ async function setup(page: Page, opts: { role?: "foreman" | "installer"; openShi
       [
         { id: ALICE, display_name: "Alice Installer", active: true, role: "installer", is_partner: false },
         { id: BOB, display_name: "Bob Installer", active: true, role: "installer", is_partner: false },
-        { id: FOREMAN_ID, display_name: "E2E Fixture", role: "foreman", active: true, is_partner: false },
+        { id: FOREMAN_ID, display_name: "E2E Fixture", role: "supervisor", active: true, is_partner: false },
       ],
       3,
     );
@@ -295,24 +299,6 @@ test("a queued record is distinct from a saved one and survives reload with the 
   await expect.poll(() => state.records.length).toBe(1);
   expect(state.rpcCalls.every((c) => c.body.p_id === firstId)).toBe(true);
   expect(state.otherMutations).toEqual([]);
-});
-
-test("an installer reads the summary with no write controls", async ({ page }) => {
-  const state = await setup(page, { role: "installer" });
-  state.records.push({
-    id: "seed-1", project_id: OAKRIDGE, unit_id: UNIT, filed_by: FOREMAN_ID, stage: "RO checked",
-    work_date: "2026-09-29", outcome: "finished", description: "", whole_complete: false, created_at: "2026-09-29T12:00:00Z",
-    people: [{ profile_id: ALICE, voided_at: null, voided_by: null, void_reason: null }],
-  });
-  await page.goto("/");
-  await expect(page.getByTestId("ws-contrib-open")).toHaveText("View contributors");
-  const panel = await openPanel(page);
-  await panel.getByLabel("Job").selectOption(OAKRIDGE);
-  await panel.getByLabel("Unit or map opening").selectOption(UNIT);
-  await panel.getByLabel("Work date").fill("2026-09-29");
-  await expect(panel.locator("ul.ws-list").getByText("Alice Installer")).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Save contributors" })).toHaveCount(0);
-  await expect(panel.getByRole("button", { name: "Correct this" })).toHaveCount(0);
 });
 
 test("a correction records a reason and shows in history; removing one of two leaves the other", async ({ page }) => {

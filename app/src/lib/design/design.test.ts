@@ -12,8 +12,10 @@ import {
 } from "./design";
 
 describe("resolveDesign (K-X2: person's choice, owner's master switch)", () => {
-  it("renders the classic screens until anybody has chosen anything", () => {
-    expect(resolveDesign({ personChoice: null, masterOn: null, cached: null })).toBe("classic");
+  it("paints the new design while nothing is known yet (the default since 2026-11-21)", () => {
+    expect(resolveDesign({ personChoice: null, masterOn: null, cached: null })).toBe("new");
+    // A phone whose last answer was classic still starts there.
+    expect(resolveDesign({ personChoice: null, masterOn: null, cached: "classic" })).toBe("classic");
   });
 
   it("follows the person's own choice either way", () => {
@@ -45,9 +47,10 @@ describe("normalizeDesign", () => {
   it("accepts only the two words the database accepts", () => {
     expect(normalizeDesign("new")).toBe("new");
     expect(normalizeDesign("classic")).toBe("classic");
-    expect(normalizeDesign("NEW")).toBe("classic");
-    expect(normalizeDesign(undefined)).toBe("classic");
-    expect(normalizeDesign(42)).toBe("classic");
+    // Anything that is not a clear "classic" is the new design, the default.
+    expect(normalizeDesign("NEW")).toBe("new");
+    expect(normalizeDesign(undefined)).toBe("new");
+    expect(normalizeDesign(42)).toBe("new");
   });
 });
 

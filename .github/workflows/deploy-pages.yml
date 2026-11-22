@@ -22,6 +22,8 @@ concurrency:
 
 jobs:
   build:
+    # Also fence manual dispatches: integration branches cannot deploy production.
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -81,6 +83,7 @@ jobs:
           path: app/dist
 
   deploy:
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: build
     runs-on: ubuntu-latest
     environment:
@@ -102,6 +105,7 @@ jobs:
   # may not be able to open it — roll back (revert the merge) first, read the
   # headline second.
   verify:
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     name: Check every phone can start it
     needs: deploy
     runs-on: ubuntu-latest

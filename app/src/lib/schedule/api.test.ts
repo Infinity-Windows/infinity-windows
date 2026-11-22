@@ -204,10 +204,10 @@ describe("a publish whose reply was lost", () => {
     expect(matched).toEqual(["a"]);
     expect(calls.filter((c) => c.table === "schedule_events" && c.op === "insert").map((c) => (c.args[0] as { assignment_id: string }).assignment_id)).toEqual(["a"]);
   });
-  it("a database refusal is confirmed: nothing to re-read — and it is never mistaken for a missing table and 'published' locally", async () => {
+  it.each(["42501", "PT409"])("a %s database refusal never publishes locally", async (code) => {
     // The refusal names the table, which isMissingTable's wording fallback
     // used to read as "not migrated yet" and hand to the browser-local store.
-    const refused = { code: "42501", message: 'new row violates row-level security policy for table "schedule_assignments"' };
+    const refused = { code, message: 'new row violates row-level security policy for table "schedule_assignments"' };
     respond = (table, ops) => table === "schedule_assignments" && ops.includes("update") ? { data: null, error: refused } : { data: null, error: null };
     let caught: unknown = null;
     await publishAssignments(["a"]).catch((e) => { caught = e; });

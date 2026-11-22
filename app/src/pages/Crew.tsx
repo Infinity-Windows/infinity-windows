@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { BackChip } from "../components/BackChip";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -142,6 +143,7 @@ export function Crew() {
       <header className="page-header">
         <div>
           <h1>Roster</h1>
+          <Link to="/activities" className="button-like">Recent activities</Link>
           <p className="muted" style={{ margin: 0 }}>
             Skill tier drives who gets which window.
           </p>

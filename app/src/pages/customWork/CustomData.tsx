@@ -1,5 +1,4 @@
-import { VoiceInput } from "../../components/voice/VoiceInput";
-import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
+import { SessionCorrection } from "./SessionCorrection";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -23,12 +22,6 @@ import { UnitEditor } from "./UnitEditor";
 import { QueueNotice } from "./QueueNotice";
 import "./customWork.css";
 
-const localTime = (iso: string) => {
-  const date = new Date(iso);
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-    .toISOString()
-    .slice(0, 16);
-};
 const csv = (value: unknown) =>
   `"${String(value ?? "")
     .replace(/^[=+@-]/, "'$&")
@@ -43,13 +36,11 @@ export function CustomData({ projectId }: { projectId: string }) {
     [to, setTo] = useState("");
   const [edit, setEdit] = useState<WorkUnit | null>(null),
     [session, setSession] = useState<WorkSession | null>(null);
-  const [reason, setReason] = useState(""),
-    [typeName, setTypeName] = useState("");
+  const [typeName, setTypeName] = useState("");
   const [renameType, setRenameType] = useState<{
     id: string;
     label: string;
   } | null>(null);
-  const [reviewTime, setReviewTime] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -369,6 +360,7 @@ export function CustomData({ projectId }: { projectId: string }) {
             />
           )}
           <h3>Work timeline</h3>
+          {lead && <Link to={"/activities?job=" + encodeURIComponent(projectId)}>Filter recent activities</Link>}
           <div className="cw-unit-list">
             {sessions
               .slice()
@@ -406,8 +398,6 @@ export function CustomData({ projectId }: { projectId: string }) {
                     <button
                       onClick={() => {
                         setSession(s);
-                        setReason("");
-                        setReviewTime(false);
                       }}
                     >
                       Correct details
@@ -416,131 +406,8 @@ export function CustomData({ projectId }: { projectId: string }) {
                 </article>
               ))}
           </div>
-          {session && (
-            <section className="cw-card">
-              <h3>Correct work details</h3>
-              <label>
-                Accomplishment / idle description
-                <VoiceTextarea
-                  value={session.description}
-                  onChange={(e) =>
-                    setSession({ ...session, description: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Outcome
-                <select
-                  value={session.outcome ?? ""}
-                  onChange={(e) =>
-                    setSession({
-                      ...session,
-                      outcome: (e.target.value ||
-                        null) as WorkSession["outcome"],
-                    })
-                  }
-                >
-                  <option value="">Not finished</option>
-                  {["finished", "partial", "blocked", "rework"].map((v) => (
-                    <option key={v}>{v}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Delay reason
-                <VoiceInput
-                  value={session.delay_reason}
-                  onChange={(e) =>
-                    setSession({ ...session, delay_reason: e.target.value })
-                  }
-                />
-              </label>
-              {lead && session.ended_at && (
-                <>
-                  <label>
-                    Started (local time)
-                    <input
-                      type="datetime-local"
-                      value={localTime(session.started_at)}
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          setSession({
-                            ...session,
-                            started_at: new Date(e.target.value).toISOString(),
-                          });
-                          setReviewTime(true);
-                        }
-                      }}
-                    />
-                  </label>
-                  <label>
-                    Ended (local time)
-                    <input
-                      type="datetime-local"
-                      value={localTime(session.ended_at)}
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          setSession({
-                            ...session,
-                            ended_at: new Date(e.target.value).toISOString(),
-                          });
-                          setReviewTime(true);
-                        }
-                      }}
-                    />
-                  </label>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={reviewTime}
-                      onChange={(e) => setReviewTime(e.target.checked)}
-                    />
-                    I checked these times, breaks and the job assignment
-                  </label>
-                </>
-              )}
-              <label>
-                Correction reason
-                <VoiceInput
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                />
-              </label>
-              <div className="cw-actions">
-                <button
-                  disabled={busy || reason.trim().length < 3}
-                  onClick={() =>
-                    void run(async () => {
-                      await work.command("session", {
-                        id: session.id,
-                        revision: session.revision,
-                        description: session.description,
-                        outcome: session.outcome,
-                        delay_reason: session.delay_reason,
-                        reason,
-                        ...(reviewTime
-                          ? {
-                              started_at: session.started_at,
-                              ended_at: session.ended_at,
-                              review_time: true,
-                            }
-                          : {}),
-                      });
-                      setSession(null);
-                    })
-                  }
-                >
-                  Save correction
-                </button>
-                <button onClick={() => setSession(null)}>Cancel</button>
-              </div>
-              <p className="muted">
-                These corrections change captured activity only. The job clock
-                must be closed and its job and time bounds must match. Timecard
-                corrections remain in the existing timecard workflow.
-              </p>
-            </section>
-          )}
+          {session && <SessionCorrection key={session.id} row={session} lead={lead}
+            onSave={data => work.command("session", data)} onCancel={() => setSession(null)} />}
           {lead && (
             <details>
               <summary>Manage reusable unit types</summary>

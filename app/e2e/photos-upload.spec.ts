@@ -441,8 +441,11 @@ test("a stalled photo upload releases the queue and retries the saved picture", 
   await expect(page.getByText("1 photo waiting to upload", { exact: true })).toBeVisible();
   expect(rows).toHaveLength(0);
   await page.clock.fastForward(120_100);
-  await page.clock.fastForward(60_000);
-  await expect.poll(() => rows.length).toBe(1);
+  // The retry is a timer the queue sets only AFTER it has written the failed
+  // attempt to the phone's storage, which takes real time. One jump made
+  // straight after the stall can land before that timer exists and then
+  // nothing moves the clock again, so keep stepping it until the retry goes.
+  await expect.poll(async () => { await page.clock.fastForward(30_000); return rows.length; }).toBe(1);
   expect(rows[0]).toMatchObject({ project_id: BLACK22.projectId, created_by: TEST_USER.email });
 });
 

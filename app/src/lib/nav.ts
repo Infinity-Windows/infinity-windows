@@ -32,6 +32,8 @@ import {
   Users,
   Warehouse as WarehouseIcon,
   Wrench,
+  LifeBuoy,
+  UserRound,
 } from "lucide-react";
 import { roleRank, type CrewRole } from "./install/types";
 import type { UiDesign } from "./design/design";
@@ -82,6 +84,7 @@ export type RoutePath =
   | "/team"
   | "/timecard"
   | "/team-timecards"
+  | "/activities"
   | "/scheduling"
   | "/vehicles"
   | "/my-schedule"
@@ -212,7 +215,7 @@ export const NAV: NavDest[] = [
   { id: "job-history", to: "/jobs/history", label: "Job history", icon: "▤", minRole: "supervisor" },
   { id: "studio", to: "/studio", label: "Studio", icon: "◧", minRole: "supervisor" },
   // The company's ledger of where time goes (grilled 2026-08-17):
-  // supervisor+ ONLY — on-tool and per-person time live here.
+  // Supervisor+ reporting access.
   { id: "data", to: "/data", label: "Data", icon: "▤", minRole: "supervisor" },
   { id: "summary", to: "/summary", label: "Summary", icon: "▤", minRole: "supervisor" },
   { id: "ask", to: "/ask", label: "Ask", icon: "?", minRole: "installer" },
@@ -240,6 +243,7 @@ export const NAV: NavDest[] = [
   // Foreman+ (managers): coordination + warehouse ops + quality.
   { id: "team", to: "/team", label: "Team", icon: "⚑", minRole: "foreman" },
   // The crew-wide roster + edit surface; /timecard stays the personal view.
+  { id: "recent-activities", to: "/activities", label: "Recent Activities", icon: "☷", minRole: "foreman" },
   { id: "team-timecards", to: "/team-timecards", label: "Team timecards", icon: "▥", minRole: "foreman" },
   { id: "issues", to: "/issues", label: "Issues", icon: "!", minRole: "foreman" },
   { id: "service", to: "/service", label: "Servicing", icon: "⚕", minRole: "installer" },
@@ -513,6 +517,7 @@ const MENU_DEF: MenuSection[] = [
       { action: "open-clock", label: "Clock in / out", Icon: Clock },
       { to: "/timecard", label: "My timecard", Icon: CalendarClock },
       { to: "/team-timecards", label: "Team timecards", Icon: Users },
+      { to: "/activities", label: "Recent Activities", Icon: Activity },
       { to: "/cost-codes", label: "Cost codes", Icon: Hash },
     ],
   },
@@ -699,13 +704,21 @@ function installerMenu(
       .filter((it): it is MenuItem => Boolean(it?.to) && canAccess(role, it!.to!, grants))
       .map((it) => (it.to === "/" ? { ...it, label: homeLabel } : it));
 
+  // The new design's drawer is shorter (Matt, 2026-11-21): the Workday shows
+  // the running activity, so "Current Work" has no row; Servicing drops to the
+  // end of Work; Me and Help fold shut until tapped (a section holding the
+  // open page starts unfolded — AppMenu). The classic drawer is unchanged.
+  const fresh = design === "new";
+  const workPaths = fresh
+    ? [...INSTALLER_WORK_PATHS.filter((p) => p !== "/current-work" && p !== "/service"), "/service" as RoutePath]
+    : INSTALLER_WORK_PATHS;
   const out: MenuSection[] = [];
-  const work = pick(INSTALLER_WORK_PATHS);
+  const work = pick(workPaths);
   if (work.length) out.push({ title: "Work", items: work });
   const me = pick(INSTALLER_ME_PATHS);
-  if (me.length) out.push({ title: "Me", items: me });
+  if (me.length) out.push({ title: "Me", items: me, ...(fresh ? { collapsible: true, Icon: UserRound } : {}) });
   const help = pick(INSTALLER_HELP_PATHS);
-  if (help.length) out.push({ title: "Help", items: help });
+  if (help.length) out.push({ title: "Help", items: help, ...(fresh ? { collapsible: true, Icon: LifeBuoy } : {}) });
   return out;
 }
 
@@ -722,8 +735,17 @@ export function menuForRole(
 ): MenuSection[] {
   if (roleRank(role) === 0) return installerMenu(role, grants, design);
   const out: MenuSection[] = [];
+  // A foreman on the new design works from the Workday like an installer
+  // does, so the same two changes apply: Current Work is gone and Servicing
+  // sits at the bottom of its section. My Work stays for now (Matt,
+  // 2026-11-21: "leave it showing").
+  const worksUnits = design === "new" && role === "foreman";
   for (const section of MENU_DEF) {
-    const items = section.items
+    const rows = worksUnits && section.items.some((it) => it.to === "/service")
+      ? [...section.items.filter((it) => it.to !== "/current-work" && it.to !== "/service"),
+        ...section.items.filter((it) => it.to === "/service")]
+      : section.items;
+    const items = rows
       .filter((it) => design === "new" || it.to !== "/summary")
       .filter((it) => !it.to || canAccess(role, it.to, grants))
       // K1.1: "Work" everywhere in the new design (see installerMenu).

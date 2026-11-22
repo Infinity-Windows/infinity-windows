@@ -10,7 +10,7 @@ async function fixtures(page: Page, language: "en" | "es" = "en") {
   await loadSupabaseFixtures(page, { role: "owner", language });
   await hideWrongProjectBanner(page);
   const people = [{ id: TEST_USER.id, display_name: "Fixture Manager", role: "owner", active: true },
-    { id: id(1), display_name: "Historical Crew Member", role: "installer", active: false }].map(p => ({ ...p, language }));
+    { id: id(1), display_name: "Historical Crew Member", role: "installer", active: false }].map(p => ({ ...p, language, ui_design: "classic" })); // the classic Data page; a profile with no choice gets the new design
   const projects = [{ id: id(10), job_code: "JOB-A", name: "A long project name for a mobile hours report", status: "active" },
     { id: id(11), job_code: "JOB-B", name: "Finished job", status: "completed" },
     { id: id(12), job_code: "JOB-C", name: "No hours yet", status: "active" }].map(p => ({ ...p, is_test: false, allowed_modes: ["tracking"], job_kind: "residential" }));

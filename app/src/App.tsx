@@ -1,3 +1,4 @@
+import { initOutboxAutoFlush, stopOutboxAutoFlush } from "./lib/offline/outbox";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
@@ -29,6 +30,7 @@ import { routerBasename } from "./lib/pwa/basePaths";
 import { gcTokenFromPath } from "./lib/gcToken";
 import { authErrorFromHash, isRecoveryLanding } from "./lib/passwordReset";
 import { SetNewPassword } from "./components/SetNewPassword";
+import { WorkdayPreviewProvider } from "./pages/installerPilot/workdayPreview";
 import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { useEffectiveRole } from "./lib/useEffectiveRole";
 import { useDesign } from "./lib/design/context";
@@ -79,6 +81,9 @@ import "./index.css";
  * offline use is unaffected once the first background sync finishes.
  */
 const CurrentWork = lazyRoute(() => import("./pages/customWork/CurrentWork").then(m => ({default:m.CurrentWork})));
+const NativeInstallerDay = lazyRoute(() => import("./pages/installerPilot/NativeInstallerDay").then(m => ({ default: m.NativeInstallerDay })));
+const InstallerDayDiagnostics = lazyRoute(() => import("./pages/installerPilot/InstallerDayDiagnostics").then(m => ({ default: m.InstallerDayDiagnostics })));
+const PracticeProjectSetup = lazyRoute(() => import("./pages/installerPilot/PracticeProjectSetup").then(m => ({ default: m.PracticeProjectSetup })));
 // Release 1 (crew redesign K1.2): the new design's landing. Lazy on purpose —
 // the classic shell stays what a phone downloads first, and the person who
 // switched designs gets this chunk once, precached like every other route.
@@ -179,6 +184,7 @@ const TypeBrainCard = lazyRoute(() =>
   import("./pages/install/TypeBrainCard").then((m) => ({ default: m.TypeBrainCard })),
 );
 const CatalogImport = lazyRoute(() => import("./pages/CatalogImport").then((m) => ({ default: m.CatalogImport })));
+const RecentActivities = lazyRoute(() => import("./pages/customWork/RecentActivities").then(m => ({ default: m.RecentActivities })));
 const Crew = lazyRoute(() => import("./pages/Crew").then((m) => ({ default: m.Crew })));
 const CrewAccess = lazyRoute(() => import("./pages/CrewAccess").then((m) => ({ default: m.CrewAccess })));
 const GcPage = lazyRoute(
@@ -257,7 +263,12 @@ function RoleLanding() {
   if (clock.loading) return <div className="page">Loading current work…</div>;
   // Only the first lookup holds the landing screen. After an error, Current Work
   // must stay mounted while its refresh retries the service lookup.
-  if (clock.shift?.status === "open" && service.isLoading && !service.errorUpdatedAt && !service.dataUpdatedAt) return <div className="page">Loading current work…</div>;
+  // The new design's Work screen is where the clock-in happened, so it is not
+  // taken away for this lookup: swapping it for "Loading…" tore the whole page
+  // down and rebuilt it on the first clock-in after every page load (Matt,
+  // 2026-11-20: "it reloads the whole page"). A running service visit still
+  // redirects below once the lookup answers.
+  if (design !== "new" && clock.shift?.status === "open" && service.isLoading && !service.errorUpdatedAt && !service.dataUpdatedAt) return <div className="page">Loading current work…</div>;
   if (clock.shift?.status === "open" && service.data?.[0]) return <Navigate replace to={`/service?visit=${service.data[0].visit_id}`} />;
   // Release 1 (K-X2 / K1.2 / K1.4): the new design lands on Work for every
   // role, on and off the clock — Work carries the clock, the running unit and
@@ -401,6 +412,13 @@ function LegacyInstallRedirect({ suffix = "" }: { suffix?: string }) {
   return <Navigate to={`/projects/${projectId}${suffix}`} replace />;
 }
 
+function LegacyPlannerRedirect() {
+  const { projectId = "" } = useParams();
+  const params = new URLSearchParams(useLocation().search);
+  params.set("tab", "planner");
+  return <Navigate to={`/projects/${projectId}?${params}`} replace />;
+}
+
 function LegacyInstallOpeningRedirect() {
   const { projectId = "", openingId = "" } = useParams();
   return (
@@ -494,6 +512,7 @@ function SectionAura() {
 }
 
 export default function App() {
+  useEffect(() => { initOutboxAutoFlush(); return stopOutboxAutoFlush; }, []);
   const [session, setSession] = useState<Session | null>(null);
   /** The auth server ended this phone's sign-in; nobody tapped Sign out. */
   const [signedOutByServer, setSignedOutByServer] = useState(false);
@@ -721,6 +740,7 @@ export default function App() {
       <ValuesCacheBoundary />
       <BrowserRouter basename={routerBasename(import.meta.env.BASE_URL)}>
         <ClockProvider>
+        <WorkdayPreviewProvider key={session.user.id}>
         {/* Renders nothing; puts the viewer's role on any crash report. */}
         <CrashMonitorRole />
         <SectionAura />
@@ -734,6 +754,9 @@ export default function App() {
           <Route path="/stg/*" element={<StgApp />} />
           <Route element={<RequirePartnerElsewhere><Layout /></RequirePartnerElsewhere>}>
             <Route path="/" element={<RoleLanding />} />
+            <Route path="/installer-day" element={<RequireRole minRole="installer"><NativeInstallerDay /></RequireRole>} />
+            {import.meta.env.DEV && <Route path="/installer-day-diagnostics" element={<InstallerDayDiagnostics />} />}
+            {import.meta.env.DEV && <Route path="/installer-day-setup" element={<PracticeProjectSetup />} />}
             <Route path="/current-work" element={<RequireRole path="/current-work"><CurrentWork /></RequireRole>} />
             <Route path="/warehouse" element={<Warehouse />} />
             {/* One list per hub number: /warehouse/on-hand, /putaway, /staged,
@@ -846,6 +869,7 @@ export default function App() {
             <Route path="/search" element={<Navigate to="/warehouse" replace />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/jobs/history" element={<JobHistory />} />
+            <Route path="/projects/:projectId/planner" element={<LegacyPlannerRedirect />} />
             <Route path="/projects/:projectId" element={<ProjectDetail />} />
             {/* Bare /map bookmarks and links → the merged Maps tab. Same
                 machinery as the /install/:projectId legacy redirects below:
@@ -956,6 +980,7 @@ export default function App() {
               path="/catalog"
               element={<RequireRole path="/catalog"><CatalogImport /></RequireRole>}
             />
+            <Route path="/activities" element={<RequireRole path="/activities"><RecentActivities /></RequireRole>} />
             <Route
               path="/crew"
               element={<RequireRole path="/crew"><Crew /></RequireRole>}
@@ -1088,6 +1113,7 @@ export default function App() {
           </Route>
         </Routes>
         </Suspense>
+        </WorkdayPreviewProvider>
         </ClockProvider>
       </BrowserRouter>
       </ViewAsRoleProvider>

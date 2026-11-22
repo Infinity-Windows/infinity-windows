@@ -1,0 +1,7 @@
+# Check every text file out with Unix line endings on every machine. Several
+# tests read SQL and scripts from disk and split on a bare newline; a Windows
+# checkout with CRLF failed eleven of them while the same commit passed on Linux.
+* text=auto eol=lf
+
+# Stored with its original Windows line endings; leave the licence text as shipped.
+app/src/assets/fonts/OFL.txt -text

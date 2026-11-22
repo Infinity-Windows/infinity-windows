@@ -34,10 +34,23 @@ vi.mock("./supabase", () => ({
   }),
   supabaseConfigured: true,
 }));
-vi.mock("./signedIn", () => ({ signedInEmail: () => "e2e@example.test", signedInUserId: () => "me", subscribeSignedIn: () => () => {} }));
+vi.mock("./signedIn", () => ({ signedInEmail: () => "e2e@example.test", signedInUserId: () => "me", subscribeSignedIn: () => () => {}, signInMark: () => ({ userId: "me", generation: 0 }), stillSignedInAs: (mark: { userId: string }, who: string) => mark.userId === who && who === "me" }));
+// Test cleanup owns its fixture store; production discard is owner/state guarded
+// (it refuses any write that is not a failed one of yours), so it cannot wipe a queue.
+vi.mock("./offline/outboxStore", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./offline/outboxStore")>();
+  const fixtureStore = new actual.MemoryOutboxStore();
+  return { ...actual, createDefaultStore: () => fixtureStore, fixtureStore };
+});
 vi.mock("./offline/telemetry", () => ({ logOfflineEvent: () => {} }));
 
 const outbox = await import("./offline/outbox");
+const { fixtureStore } = await import("./offline/outboxStore") as unknown as { fixtureStore: import("./offline/outbox-core").OutboxStore };
+/** Empty the phone's queue between tests, then let the outbox re-read it. */
+async function emptyOutbox() {
+  for (const e of await outbox.listAll()) await fixtureStore.delete(e.id);
+  await outbox.recoverAndDrain();
+}
 const { todayTalkKey, useTodayTalk, useToolboxToday } = await import("./useToolboxGate");
 const { forgetConfirmedSignatures } = outbox;
 const { localDateOf } = await import("./toolboxSign");
@@ -114,7 +127,7 @@ afterEach(async () => {
   seen = null;
   vi.useRealTimers();
   online();
-  for (const e of await outbox.listAll()) await outbox.discardFailed(e.id);
+  await emptyOutbox();
   // What Forge confirmed in one test must not sign the next one in.
   forgetConfirmedSignatures();
 });

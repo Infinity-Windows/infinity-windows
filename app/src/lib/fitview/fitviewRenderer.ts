@@ -1808,6 +1808,10 @@ export function mountFitView(host, job, shim) {
     if (openBtn) openBtn.addEventListener("click", function () {
       SHIM.openOpening(win.id, win);
     });
+    var planBtn = sheet.querySelector("[data-plan]");
+    if (planBtn) planBtn.addEventListener("click", function () {
+      SHIM.onPlanOpening(win.id);
+    });
     // transcripts-program-spec wave Y (2026-09-04).
     var recordBtn = sheet.querySelector("[data-recordfor]");
     if (recordBtn) recordBtn.addEventListener("click", function () {
@@ -1951,6 +1955,8 @@ export function mountFitView(host, job, shim) {
           '</button>' : '') +
         (SHIM.openOpening ?
           '<button class="btn" data-open>Open opening &#8594;</button>' : '') +
+        (SHIM.onPlanOpening ?
+          '<button class="btn" data-plan>Plan this unit</button>' : '') +
         // transcripts-program-spec wave Y (2026-09-04). Both are host-provided
         // callbacks, so a crew map without them keeps exactly the buttons it
         // has today - the shim contract above is the whole gate.

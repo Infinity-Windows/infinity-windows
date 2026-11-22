@@ -55,6 +55,9 @@ function profileRow(id: string, display_name: string, role: string) {
     skill_level: 3,
     active: true,
     language: "en",
+    // These chips are the classic stylesheet. A profile with no choice now gets
+    // the new design (2026-11-22), which is not what this spec measures.
+    ui_design: "classic",
     can_see_costs: false,
     can_see_pay: false,
     retired_at: null,

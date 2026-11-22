@@ -43,6 +43,7 @@ export interface CaptureStageProps {
   onGradeChange: (g: number) => void;
 
   ready: ReadyResult;
+  onReviewChecks: () => void;
   submitBlockedBy: string | null;
 
   flashingBlocked: boolean;
@@ -79,6 +80,7 @@ export function CaptureStage({
   grade,
   onGradeChange,
   ready,
+  onReviewChecks,
   submitBlockedBy,
   flashingBlocked,
   canManageFlashing,
@@ -207,10 +209,15 @@ export function CaptureStage({
       </div>
 
       {ready.status === "blocked" && (
-        <p className="error">
-          This opening is blocked ({ready.reasons.join(" ")}). Resolve before
-          recording the install.
-        </p>
+        <div role="status">
+          <p className="error">
+            This opening is blocked ({ready.reasons.join(" ")}). Resolve before
+            recording the install.
+          </p>
+          <button type="button" className="button-like" onClick={onReviewChecks}>
+            {t("opening.action.reviewChecks")}
+          </button>
+        </div>
       )}
 
       {submitBlockedBy && (

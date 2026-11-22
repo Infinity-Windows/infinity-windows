@@ -105,10 +105,25 @@ vi.mock("../../lib/toolbox", async (importOriginal) => {
   };
 });
 
+// Test cleanup owns its fixture store; production discard is owner/state guarded
+// (it refuses any write that is not a failed one of yours), so it cannot wipe a queue.
+vi.mock("../../lib/offline/outboxStore", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/offline/outboxStore")>();
+  const fixtureStore = new actual.MemoryOutboxStore();
+  return { ...actual, createDefaultStore: () => fixtureStore, fixtureStore };
+});
+
 import { ClockInBlock } from "./ClockInBlock";
 import type { ClockPunch, TimeShift } from "../../lib/timeclock";
-import { discardFailed, getClockQueueSnapshot, listAll, recoverAndDrain } from "../../lib/offline/outbox";
+import { forgetConfirmedSignatures, getClockQueueSnapshot, listAll, recoverAndDrain } from "../../lib/offline/outbox";
 import { localDateOf } from "../../lib/toolboxSign";
+
+const { fixtureStore } = await import("../../lib/offline/outboxStore") as unknown as { fixtureStore: import("../../lib/offline/outbox-core").OutboxStore };
+/** Empty the phone's queue between tests, then let the outbox re-read it. */
+async function emptyOutbox() {
+  for (const e of await listAll()) await fixtureStore.delete(e.id);
+  await recoverAndDrain();
+}
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
@@ -132,8 +147,10 @@ afterEach(async () => {
   pushToastSpy.mockClear();
   // A signature or punch one test left on the phone must not open the next
   // test's gate.
-  for (const e of await listAll()) await discardFailed(e.id);
   Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+  await emptyOutbox();
+  // What Forge confirmed in one test must not sign the next one in.
+  forgetConfirmedSignatures();
 });
 
 /** No signal: what the phone keeps stays on it (the outbox does not drain). */
@@ -993,7 +1010,8 @@ describe("a clock punch still on the phone (K0.1)", () => {
   const goOffline = () => Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
 
   afterEach(async () => {
-    for (const id of queuedIds.splice(0)) await discardFailed(id);
+    queuedIds.length = 0;
+    await emptyOutbox();
     Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
   });
 

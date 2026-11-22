@@ -46,6 +46,7 @@ const navigateSpy = vi.fn();
 
 // The screen's two ways of speaking a refusal: a toast, and leaving for the
 // unit sheet. Both are spied so a test can say which one happened.
+import { WorkdayPreviewProvider } from "../installerPilot/workdayPreview";
 vi.mock("../../lib/toast", async (orig) => ({
   ...(await orig<typeof import("../../lib/toast")>()),
   pushToast: vi.fn(),
@@ -160,8 +161,10 @@ vi.mock("../../lib/customWork/useWork", () => ({
     active: sessions.find((s) => s.profile_id === ME && !s.ended_at) ?? null,
   }),
 }));
+// A supervisor: installers and foremen on the new design get Workday on this screen instead
+// (the ws-installer layout), which these tests do not cover.
 vi.mock("../../lib/useEffectiveRole", () => ({
-  useEffectiveRole: () => ({ realRole: "installer", effectiveRole: "installer", isPreviewing: false, isLoading: false, grants: {} }),
+  useEffectiveRole: () => ({ realRole: "supervisor", effectiveRole: "supervisor", isPreviewing: false, isLoading: false, grants: {} }),
 }));
 vi.mock("../../components/install/LiveSummonsStrip", () => ({ LiveSummonsStrip: () => null }));
 vi.mock("../../components/clock/ToolboxSignCard", () => ({
@@ -266,7 +269,7 @@ const tree = () => (
   <QueryClientProvider client={qc!}>
     <IsRestoringProvider value={restoring}>
       <MemoryRouter>
-        <WorkScreen />
+        <WorkdayPreviewProvider><WorkScreen /></WorkdayPreviewProvider>
       </MemoryRouter>
     </IsRestoringProvider>
   </QueryClientProvider>

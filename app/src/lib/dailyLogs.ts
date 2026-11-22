@@ -263,7 +263,7 @@ export interface FileDailyLogInput extends DailyLogProgressFields {
 }
 
 export function isStaleDailyLogError(error: unknown): boolean {
-  return !!error && typeof error === "object" && "code" in error && error.code === "40001";
+  return !!error && typeof error === "object" && "code" in error && (error.code === "PT409" || error.code === "40001");
 }
 
 /** What happened to a filing: it reached the server, or it is waiting. */

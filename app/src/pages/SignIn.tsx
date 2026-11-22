@@ -1,3 +1,4 @@
+import { SignedOutBrand } from "../components/steel/SignedOutBrand";
 import { useEffect, useState } from "react";
 import { formatApiError } from "../lib/errors";
 import {
@@ -162,12 +163,7 @@ export function SignIn({
 
   return (
     <div className="signin">
-      <div className="signin-brand">
-        <h1>FORGE</h1>
-        <div className="signin-rule">
-          <span>{t("signin.tagline")}</span>
-        </div>
-      </div>
+      <SignedOutBrand />
 
       {/* Usable before login and with no JavaScript beyond a plain click
           handler — a segmented control, not a dropdown or a CSS trick. Above

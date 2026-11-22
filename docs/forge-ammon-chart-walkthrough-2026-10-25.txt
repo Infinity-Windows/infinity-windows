@@ -1,0 +1,59 @@
+AMMON DISCUSSION — PROPOSED REPORTING
+Prepared October 25, 2026. Local synthesis only; no production/schema changes.
+
+SCOPE
+ESH-18 + HURRICANE24. July 25–October 25, 2026, inclusive Denver dates.
+First and last calendar-week buckets are partial. No row subset selected.
+Floating chart panel expanded. Use Chart dropdown for the following three views.
+Settings are staged in the current browser session, not saved presentation presets.
+
+1. CLOCKED LABOR OVER TIME
+Hours; Weekly; Calendar weeks; Separate jobs. All saved cost codes visible/toggleable. Opens at latest end; scroll left for earlier weeks. Data/metric refresh preserves earlier inspection; a changed time/job window resets to the end.
+Finished shift hours after breaks: ESH-18 423.09 h (154 shifts), HURRICANE24 319.89 h (132 shifts); total 743.0 h rounded.
+Shows job/person/cost-code labor baseline, not a verified unit allocation. These hours must not be added to unit timers.
+Prompt: Which weekly patterns would cause you to change staffing, investigate cost or revise an estimate?
+
+2. WEEKLY UNIT RATES — PARTIAL
+Both jobs enabled; Flashing, Install and Installing enabled; all recorded people; color by Job.
+Recorded activity minutes per stored opening square foot, by opening and Monday week.
+15 eligible unit-week dots; 22 excluded unit-weeks for area; 4 unlinked weekly records.
+ESH-18 has only one eligible dot in this window. This is a controls/representation demonstration, not a job productivity ranking.
+A weekly contribution is not a completed installation; empty weeks are not proof of zero work. People are recorded contributors, not inferred assigned crews/supervisors.
+Info icon exposes coverage; tap a dot to inspect supporting records. #14 is held out of area rates; #23 remains dimension/conflicting-configuration review.
+Prompt: Would you compare weekly contributions, completed installs, or matched activities on similar units?
+
+3. GROUPED COMPARISONS — PARTIAL
+Metric Minutes / ft²; grouping Job -> Unit category. Other grouping toggles available: Person, Activity, Floor, Operation, Configuration, System and Material.
+Current timer set: 75 records, 28 recorded unit identities. HURRICANE24: 74 records, approximately 6.86 recorded hours; ESH-18: 1 record, approximately 12 seconds (0.20 minutes). This is separate, incomplete evidence compared with the 743.0 clocked hours; not a certified captured percentage. Three months and all available history returned the same totals; the browser is left on the bounded three-month range.
+Area rate uses 12 eligible openings / 226.98 stored ft². 14 linked openings have dimension conflicts; 4 specific records have no opening link. 144.73 recorded minutes are excluded from area calculations; General work has no unit rate.
+Group rate is eligible activity minutes divided by unique eligible opening area within that group, not an average of unit dots. Sparse and unverified values are descriptive only.
+Try replacing Unit category with Person, then Operation or Material. System is currently unknown for all recorded units. Group controls also affect the on-page activity table.
+Prompt: Which grouping would answer your first real operational question?
+
+QUESTIONS TO RESOLVE
+1. What decision matters first: pricing/estimating, crew planning, progress tracking, or identifying overruns?
+2. What belongs in installation time: unloading, preparation, flashing, setting, glazing, finishing, rework, travel? Should any remain job-level overhead?
+3. What does square footage mean: product/opening area, glass area or rough opening? Which source and verification level are acceptable?
+4. Is the intended comparison crew labor per opening or individual activity time? How should shared work and changing crews appear?
+5. What makes two samples comparable: category, operation, material, size, system, difficulty, phase? What minimum capture/completion is needed before acting on a rate?
+6. Which one view would be useful enough to prioritize better capture for?
+
+RECOMMENDED NEXT STEP
+Use these views to learn the decision first. Then prioritize unit/shift linkage and timer completeness, area-definition/dimension conflicts, and review of relevant unit classifications. Do not spread unallocated clocked hours across openings or infer historical supervision from current roles. Drawing-reviewed categories preserve original conflicts and are not field verification.
+
+RANGE CHECK FOLLOW-UP
+A wider range did not recover more ESH-18 unit-timer evidence. Both three months and all time produced its same single 12-second record. Added HURRICANE24 records include Flashing; compare the same enabled activities rather than attributing a changed combined rate to faster/slower work. Use clocked hours for two-job labor comparisons; use HURRICANE24 to demonstrate unit-rate controls. ESH-18 needs better verified attribution/capture before a unit-productivity comparison is supportable.
+
+THREE-JOB FOLLOW-UP — CURRENT STAGED VIEW
+Added SSSIMISTER: 213.3 clocked hours, 10 partial activity records / about 0.96 hours in Jul25-Oct25. It supplies 7 eligible unit-week dots overlapping HURRICANE24 in weeks starting Sep28 and Oct12 (6 dots and 1 dot respectively). Total 3-job calendar chart: 956.3 h / 394 finished shifts. Weekly unit plot: 22 eligible dots, 23 excluded unit-weeks for area, 4 unlinked weekly records. ESH-18 remains one short timer record.
+Clocked labor now supports a chart-local First N weeks window (4/8/12/16/26/52) independent of page date range. Reads one origin per selected job then scoped date windows per job; inactive chart queries do not poll. Current staging: Job weeks / First 8 weeks. ESH-18 and HURRICANE24 origins Sep2; SSSIMISTER Sep28. Week 1 = first finished shift's Denver day, not contract start, verified mobilization or comparable phase. Page tables and unit-rate dots still use the visible calendar range. Future relative weeks say Not reached, missing past weeks say No records.
+
+CURRENT REQUESTED STAGING — HURRICANE24 vs SSSIMISTER
+Weekly unit rates now supports the same Time axis / First N weeks control as clocked labor. Staged on relative First8weeks for those two jobs, using first finished-shift dates Sep2 and Sep28. 20 eligible unit-week dots; 23 unit-weeks excluded for area, 4 unlinked weekly records. Page totals/tables retain calendar dates. Activities Flashing, Install and Installing enabled; all recorded contributors; colors by job. Filter activities consistently before interpreting differences. Relative W labels are not matched phases. Info icon lists origins/coverage; tap a dot for its actual dates and records.
+Daily breakdown control removed for now. Hours/Percent are inline chart-format toggles on labor charts. Unit rates retain min/ft².
+
+UNIFIED CHART UPDATE
+Use Labor over time, then Source and Measure. Clocked shifts supports Total time (Hours/Percent format). Unit-linked timers partial supports Total time as stacked columns, Minutes/opening as unit dots, Minutes/ft² as area-rate dots. Time axis and FirstNweeks stay shared when switching sources. Rate choices disabled for clocked shifts. Missing area excludes only area rates; missing opening links exclude all unit-linked measures. Old separate clocked/unit-rate menu choices replaced by one Labor over time entry.
+
+ALIGNMENT FOLLOW-UP
+Use Align from independently of labor Source. Project work start preserves early General/travel/other clocked work; unit capture can appear later. Unit work start aligns the first recorded opening-linked timer for each job at Week1. Live origins HURRICANE24 Sep21; SSSIMISTER Sep30. Staged unit-start First8weeks in min/ft²: 21 eligible dots / 23 area-excluded unit-weeks / 4 unlinked weekly records. Clocked source with unit-start alignment shows clocked labor after that origin; earlier work is outside the window, not allocated away. Neither origin establishes a verified job phase.

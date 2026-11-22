@@ -2,7 +2,7 @@ import { VoiceInput } from "../../components/voice/VoiceInput";
 import { BackChip } from "../../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { listProjects, listWindowTypes } from "../../lib/api";
 import {
   assignOpeningToInstaller,
@@ -109,6 +109,8 @@ import {
 } from "../../lib/install/openingFilter";
 import { dispatchNudge, dispatchNudgeText } from "../../lib/install/dispatchNudge";
 import { MapPinLayer } from "./MapPinLayer";
+import { UnitDetailsDialog, UnitDetailsPanel } from "../../components/install/UnitDetails";
+import { AgendaUnitDetails } from "../work/AgendaUnitDetails";
 import { AddMissedUnitSheet } from "../../components/install/AddMissedUnitSheet";
 import { useT } from "../../lib/i18n";
 import { MapWallLayer } from "./MapWallLayer";
@@ -247,6 +249,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   // the same card can never render twice at once, but the two now move
   // together: see linkScroll.
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  const [detailsId, setDetailsId] = useState<string>();
+  const [createUnit, setCreateUnit] = useState(false);
   /*
    * The list and the drawing answer each other's question: tapping row 23
    * highlights pin 23 on the sheet, and tapping a pin opens its row below.
@@ -1285,6 +1289,18 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     });
   };
 
+  const [unitLinkParams] = useSearchParams();
+  const linkedOpening = unitLinkParams.get("opening");
+  const openedLinkedUnit = useRef<string|null>(null);
+  useEffect(()=>{
+    if(!linkedOpening || openedLinkedUnit.current===linkedOpening || !openings.data?.some(o=>o.id===linkedOpening))return;
+    openedLinkedUnit.current=linkedOpening;
+    setView("details");
+    setSelectedId(linkedOpening);
+    setExpandedRowId(linkedOpening);
+    setLinkScroll(prev=>({to:"row",id:linkedOpening,n:(prev?.n??0)+1}));
+  },[linkedOpening,openings.data]);
+
   /** Pin tapped: open its row below and bring the row into view. */
   const selectFromMap = (id: string) => {
     setExpandedRowId(id);
@@ -1705,7 +1721,11 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             <span className="field-label">Installer</span>
             <select
               value={dispatchInstaller}
-              onChange={(e) => setDispatchInstaller(e.target.value)}
+              onChange={(e) => {
+                setDispatchInstaller(e.target.value);
+                setSelection([]);
+                setDispatchNote(null);
+              }}
             >
               <option value="">Choose an installer…</option>
               {activeCrew.map((c) => (
@@ -1733,10 +1753,33 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 className="link"
                 onClick={() => setSelection([])}
               >
-                Clear taps
+                Clear pending
               </button>
             )}
           </div>
+
+          {dispatchInstaller && (
+            <label className="dispatch-map-controls__picker">
+              <span className="field-label">Add opening</span>
+              <select
+                value=""
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (id) setSelection((previous) => toggleSelection(previous, id));
+                }}
+              >
+                <option value="">Choose an unassigned opening…</option>
+                {all.filter((opening) => !opening.assigned_to &&
+                  opening.status !== "installed" && !selection.includes(opening.id))
+                  .sort((a, b) => a.opening_code.localeCompare(b.opening_code, undefined, { numeric: true }))
+                  .map((opening) => (
+                    <option key={opening.id} value={opening.id}>
+                      {openingMarkCode(opening.opening_code)}{opening.label ? ` · ${opening.label}` : ""}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
 
           {!dispatchInstaller ? (
             <p className="muted">
@@ -1746,16 +1789,18 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           ) : worklistOpenings.length === 0 ? (
             <p className="muted">
               {crewNameById.get(dispatchInstaller) ?? "This installer"} has no
-              openings yet — tap window/door pins on the map, in order, to build
-              their list.
+              openings yet. Choose an opening above or tap a map pin.
             </p>
           ) : (
             <ol className="dispatch-worklist">
               {worklistOpenings.map((row) => {
                 const code = openingMarkCode(row.opening.opening_code);
-                const isFirstExisting = !row.isNew && row.order === 1;
-                const isLastExisting =
-                  !row.isNew && row.order === existingRouteIds.length;
+                const route = row.isNew ? selection : existingRouteIds;
+                const position = route.indexOf(row.id);
+                const move = (offset: -1 | 1) => {
+                  if (row.isNew) setSelection((previous) => reorderById(previous, row.id, offset));
+                  else reorderExisting.mutate(reorderById(route, row.id, offset));
+                };
                 const busy =
                   removeExisting.isPending || reorderExisting.isPending;
                 return (
@@ -1768,7 +1813,10 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                     }`}
                   >
                     <span className="dispatch-panel__seq">{row.order}</span>
-                    <span className="dispatch-worklist__code">#{code}</span>
+                    <details className="dispatch-worklist__details">
+                      <summary className="dispatch-worklist__code">#{code}</summary>
+                      <small>{openingStatusLabel(row.opening.status)}{row.opening.label ? ` · ${row.opening.label}` : ""}</small>
+                    </details>
                     {row.isNew ? (
                       <span className="dispatch-worklist__tag dispatch-worklist__tag--new">
                         adding now
@@ -1777,18 +1825,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                       <span className="dispatch-worklist__tag">on list</span>
                     )}
                     <span className="dispatch-worklist__controls">
-                      {!row.isNew && existingRouteIds.length > 1 && (
+                      {route.length > 1 && (
                         <>
                           <button
                             type="button"
                             className="dispatch-worklist__move"
                             aria-label={`Move #${code} earlier`}
-                            disabled={isFirstExisting || busy}
-                            onClick={() =>
-                              reorderExisting.mutate(
-                                reorderById(existingRouteIds, row.id, -1),
-                              )
-                            }
+                            disabled={position === 0 || busy}
+                            onClick={() => move(-1)}
                           >
                             ↑
                           </button>
@@ -1796,12 +1840,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                             type="button"
                             className="dispatch-worklist__move"
                             aria-label={`Move #${code} later`}
-                            disabled={isLastExisting || busy}
-                            onClick={() =>
-                              reorderExisting.mutate(
-                                reorderById(existingRouteIds, row.id, 1),
-                              )
-                            }
+                            disabled={position === route.length - 1 || busy}
+                            onClick={() => move(1)}
                           >
                             ↓
                           </button>
@@ -2486,6 +2526,15 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         Tap a window or door for its details, and to point it out on the
         drawing.
       </p>
+      <button type="button" className="link" onClick={() => setCreateUnit(true)}>
+        {t("unitDetails.addPlaceholder")}
+      </button>
+      {createUnit && <UnitDetailsDialog title={t("unitDetails.addPlaceholder")} onClose={() => setCreateUnit(false)}>
+        <UnitDetailsPanel projectId={projectId} onCreated={id => { setCreateUnit(false); setDetailsId(id); }} />
+      </UnitDetailsDialog>}
+      {detailsId && <AgendaUnitDetails unit={{ id: detailsId, label: "", projectId, crewIds: [] }} profileId=""
+        openingRow={all.find(opening => opening.id === detailsId)} localSessions={[]}
+        onClose={() => setDetailsId(undefined)} />}
       <ul className="unit-list work-list">
         {filtered.map((o) => {
           const isVoided = showsVoidedInstall(effectiveRole, o, voidedIds);
@@ -2605,6 +2654,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             )}
             {expanded && (
               <div className="opening-row-panel">
+                <button type="button" className="link" aria-haspopup="dialog" onClick={() => setDetailsId(o.id)}>
+                  {t("unitDetails.title")}
+                </button>
                 {renderDetailCard(o, {
                   onClose: () => setExpandedRowId(null),
                   id: panelId,

@@ -44,6 +44,20 @@ export async function saveProjectLocation(projectId: string, location: JobLocati
   }
 }
 
+/** One bounded read after a refused save; never replays the mutation. */
+export async function readProjectLocation(projectId: string): Promise<JobLocation> {
+  const { data, error } = await supabase.from("projects")
+    .select("address,latitude,longitude").eq("id", projectId).single();
+  if (error) throw error;
+  if (!data) throw new Error("Job location is unavailable.");
+  return { address: data.address ?? null, latitude: data.latitude ?? null, longitude: data.longitude ?? null };
+}
+
+export function isJobLocationConflict(error: unknown): boolean {
+  const code = error && typeof error === "object" && "code" in error ? error.code : null;
+  return code === "PT409" || code === "40001";
+}
+
 /** Keep already-open job, schedule and travel views on the same saved point. */
 export async function invalidateJobLocation(client: QueryClient): Promise<void> {
   await Promise.all(["projects", "projectsAll", "mySchedule", "myScheduleTomorrow", "workSchedule", "schedule", "scheduleAssignments", "scheduleDrafts", "projectSchedule", "homeTodayCrews", "trip", "trips"].map((root) =>

@@ -1,3 +1,4 @@
+import { queueCoordinator as coordinator, registerGeneralLane } from "./queueRuntime";
 // Runtime for the global offline write outbox. Ties the pure core + IndexedDB
 // store + Supabase handlers together, exposes enqueue helpers for each write,
 // and keeps the queue draining whenever connectivity returns.
@@ -28,7 +29,7 @@ import {
 import { createDefaultStore, UnreadableOutboxEntryError } from "./outboxStore";
 import { logOfflineEvent } from "./telemetry";
 import { REQUEST_TIMEOUT_MS, uploadTimeoutMs } from "./weakSignal";
-import { signedInEmail, signedInUserId, subscribeSignedIn, signInMark, stillSignedInAs } from "../signedIn";
+import { signedInEmail, signedInUserId, signInMark, stillSignedInAs } from "../signedIn";
 import { clientWithToken, supabase } from "../supabase";
 import { authorEvidence, belongsTo, ownershipOf, type Signer } from "./entryOwner";
 import type { JobMode } from "../types";
@@ -37,11 +38,11 @@ import { recoverPhotoUpload, recoverTransportFailedPhoto } from "./recoverPhotoU
 import { PhotoUploadReceipts } from "./photoUploadProgress";
 import { migrateLegacyUploads } from "../install/legacyUploadQueue";
 import {
-  createShiftResolver,
   createSupabaseHandlers,
   pendingShiftRef,
   type ShiftResolver,
 } from "./outboxHandlers";
+import { clockShiftResolver } from "./shiftResolver";
 import {
   todaysPendingSignature,
   type PendingSignature,
@@ -106,7 +107,7 @@ if (SEND_DEADLINE_MS <= 6 * REQUEST_TIMEOUT_MS) {
 }
 
 const store: OutboxStore = createDefaultStore();
-const resolver: ShiftResolver = createShiftResolver();
+const resolver: ShiftResolver = clockShiftResolver;
 const photoReceipts = new PhotoUploadReceipts();
 
 // --- whose write goes out as whom (2026-09-25) ----------------------------
@@ -127,7 +128,18 @@ function handlersFor(token: string, userId: string): OpHandlers {
   if (boundHandlers?.token !== token) {
     boundHandlers = {
       token,
-      handlers: createSupabaseHandlers(resolver, clientWithToken(token), { userId }),
+      handlers: createSupabaseHandlers(resolver, clientWithToken(token), { userId }, async at => {
+        // Work replays before the paid-clock boundary at the same captured tap.
+        // Refused work remains for review; it must never prevent a paid punch.
+        try {
+          const saved = localStorage.getItem("forge-custom-work-v1:" + userId);
+          if (!saved || saved === "[]") return;
+          const { syncWork } = await import("../customWork/queue");
+          await syncWork(userId, at);
+        } catch {
+          logOfflineEvent({ type: "queue", scope: "workday", message: "Saved work needs review; the paid-clock punch is still being sent." });
+        }
+      }),
     };
   }
   return boundHandlers.handlers;
@@ -359,12 +371,6 @@ export function subscribeClockSent(cb: ClockSentListener): () => void {
   return () => clockSentListeners.delete(cb);
 }
 
-let draining = false;
-/** Somebody asked for a drain while one was running — see drain(). */
-let drainAgain = false;
-let forceNextDrain = false;
-let wired = false;
-
 /**
  * A write that reached the server this session, newest first.
  *
@@ -505,7 +511,7 @@ export async function listUnknownOwner(): Promise<OutboxEntry[]> {
  * wait on the store: a reload mid-drain can replay a punch the server has
  * already taken. See lib/pwa/queuedWork.ts. */
 export function isDraining(): boolean {
-  return draining;
+  return coordinator.isRunning();
 }
 
 /**
@@ -725,117 +731,96 @@ async function enqueueStable(
  * otherwise sit behind the failures of unrelated entries.
  */
 export function drain(): Promise<void> {
-  return runDrain(false);
+  return coordinator.request();
 }
 
-async function runDrain(forceDue: boolean): Promise<void> {
-  if (!isOnline()) {
-    if (forceDue) logOfflineEvent({ type: "queue", scope: "outbox", message: "Send now paused: phone reports offline" });
-    return;
-  }
-  if (draining) {
-    drainAgain = true;
-    forceNextDrain ||= forceDue;
-    if (forceDue) logOfflineEvent({ type: "queue", scope: "outbox", message: "Send now waiting for the current send to finish" });
-    return;
-  }
-  draining = true;
-  forceNextDrain ||= forceDue;
-  try {
-    do {
-      drainAgain = false;
-      const forceThisPass = forceNextDrain;
-      forceNextDrain = false;
-      if (forceThisPass) logOfflineEvent({ type: "queue", scope: "outbox", message: "Send now started checking saved writes" });
-      const res = await drainUntilSettled(store, handlers, {
-        forceDue: forceThisPass,
-        sendDeadlineMs,
-        beginValuesAttempt: (entry) => {
-          const mark = signInMark();
-          return () => Boolean(entry.ownerId && stillSignedInAs(mark, entry.ownerId));
-        },
-        onAttempt: (entry) => {
-          if (forceThisPass || entry.op === "photo_upload") {
-            logOfflineEvent({ type: "queue", scope: "outbox", message: `Started ${entry.op}` });
-          }
-        },
-        onHeld: (entry) => logOfflineEvent({ type: "queue", scope: "outbox", message: `${entry.op} is waiting for its owner's sign-in` }),
-        onAbandoned: (entry, deadlineMs) =>
-          logOfflineEvent({ type: "timeout", scope: "outbox", message: abandonedSendMessage(entry, deadlineMs) }),
-        onChange: () => void refresh(),
-        onSent: (entry, result) => {
-          photoReceipts.record(entry);
-          recordSent(entry.op === "values_submit" ? { ...entry, payload: { assignmentId: entry.payload.assignmentId } } : entry, Date.now());
-          if (entry.op === "toolbox_sign") {
-            recordConfirmedSignature(result);
-            for (const cb of toolboxSentListeners) {
-              try {
-                cb(entry, result);
-              } catch {
-                /* a listener must never break the queue */
-              }
-            }
-            return;
-          }
-          if (!isClockOp(entry.op)) return;
-          for (const cb of clockSentListeners) {
-            try {
-              cb(entry, result);
-            } catch {
-              /* a listener must never break the queue */
-            }
-          }
-        },
-      });
-      if (res.attempted > 0) {
-        logOfflineEvent({
-          type: "flush",
-          scope: "outbox",
-          count: res.sent,
-          message: res.deadLettered > 0 ? `${res.deadLettered} gave up` : res.retried > 0 ? `${res.retried} will retry` : undefined,
-        });
+async function executeGeneralTurn(forceThisPass: boolean): Promise<void> {
+  if (forceThisPass) logOfflineEvent({ type: "queue", scope: "outbox", message: "Send now started checking saved writes" });
+  const res = await drainUntilSettled(store, handlers, {
+    forceDue: forceThisPass,
+    sendDeadlineMs,
+    beginValuesAttempt: (entry) => {
+      const mark = signInMark();
+      return () => Boolean(entry.ownerId && stillSignedInAs(mark, entry.ownerId));
+    },
+    onAttempt: (entry) => {
+      if (forceThisPass || entry.op === "photo_upload") {
+        logOfflineEvent({ type: "queue", scope: "outbox", message: `Started ${entry.op}` });
       }
-      if (forceThisPass && res.attempted === 0) {
-        logOfflineEvent({ type: "queue", scope: "outbox", message: "No saved writes were ready to send; checking for blockers" });
-      }
-      if (res.sent > 0) {
-        for (const cb of syncedListeners) {
+    },
+    onHeld: (entry) => logOfflineEvent({ type: "queue", scope: "outbox", message: `${entry.op} is waiting for its owner's sign-in` }),
+    onAbandoned: (entry, deadlineMs) =>
+      logOfflineEvent({ type: "timeout", scope: "outbox", message: abandonedSendMessage(entry, deadlineMs) }),
+    onChange: () => void refresh(),
+    onSent: (entry, result) => {
+      if (isClockOp(entry.op) || entry.op === "toolbox_sign")
+        resolver.record("workday-after:" + entry.id, "sent");
+      photoReceipts.record(entry);
+      recordSent(entry.op === "values_submit" ? { ...entry, payload: { assignmentId: entry.payload.assignmentId } } : entry, Date.now());
+      if (entry.op === "toolbox_sign") {
+        recordConfirmedSignature(result);
+        for (const cb of toolboxSentListeners) {
           try {
-            cb();
+            cb(entry, result);
           } catch {
             /* a listener must never break the queue */
           }
         }
+        return;
       }
-    } while (drainAgain && isOnline());
-  } catch (error) {
-    logOfflineEvent({ type: "queue", scope: "outbox", message: `Queue stopped before finishing: ${error instanceof Error ? error.message : "unknown error"}` });
-  } finally {
-    draining = false;
-    try {
-      await refresh();
-    } catch {
-      // A failed display refresh must never strand an explicit retry.
-    }
-    if (!isOnline()) {
-      // An old manual tap must not bypass backoff on a later reconnect.
-      drainAgain = false;
-      forceNextDrain = false;
-      return;
-    }
-    // A tap can land after the do/while check but before this cleanup ends.
-    // Carry that explicit request into a fresh pass instead of losing it.
-    if (drainAgain && !draining && isOnline()) {
-      const force = forceNextDrain;
-      drainAgain = false;
-      forceNextDrain = false;
-      void runDrain(force);
+      if (!isClockOp(entry.op)) return;
+      for (const cb of clockSentListeners) {
+        try {
+          cb(entry, result);
+        } catch {
+          /* a listener must never break the queue */
+        }
+      }
+    },
+  });
+  if (res.attempted > 0) {
+    logOfflineEvent({
+      type: "flush",
+      scope: "outbox",
+      count: res.sent,
+      message: res.deadLettered > 0 ? `${res.deadLettered} gave up` : res.retried > 0 ? `${res.retried} will retry` : undefined,
+    });
+  }
+  if (forceThisPass && res.attempted === 0) {
+    logOfflineEvent({ type: "queue", scope: "outbox", message: "No saved writes were ready to send; checking for blockers" });
+  }
+  if (res.sent > 0) {
+    for (const cb of syncedListeners) {
+      try {
+        cb();
+      } catch {
+        /* a listener must never break the queue */
+      }
     }
   }
 }
 
+registerGeneralLane({
+  recover: recoverLocalQueue,
+  recoverSigner: recoverFailedTransportPhotos,
+  execute: executeGeneralTurn,
+  publish: refresh,
+  inspect: async () => {
+    const now = Date.now(), signer = signerNow();
+    const pending = (await store.getAll()).filter(e => belongsTo(e, signer) && isPending(e));
+    if (!pending.length) return { hasPending: false, nextRetryAt: null };
+    // Held/dependency-blocked overdue rows get a bounded connectivity recheck,
+    // not a zero-delay loop. Future retries wake at their persisted deadline.
+    const next = pending.reduce((next, e) => e.status === "queued" && e.nextAttemptAt > now
+      ? Math.min(next, e.nextAttemptAt) : next, Infinity);
+    return { hasPending: true, nextRetryAt: Number.isFinite(next) ? next : null };
+  },
+});
+
 /**
- * Re-queue anything left mid-flight by a reload, bring in whatever the
+ * Reconcile once through the coordinator, before sending. Repeated callers
+ * cannot requeue a live attempt. Re-queue anything left by a prior reload,
+ * bring in whatever the
  * retired upload queue still holds, then drain. Call on startup.
  *
  * The migration runs FIRST, before the drain, so a phone that comes back
@@ -844,8 +829,15 @@ async function runDrain(forceDue: boolean): Promise<void> {
  * paint rather than after the next tick.
  */
 export async function recoverAndDrain(): Promise<void> {
+  await coordinator.reconcile();
+}
+
+async function recoverLocalQueue(): Promise<void> {
   try {
     const moved = await migrateLegacyUploads(store);
+    if (moved.left > 0 || moved.dropped > 0) {
+      logOfflineEvent({ type: "queue", scope: "recovery", count: moved.left + moved.dropped, message: `${moved.left} legacy uploads remain unresolved; ${moved.dropped} unreadable legacy rows were removed by the existing importer. Review recovery before retrying.` });
+    }
     if (moved.moved > 0 || moved.left > 0) {
       logOfflineEvent({
         type: "flush",
@@ -855,7 +847,7 @@ export async function recoverAndDrain(): Promise<void> {
       });
     }
   } catch {
-    /* the old store could not be opened; nothing to move this session */
+    logOfflineEvent({ type: "queue", scope: "recovery", message: "Legacy upload recovery could not finish reading or moving saved files. Recovery is incomplete; no automatic recovery retry was scheduled." });
   }
   try {
     const all = await store.getAll();
@@ -865,11 +857,9 @@ export async function recoverAndDrain(): Promise<void> {
       if (fixed !== e) await store.swap(e.id, e, fixed);
     }
   } catch {
-    /* ignore */
+    logOfflineEvent({ type: "queue", scope: "recovery", message: "Saved-write recovery could not finish checking interrupted writes. Recovery is incomplete; check device storage before restarting recovery." });
   }
   await recoverFailedTransportPhotos();
-  await refresh();
-  await drain();
 }
 
 /** Give old transport-failed camera photos another chance once their owner is
@@ -878,6 +868,7 @@ export async function recoverAndDrain(): Promise<void> {
 async function recoverFailedTransportPhotos(): Promise<void> {
   const signer = signerNow();
   if (!signer.userId) return;
+  let unresolved = 0;
   try {
     const now = Date.now();
     for (const entry of await store.getAll()) {
@@ -885,15 +876,16 @@ async function recoverFailedTransportPhotos(): Promise<void> {
       if (next === entry || !belongsTo(entry, signer)) continue;
       try {
         const blob = await store.getBlob(entry.id);
-        if (!blob || blob.size === 0) continue;
+        if (!blob || blob.size === 0) { unresolved++; continue; }
         await store.swap(entry.id, entry, next);
       } catch {
-        /* One unreadable file must not block recovery of the other photos. */
+        unresolved++; // Report once; one file must not block the others.
       }
     }
   } catch {
-    /* A later sign-in or queue refresh can try again; nothing is discarded. */
+    logOfflineEvent({ type: "queue", scope: "recovery", message: "Photo recovery could not read saved writes. Recovery is incomplete; a later sign-in can check again. No photo was removed by this recovery step." });
   }
+  if (unresolved > 0) logOfflineEvent({ type: "queue", scope: "recovery", count: unresolved, message: "Photo recovery is incomplete: original files could not be read or recovery state could not be saved. Records were retained; review device storage before retrying." });
 }
 
 /**
@@ -906,48 +898,12 @@ export async function sendNow(): Promise<void> {
   // Select saved work without rewriting its IndexedDB row. That row includes
   // the original Blob, so moving four retry timestamps can itself stall iOS.
   logOfflineEvent({ type: "queue", scope: "outbox", message: "Send now tapped" });
-  await runDrain(true);
+  await coordinator.request(true);
 }
 
-let intervalId: ReturnType<typeof setInterval> | null = null;
-
-/**
- * Wire the background drainer once per session: on reconnect, on tab focus,
- * and on a slow interval (flaky LTE can keep `onLine` true while writes fail).
- */
-export function initOutboxAutoFlush(): void {
-  if (wired || typeof window === "undefined") return;
-  wired = true;
-
-  // A different person signing in changes whose writes are theirs to send —
-  // recount at once, and send the ones that just became theirs.
-  subscribeSignedIn(() => {
-    void (async () => {
-      await recoverFailedTransportPhotos();
-      await refresh();
-      if (isOnline()) await drain();
-    })().catch(() => { /* A later focus or reconnect will retry. */ });
-  });
-
-  window.addEventListener("online", () => void drain());
-  document.addEventListener?.("visibilitychange", () => {
-    if (document.visibilityState === "visible") void drain();
-  });
-  window.addEventListener("focus", () => void drain());
-
-  intervalId = setInterval(() => {
-    if (isOnline()) void drain();
-  }, 30_000);
-
-  void recoverAndDrain();
-}
-
-/** For tests / teardown. */
-export function stopOutboxAutoFlush(): void {
-  if (intervalId != null) clearInterval(intervalId);
-  intervalId = null;
-  wired = false;
-}
+/** Application bootstrap owns this lifecycle; views only subscribe. */
+export function initOutboxAutoFlush(): void { coordinator.start(); }
+export function stopOutboxAutoFlush(): void { coordinator.stop(); }
 
 // --- op-specific enqueue helpers ----------------------------------------
 
@@ -1822,14 +1778,16 @@ export async function pendingPhotoEntries(): Promise<{ id: string; createdAt: nu
  * half-fixed state this feature exists to end.
  */
 export async function retryFailed(id: string): Promise<void> {
+  const mark = signInMark(), signer = signerNow();
+  const allowed = () => Boolean(mark.userId && stillSignedInAs(mark, mark.userId));
   const all = await store.getAll();
-  const target = all.find((e) => e.id === id);
-  if (!target) return;
+  const target = all.find(e => e.id === id);
+  if (!target || target.status !== "failed" || !belongsTo(target, signer)) throw new Error("This saved write is no longer yours to retry");
   const now = Date.now();
-  await store.put(retryEntry(target, now));
+  if (!await store.swap(id, target, retryEntry(target, now), allowed)) throw new Error("Saved write changed; refresh before retrying");
   for (const e of all) {
-    if (e.status === "failed" && e.dependsOn === id) {
-      await store.put(retryEntry(e, now));
+    if (e.status === "failed" && e.dependsOn === id && belongsTo(e, signer)) {
+      await store.swap(e.id, e, retryEntry(e, now), allowed);
     }
   }
   await refresh();
@@ -1843,6 +1801,10 @@ export async function retryFailed(id: string): Promise<void> {
  * somebody did, so it must be a decision, never a cleanup sweep.
  */
 export async function discardFailed(id: string): Promise<void> {
-  await store.delete(id);
+  const mark = signInMark(), signer = signerNow();
+  const target = (await store.getAll()).find(e => e.id === id);
+  if (!target || target.status !== "failed" || !belongsTo(target, signer)) throw new Error("This saved write is no longer yours to discard");
+  const allowed = () => Boolean(mark.userId && stillSignedInAs(mark, mark.userId));
+  if (!await store.swap(id, target, null, allowed)) throw new Error("Saved write changed; refresh before discarding");
   await refresh();
 }

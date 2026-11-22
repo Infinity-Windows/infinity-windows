@@ -5,7 +5,10 @@ import { DISPLAY_MODE_KEY, DisplayModeContext, displayLayout, parseDisplayMode, 
 export function DisplayModeProvider({ children }: { children: ReactNode }) {
   const [mode, updateMode] = useState<DisplayMode>(readDisplayMode);
   const [width, setWidth] = useState(() => window.innerWidth);
-  const layout = displayLayout(mode, width);
+  // A local device review follows its frame width without changing the saved
+  // display preference in the user's other tabs.
+  const previewFrame = import.meta.env.DEV && import.meta.env.VITE_STEEL_PREVIEW === "true" && window.self !== window.top;
+  const layout = displayLayout(previewFrame ? "auto" : mode, width);
   const setMode = useCallback((next: DisplayMode) => {
     updateMode(next);
     try {

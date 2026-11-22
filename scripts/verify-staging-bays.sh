@@ -1,26 +1,10 @@
 #!/usr/bin/env bash
-# Prove that every active job in the live database still has its two staging
-# bays, and that no staging bay has been orphaned from its job.
-#
-# WHY THIS IS NOT A DEPLOY GATE
-# scripts/verify-schema.sh runs inside .github/workflows/deploy-backend.yml
-# because it checks the SHAPE of the database, which is exactly what a deploy
-# changes. This checks ROWS, and rows drift between deploys: a job can arrive
-# by a merge, a restore or a hand-written INSERT on a Tuesday afternoon with no
-# deploy anywhere near it. Wiring it into the deploy would mean it only looks
-# on the days we happen to ship, and would block an unrelated fix from shipping
-# because of a data problem a deploy cannot repair. So it runs on a schedule
-# instead (.github/workflows/verify-warehouse.yml) and tells Slack.
-#
-# WHAT IT LOOKS FOR
-#   1. An active job with fewer than two ACTIVE bays. That job's windows have
-#      no shelf of their own; before 2026-07-29 the app answered that state by
-#      quietly directing the foreman to a shared stock shelf.
-#   2. A staging bay whose rack matches no job code. `locations` has no
-#      project_id — the only link is the string `locations.rack =
-#      projects.job_code` — so renaming a job's code, or deriving a bay's rack
-#      by any rule that can differ from the code, leaves a shelf that is in
-#      every picker and belongs to nobody.
+# Read-only container-bay invariant check (ADR-0009).
+# Every non-deleted job has a bay history; at most one bay may be active.
+# Empty bays may intentionally be inactive and are recreated on first ask.
+# Active bays must reference an existing project. Legacy J-zone locations
+# were retired by 20260998000000_bays_are_boxes.sql; never recreate them here.
+# This remains a scheduled row check, not a deploy gate or a repair script.
 #
 # Usage:
 #   export SUPABASE_ACCESS_TOKEN=sbp_...
@@ -68,21 +52,24 @@ trap 'rm -f "$sql" "$out"' EXIT
 
 cat >"$sql" <<'SQL'
 select json_build_object(
+  'version', 2,
   'jobs', (
     select coalesce(json_agg(json_build_object(
       'job_code', p.job_code,
       'name', p.name,
-      'bays', (select count(*) from locations l
-                where l.zone = 'J' and l.active and l.rack = p.job_code)
+      'bays', (select count(*) from storage_containers c
+                where c.kind = 'bay' and c.project_id = p.id),
+      'active_bays', (select count(*) from storage_containers c
+                where c.kind = 'bay' and c.project_id = p.id and c.active)
     ) order by p.job_code), '[]'::json)
     from projects p
-    where p.status = 'active'
+    where p.deleted_at is null
   ),
   'orphans', (
-    select coalesce(json_agg(l.address order by l.address), '[]'::json)
-    from locations l
-    where l.zone = 'J' and l.active
-      and not exists (select 1 from projects p where p.job_code = l.rack)
+    select coalesce(json_agg(c.id::text order by c.id), '[]'::json)
+    from storage_containers c
+    where c.kind = 'bay' and c.active
+      and not exists (select 1 from projects p where p.id = c.project_id)
   )
 ) as report;
 SQL
@@ -107,43 +94,45 @@ except (OSError, ValueError) as exc:
     print("This is a VERIFICATION failure, not a warehouse failure.")
     raise SystemExit(1)
 
-# The Management API answers a failed query with an object, not a row list.
-if not isinstance(payload, list) or not payload:
-    print(f"FAIL: unexpected answer from the database: {payload}")
-    print("This is a VERIFICATION failure, not a warehouse failure.")
+# Missing, obsolete or malformed results must never become a clean warehouse.
+try:
+    if not isinstance(payload, list) or len(payload) != 1:
+        raise ValueError()
+    report = payload[0]['report']
+    if not isinstance(report, dict) or type(report.get('version')) is not int or report['version'] != 2:
+        raise ValueError()
+    jobs, orphans = report['jobs'], report['orphans']
+    if not isinstance(jobs, list) or not isinstance(orphans, list):
+        raise ValueError()
+    for j in jobs:
+        if (not isinstance(j, dict) or not isinstance(j.get('job_code'), str)
+                or not isinstance(j.get('name'), str)
+                or type(j.get('bays')) is not int or type(j.get('active_bays')) is not int
+                or not 0 <= j['active_bays'] <= j['bays']):
+            raise ValueError()
+    if any(not isinstance(o, str) or not o for o in orphans):
+        raise ValueError()
+except (KeyError, TypeError, ValueError):
+    print('FAIL: malformed or obsolete container-bay report. VERIFICATION failure; warehouse not verified.')
     raise SystemExit(1)
 
-report = payload[0].get("report") or {}
-jobs = report.get("jobs") or []
-orphans = report.get("orphans") or []
-
-short = [j for j in jobs if (j.get("bays") or 0) < 2]
-
-print("## Job staging bays\n")
-print(f"- {len(jobs)} active job(s) checked")
-print(f"- {len(short)} without their two bays")
-print(f"- {len(orphans)} bay(s) belonging to no job\n")
-
-if not short and not orphans:
-    print("Every active job has both of its staging bays, and every staging")
-    print("bay belongs to a job.")
+missing = [j for j in jobs if j['bays'] == 0]
+duplicate = [j for j in jobs if j['active_bays'] > 1]
+print('## Job container bays\n')
+print(f'- {len(jobs)} non-deleted job(s) checked')
+print(f'- {len(missing)} without bay history')
+print(f'- {len(duplicate)} with multiple active bays')
+print(f'- {len(orphans)} active bay(s) belonging to no job\n')
+if not missing and not duplicate and not orphans:
+    print('Container-bay relationships are consistent; intentionally inactive empty bays are allowed.')
     raise SystemExit(0)
-
-for j in short:
-    n = j.get("bays") or 0
-    print(
-        f"- **{j.get('job_code')}** ({j.get('name')}) has {n} of 2 staging bays. "
-        "Its windows have no shelf of their own, so nobody can be told where to "
-        "put them. Fix it from the job's Warehouse tab in the app — the "
-        "\u201cCreate staging bays\u201d button — no SQL needed."
-    )
-for address in orphans:
-    print(
-        f"- **{address}** is a staging bay whose job code matches no job. It is "
-        "in every picker and belongs to nobody. Either the job code was renamed "
-        "without its bays, or the bay was created with the wrong rack."
-    )
-
+for j in missing:
+    print(f"- **{j['job_code']}** ({j['name']}) has no container-bay history. Review migration/creation history; do not recreate legacy rack locations.")
+for j in duplicate:
+    print(f"- **{j['job_code']}** has {j['active_bays']} active container bays; at most one is allowed.")
+for identity in orphans:
+    print(f'- Active container bay **{identity}** references no existing job.')
+print('Investigate before repair; this check changes no records.')
 raise SystemExit(1)
 PY
 status=$?

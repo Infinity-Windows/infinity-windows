@@ -1,3 +1,4 @@
+import { useReportShifts } from "../../pages/dataReview/useReportShifts";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -6,11 +7,12 @@ import { addDays, stepTimecardAnchor, listTeamShifts, timecardRange } from "../.
 import { useT } from "../../lib/i18n";
 import { customTimeRange, dateFieldValue, includesJob, type JobSelection } from "../../lib/timeReportFilters";
 import { TimeByJobReport } from "./TimeByJobReport";
+import { reportOwner, reportProjects } from "../../pages/dataReview/reportQueries";
 
 /** All shift labor, separate from the Data page's unit-installation evidence. */
-export function JobHoursLedger({ selectedJobs }: { selectedJobs: JobSelection }) {
+export function JobHoursLedger({ selectedJobs, reporting = false, active = true }: { selectedJobs: JobSelection; reporting?: boolean; active?: boolean }) {
   const t = useT();
-  const [mode, setMode] = useState<"all" | "pay" | "custom">("all");
+  const [mode, setMode] = useState<"all" | "pay" | "custom">(reporting ? "pay" : "all");
   const [anchor, setAnchor] = useState(() => new Date());
   const period = useMemo(() => timecardRange("pay", anchor), [anchor]);
   const [from, setFrom] = useState(() => dateFieldValue(period.start));
@@ -20,8 +22,11 @@ export function JobHoursLedger({ selectedJobs }: { selectedJobs: JobSelection })
   const start = mode === "pay" ? period.startIso : mode === "custom" && !custom.error ? custom.startIso : null;
   const end = mode === "pay" ? period.endIso : mode === "custom" && !custom.error ? custom.endIso : null;
   const noJobs = selectedJobs?.length === 0;
-  const shifts = useQuery({ queryKey: ["teamShifts", start, end], queryFn: () => listTeamShifts(start, end), enabled: !rangeError && !noJobs, refetchInterval: 30_000 });
-  const projects = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
+  const owner = reportOwner();
+  const reportingShifts = useReportShifts(owner, selectedJobs, start ? Date.parse(start) : -Infinity, end ? Date.parse(end) : Infinity, reporting && active && !rangeError && !noJobs);
+  const legacyShifts = useQuery({ queryKey: ["teamShifts", start, end], queryFn: () => listTeamShifts(start, end), enabled: !reporting && !rangeError && !noJobs, refetchInterval: reporting ? false : 30_000 });
+  const shifts = reporting ? reportingShifts : legacyShifts;
+  const projects = useQuery(reporting ? reportProjects(owner, active) : { queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
   const rows = useMemo(() => (shifts.data ?? []).filter((s) => includesJob(selectedJobs, s.project_id)), [shifts.data, selectedJobs]);
   const jobs = useMemo(() => (projects.data ?? []).filter((p) => includesJob(selectedJobs, p.id)), [projects.data, selectedJobs]);
   const rangeLabel = mode === "all" ? t("timereport.allTime") : mode === "pay" ? period.label : `${from} – ${through}`;

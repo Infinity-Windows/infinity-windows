@@ -7,7 +7,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient, type QueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { mergeClockQueue, type ClockNameLookups, type ClockQueueView } from "./clockQueueView";
-import { getClockQueueSnapshot, initOutboxAutoFlush, resolveShiftRef, subscribe } from "./offline/outbox";
+import { getClockQueueSnapshot, resolveShiftRef, subscribe } from "./offline/outbox";
 import { type CostCode, type TimeShift } from "./timeclock";
 import type { Project } from "./types";
 import { clockReadFor } from "./clockRead";
@@ -87,11 +87,7 @@ export function useOpenShiftView(
     });
   }, [actorGeneration, profileId, qc, refetch]);
   const snapshot = useSyncExternalStore(subscribe, getClockQueueSnapshot, getClockQueueSnapshot);
-  // The snapshot is filled by the outbox's own startup read; make sure that
-  // has been asked for, whoever mounts first (the pill asks too — it's once).
-  useEffect(() => {
-    initOutboxAutoFlush();
-  }, []);
+  // App bootstrap hydrates the snapshot; this hook only observes it.
   // The sender's own pending→real map rides along, so a break or clock-out
   // queued behind a clock-in that has since landed still lands on the
   // server's row here. The map is not reactive, and need not be: every

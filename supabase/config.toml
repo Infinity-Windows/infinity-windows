@@ -13,6 +13,9 @@ verify_jwt = true
 [functions.extract-receipt]
 verify_jwt = true
 
+[functions.review-cad-opening]
+verify_jwt = true
+
 [functions.review-qc-photo]
 verify_jwt = true
 

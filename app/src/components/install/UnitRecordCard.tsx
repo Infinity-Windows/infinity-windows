@@ -38,12 +38,14 @@ function shortStamp(iso: string): string {
 export function UnitRecordCard({
   openingId,
   flashing,
+  initiallyOpen = false,
 }: {
   openingId: string;
   flashing: OpeningPhase | null;
+  initiallyOpen?: boolean;
 }) {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
 
   // Cheap always-on probe: does this window have a story yet? Rounds exist
   // on installed windows AND on sent-back ones — history matters most there.
@@ -95,8 +97,9 @@ export function UnitRecordCard({
   });
 
   const hasStory =
-    (events.data?.length ?? 0) > 0 || (sessions.data?.length ?? 0) > 0;
-  if (!events.isLoading && !hasStory) return null;
+    (events.data?.length ?? 0) > 0 || (sessions.data?.length ?? 0) > 0 || (initiallyOpen && !!flashing);
+  if (initiallyOpen && (events.error || sessions.error || redos.error || assignments.error || media.error)) return <p role="alert">Some saved unit evidence could not be loaded. This does not establish missing documentation or unfinished work.</p>;
+  if (!events.isLoading && !hasStory) return initiallyOpen ? <p>{sessions.isPending ? "Loading saved unit records…" : "No installation rounds or work sessions found in accessible records."}</p> : null;
 
   const nameOf = (id: string) =>
     (profiles.data ?? []).find((p) => p.id === id)?.display_name;

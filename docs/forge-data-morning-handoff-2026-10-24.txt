@@ -1,0 +1,93 @@
+Forge Proposed Data — morning handoff
+Saved at close of work, 2026-10-24
+
+Workspace: C:\Users\matt_\OneDrive\Desktop\Work\Tech Ridge Integrations
+Repository: projects\forge\repo; React app: app
+Branch: matt/forge-synthesis
+Preserve all uncommitted work. No push, deploy, migrations or production writes.
+Do not mix the incident conflict/retry fix prepared separately for Ammon.
+
+START NEXT SESSION
+Inspect git status, notes and runtime process/source before editing or starting.
+Synthesis uses VITE_STEEL_PREVIEW=true and port 5174, strictPort, 127.0.0.1.
+Use Proposed owner comparison; Current / Proposed / Pilot remain available.
+Pilot records are fabricated demonstration data, never live reporting evidence.
+Comparison jobs: ESH-18 and HURRICANE24. Last reviewed date window:
+2026-09-24 through 2026-10-24 (Past month). Inspect cached scope before fetching.
+Browser control recovered after Codex restart; access by discovered IAB tab ID
+worked. Prior URL-based attachment had a contradictory HTTP policy error.
+
+PRODUCT STATE
+Tables/filters remain on page; selected rows/jobs open one floating chart panel.
+Weekly unit rates is the rate view; standalone Unit rates removed from selector.
+All weeks fit width with separate job lanes and unit-week dots. No medians,
+trend lines or Linear/Log selector. Main Y range linear; large tail uses clearly
+marked compressed upper section. Exact values/records remain inspectable.
+Activity/person/job controls compact. Help + coverage behind info icon.
+Expanded plot fills remaining panel height; restored panel stays compact.
+Person filter uses recorded contributor IDs; current roles are labels only.
+No verified historical supervisor-to-crew relationship is inferred.
+Weekly dots are contributions, not evidence of completed installs; timers crossing
+Monday Denver boundaries split proportionately. Missing weeks are not zeros.
+Table Hours cells show recorded min/ft² beneath, excluding missing/conflicting
+area; partial group denominators disclosed. No speculative outlier colors.
+
+TODAY'S UNIT FACT ADAPTER RESULT
+Read-only richer opening reader uses project_openings.window_type_id -> only
+explicit linked window_types; specs matched within project + normalized mark.
+Spec fields include operation/product_line/extra/unit_kind/door_kind; optional
+kind-column absence falls back to existing descriptions. Cache version taxonomy-v2.
+Bounded text mappings reuse existing spec kind/door rules. Brand/color/size/unit
+number are not guessed into taxonomy. Classification conflicts stay separate.
+Unit details exposes raw evidence, sources and unmapped values; known means
+mapped/consistent evidence, not field verification. Area and labor stay separate.
+Unit fact coverage collapsible table counts unique recorded opening/unit IDs,
+before table filters, not entire job inventory. ESH-18 + HURRICANE24 (27 units):
+                 Before   Now mapped   Recovered   Conflicting   Unknown
+Category             0           20          20             6         1
+Subtype              0           24          24             0         3
+Material             5           25          20             0         2
+Examples: HURRICANE24 #16/#33 spec Door vs catalog Window; #2 spec Window vs
+catalog Door. #16 description itself says Fixed Window with a parenthetical door
+reference; shared word-based classification picks Door. Preserve this ambiguity.
+No source rows, catalog mappings, signatures or schema were modified.
+94 reporting tests passed, TypeScript passed, touched-file lint passed.
+
+DISCUSS TOMORROW — START WITH THESE
+1. Review recovered facts and six category conflicts. How should evidence sources
+   be weighed? Decide separately from any correction of production records.
+2. Agree category/subtype meaning: Window/Door vs Storefront; panel mechanism vs
+   whole-unit type; French/Hinged/Pivot and mixed mechanisms. Keep schema open.
+3. Agree area denominator: opening/product/glass/rough opening; confirmation and
+   acceptable sources. Rough opening dimensions are not interchangeable.
+4. What does Ammon want to decide: estimating, staffing, progress or overruns?
+   Which activities count toward installation, including prep/flashing/rework?
+5. Weekly contribution comparisons vs complete-unit install comparisons; handling
+   partial capture, crew/person changes and sparse samples. Timer coverage remains
+   a small part of clocked labor; do not infer whole-job productivity.
+6. Use current chart/table filters to explore before adding trends or automatic
+   outlier classification. Matching peers, minimum samples and source coverage
+   need agreement. No crew assignment guessed from role or co-occurrence.
+
+QUERY LIFECYCLE
+Manual-only refresh banner removed. Automatic stale mount/focus/reconnect
+refresh restored. Shared owner/job/date caches; hidden comparison reads disabled.
+Clocked snapshots supplemented by bounded 30s recent/open-punch polling.
+Finite <=45-day snapshots reconcile every 5 min. Large/all-history snapshots
+revalidate when stale on return/focus/reconnect, not full-history timer scans.
+Details: forge-data-query-lifecycle.txt. No universal change cursor verified.
+
+KEY SOURCES
+app/src/pages/dataReview/openingReviewContext.ts
+app/src/pages/dataReview/unitTaxonomy.ts
+app/src/pages/dataReview/reportingFacts.ts
+app/src/pages/dataReview/UnitFactCoverage.tsx + unitFactCoverageData.ts
+app/src/pages/dataReview/WeeklyUnitRateChart.tsx + weeklyUnitRateData.ts
+app/src/pages/dataReview/weeklyRateScale.ts
+app/src/pages/dataReview/useReportShifts.ts + reportQueries.ts
+Long-running notes: forge-proposed-layout-outline.txt
+
+Closeout: save work and stop only verified synthesis Vite on 5174. Close the
+Forge local browser tab too: stopping Vite alone does not stop DB polling.
+
+CLOSEOUT VERIFIED: Closed the local Forge IAB tab to stop polling. Stopped verified node/Vite PID 24128 (--host 127.0.0.1 --port 5174 --strictPort); confirmed port 5174 has no listener. All working changes remain uncommitted; no push/deploy/migration or business-data write.

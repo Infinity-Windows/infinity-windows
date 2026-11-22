@@ -88,6 +88,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Data (`/data`)
 - Summary (`/summary`)
 - Team (`/team`)
+- Recent Activities (`/activities`)
 - Team timecards (`/team-timecards`)
 - Issues (`/issues`)
 - Quality (`/qc`)
@@ -138,6 +139,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Clock in / out (action)
 - My timecard (`/timecard`)
 - Team timecards (`/team-timecards`)
+- Recent Activities (`/activities`)
 - Analytics (`/analytics`)
 - Warehouse (`/warehouse`)
 - Issues (`/issues`)
@@ -158,7 +160,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 
-**Can reach (all 42 allowed destinations):**
+**Can reach (all 43 allowed destinations):**
 
 - Home (`/`)
 - Current Work (`/current-work`)
@@ -188,6 +190,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Travel (`/travel`)
 - My timecard (`/timecard`)
 - Team (`/team`)
+- Recent Activities (`/activities`)
 - Team timecards (`/team-timecards`)
 - Issues (`/issues`)
 - Servicing (`/service`)
@@ -256,6 +259,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Clock in / out (action)
 - My timecard (`/timecard`)
 - Team timecards (`/team-timecards`)
+- Recent Activities (`/activities`)
 - Cost codes (`/cost-codes`)
 - Analytics (`/analytics`)
 - Heartbeat (`/heartbeat`)
@@ -285,7 +289,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 55 allowed destinations):**
+**Can reach (all 56 allowed destinations):**
 
 - Home (`/`)
 - Current Work (`/current-work`)
@@ -319,6 +323,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Travel (`/travel`)
 - My timecard (`/timecard`)
 - Team (`/team`)
+- Recent Activities (`/activities`)
 - Team timecards (`/team-timecards`)
 - Issues (`/issues`)
 - Servicing (`/service`)
@@ -383,6 +388,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Clock in / out (action)
 - My timecard (`/timecard`)
 - Team timecards (`/team-timecards`)
+- Recent Activities (`/activities`)
 - Cost codes (`/cost-codes`)
 - Cost (`/costing`)
 - Analytics (`/analytics`)
@@ -415,7 +421,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Builder logins (`/account/builders`)
 
-**Can reach (all 59 allowed destinations):**
+**Can reach (all 60 allowed destinations):**
 
 - Home (`/`)
 - Current Work (`/current-work`)
@@ -449,6 +455,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Travel (`/travel`)
 - My timecard (`/timecard`)
 - Team (`/team`)
+- Recent Activities (`/activities`)
 - Team timecards (`/team-timecards`)
 - Issues (`/issues`)
 - Servicing (`/service`)

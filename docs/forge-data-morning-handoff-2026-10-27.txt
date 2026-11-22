@@ -1,0 +1,51 @@
+FORGE - AMMON MORNING HANDOFF
+Prepared October 26, 2026 (America/Denver), for October 27 meeting.
+
+RESTART
+Workspace: C:/Users/matt_/OneDrive/Desktop/Work/Tech Ridge Integrations
+Repo: projects/forge/repo; app: app; branch matt/forge-synthesis.
+Preserve extensive uncommitted changes. Inspect status and listener/process source before restarting. No reset/clean, push, deployment, migration or production business-data writes. Incident fix remains separate; do not mix it.
+From app PowerShell: $env:VITE_STEEL_PREVIEW='true'; node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5174 --strictPort
+Open http://127.0.0.1:5174/data -> Proposed. Select HURRICANE24 and SSSIMISTER. Use bounded 3-month dates; last review Jul26-Oct26, 2026. Do not treat pilot demonstration records as live evidence.
+
+REVIEW SETUP
+Work attribution + Job grouping; expand Missing attribution/HURRICANE24.
+Floating Labor over time: source Clocked shifts vs Unit-linked timers; total time vs min/opening vs min/ft2 (rates only timers). Hours/Percent is format. Calendar or relative first8weeks; align from project first clocked work or first linked unit timer. Relative weeks align each job's own Week1 and do not establish equivalent phases.
+Last validation: 115 reporting tests passed; TypeScript passed. No code changes during subsequent provenance investigations.
+
+DATA SNAPSHOT (READ-ONLY REVIEW)
+533.2 finished net clocked hours, 240 shifts, 12 people across selected jobs/window.
+84 custom+historical timer records, 7.83h: 79 linked/7.80h; 1 job-level/<0.01h; 4 missing/~1.51min. HUR linked69/6.83h plus job-level1 and missing4. SS linked10/0.96h, no job-level or missing timers. Rounding applies. Do not sum timers with shifts or call remaining shift hours missing attribution.
+Missing records: HUR custom labels19 A (Jordan .59min, Tyson .11min) and12b (Jordan .59 and .21min). Saved custom unit facts exist, physical opening_id null. 19 A garage/aluminum fits mark19 family, but 3 instances19-1/2/3;12b fixed/flanged fits mark12 family but 2 instances12-1/2. No individual links inferred.
+
+IMPORTANT PROVENANCE FINDING
+HUR custom12-2 first saved Sep23 UTC with71.5x23.5in;19-1/19-3 first saved Oct13 UTC with143x120.125in. Existing opening links present from creation, later changes marked complete; dimensions/links unchanged in observed history.
+All dimensions exactly equal linked global window_types Mark#12/#19 records, created Jul18 before HUR Sep16 specs. Catalog notes MATTE BRONZE; HUR drawings matte black. Same catalog IDs reused across BLACK22, CEDAR, ESH-18 and other jobs. Strong evidence of cross-job mark-number collision/default inheritance, not proof users typed bad sizes.
+Local ensureTypesFromSpecs in lib/install/api.ts loads global window_types and matches bare type_code, retains existing dimensions. customWork/CurrentWork.tsx copies opening.window_types dimensions and labels them From plans. Audit Field capture alone cannot prove UI path or manual acceptance. No runtime historical build verified.
+HUR job-specific specs + original shop drawings mark12 p3 and19 p5:47.5x23.5in, RO48x24. Current global catalog/custom dimensions conflict substantially. Preserve conflicts; no corrections applied.
+
+SCHEMATIC MAPPING
+HUR36 active project_openings:0 placed pins,0 origin pins,0 suggested pins.
+Stored building plan HC24_-_LP.pdf,3 pages, planset a4b01743-c75f-4b12-b99c-89f449bce62d; shop specs HC24_-_CU.pdf,8pages, planset bd88a6cb-b7c0-421b-bf31-caee883913f0.
+Shop PDF locally C:/Users/matt_/Downloads/1789576456905-HC24_-_CU.pdf. LP not downloaded/reviewed in this trace. Next read-only step: inspect building-plan callouts to identify positions.
+Spec mark -> source page/bbox exists; individual opening -> building position absent. Spec quantity expansion can mint suffixes -1,-2,-3; suffix is not left/right position. Spec-created opening page1 is an unplaced placeholder, not actual drawing location.
+
+AMMON DECISIONS - HIGH LEVEL
+1. What decision comes first: estimating future jobs, weekly production planning, or diagnosing delays/rework? Pick2-3 metrics before more chart work.
+2. Capture contract: clocked shifts are complete labor baseline; unit timers partial. What minimal activity/target/outcome will crews reliably record? Distinguish unit-linked, explicit job-level, missing attribution; shared allocation deferred.
+3. What counts as installed/completed: opening, panel, assembly, visit, activity? Helpers' person-minutes vs elapsed crew minutes; breaks, return visits, rework, blocked time, late logging and auto-closed timers.
+4. Rate denominator: per opening vs per ft2; frame or rough opening area? Which operations included? Only explicitly linked labor and usable dimensions; show exclusions, capture coverage and sample size. No crew/person ranking from sparse/confounded timers.
+5. Label authority: job-scoped opening/spec/drawing revision before generic catalog mark. Category window/door; operation; configuration; system separate; material separate. Unknown/conflict visible. Review global catalog reuse before trusting dimensions broadly.
+6. Comparability: category/operation/material/size/access/rework and crew composition; first work vs first timer alignment not same phase. Start job/activity/week totals, then sufficiently covered comparable unit cohorts.
+
+SUGGESTED PRIORITY METRICS
+A. Weekly net clocked person-hours by job and activity/cost code (reliable baseline).
+B. Capture/data quality: linked vs job-level vs missing timer minutes; timer coverage alongside clocked baseline, validated link/area availability, unresolved/auto-closed/overlapping records. Coverage ratios are descriptive, not proof all work tracked.
+C. Unit activity min/opening and min/ft2 with denominators, n, exclusions; weekly distributions, not unqualified productivity ranking. Agree completion capture before reporting completed openings per week.
+D. Rework/blocked/job-level labor only when consistently labeled; explain broad job support without allocating it to units.
+
+ACCESS / SAFETY
+Supabase project czprjcskmzzagdztqonm via signed-in Chrome dashboard; no Supabase connector/service key. Read-only SELECTs through SQL editor. Chrome connection sometimes requires user reopening browser. Do not scrape auth or use hidden browser state. User business-data writes remain prohibited.
+Stop local browser tab as well as Vite at closeout; a loaded tab can keep DB polling after Vite stops. No scheduled wakeup requested.
+
+CLOSEOUT VERIFIED: Closed local Forge IAB tab (tab inventory empty). Stopped verified Vite PID43732; port5174 has no listener. Existing uncommitted changes preserved. No production business-data writes or deployment.

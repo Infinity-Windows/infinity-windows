@@ -56,6 +56,14 @@ beforeEach(() => {
 });
 
 describe("the queued clock-in", () => {
+  it("replays saved activity events before sending the paid-clock punch", async () => {
+    const order: string[] = [];
+    const before = vi.fn(async (at: string) => { order.push(at); });
+    rpc.mockImplementation(async () => { order.push("punch"); return { data: { id: "shift-1" }, error: null }; });
+    const ordered = createSupabaseHandlers(resolver, undefined, null, before);
+    await ordered.clock_out!(entryFor("clock_out", { shiftRef: "shift-1", ...PUNCH }), { getBlob: async () => null });
+    expect(order).toEqual([PUNCH.tappedAt, "punch"]);
+  });
   const base = { projectId: "job-1", costCodeId: "cc-1", lat: 1, lng: 2, note: "gate 4411", mode: "tracking" };
 
   it("sends the tap's id, its time, the last clock check, the mode and the note in one call", async () => {
