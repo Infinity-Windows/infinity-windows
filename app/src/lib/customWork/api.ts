@@ -157,6 +157,7 @@ const DIRECT_RPC_ACTIONS: Partial<Record<WorkCommand["action"], string>> = {
   plan_activity_done: "mark_plan_activity_done",
   plan_unit_lead: "take_plan_unit_lead",
   crew_record: "record_crew_work",
+  crew_activity: "save_crew_activity",
   stage_contributors: "record_stage_contributors",
   correct_stage_contributors: "correct_stage_contributors",
 };

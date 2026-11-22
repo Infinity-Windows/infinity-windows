@@ -122,7 +122,7 @@ export interface WorkHistory {
 }
 export type MachineTimer = { on: string; off: string | null };
 export type WorkAction =
-  "machinery_correction" | "unit" | "unit_create" | "link" | "start" | "stop" | "workday_activity" | "plan_activity_done" | "plan_unit_lead" | "session" | "type" | "crew_record" | "stage_contributors" | "correct_stage_contributors";
+  "machinery_correction" | "unit" | "unit_create" | "link" | "start" | "stop" | "workday_activity" | "plan_activity_done" | "plan_unit_lead" | "session" | "type" | "crew_record" | "stage_contributors" | "correct_stage_contributors" | "crew_activity";
 export interface WorkCommand {
   id: string;
   userId: string;

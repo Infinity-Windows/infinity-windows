@@ -574,3 +574,62 @@
 @media (pointer: coarse) {
   .cw-activity-tags button { min-height: 44px; }
 }
+
+/* Add an activity (Recent activities). It borrows the correction form's grid. */
+.cw-add-activity-open {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 44px; margin: 0 0 10px; padding: 8px 14px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--card-raised, var(--surface)); color: var(--text); font: inherit; font-weight: 600;
+}
+.cw-add-activity { margin: 0 0 12px; padding: 14px; border-radius: 12px; }
+.cw-add-activity > p { margin: 0; font-size: .8rem; }
+.cw-add-job { min-width: 0; }
+.cw-add-job .job-search-select { margin: 0; }
+.cw-add-units { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px 12px 12px; border: 1px solid var(--border); border-radius: 10px; }
+.cw-add-units legend { padding: 0 6px; color: var(--muted); font-size: .8rem; font-weight: 600; }
+.cw-add-units > input {
+  box-sizing: border-box; width: 100%; min-height: 44px; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--card-raised, var(--surface)); color: var(--text); font: inherit;
+}
+.cw-add-find { grid-template-columns: minmax(0, 1fr); margin: 0; }
+.cw-add-find input {
+  box-sizing: border-box; width: 100%; min-height: 44px; margin: 0; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--card-raised, var(--surface)); color: var(--text); font: inherit;
+}
+.cw-add-chosen { display: flex; flex-wrap: wrap; gap: 6px; }
+.cw-add-chosen button {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 6px 12px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text);
+  font: inherit; font-size: .9rem; font-weight: 600;
+}
+.cw-add-chosen button span { color: var(--muted); font-weight: 400; }
+.cw-add-chosen button[aria-pressed=true] { border-color: #589478; background: color-mix(in srgb, var(--surface), #85ddb0 12%); }
+.cw-add-units p { margin: 0; font-size: .8rem; }
+.cw-add-units .wd-inventory-body { margin: 0; }
+.cw-add-units .wd-floor-nav button {
+  min-width: 34px; min-height: 34px; padding: 3px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--muted); font: inherit; font-size: 12px;
+}
+.cw-add-units .wd-floor-nav button[aria-current] { background: var(--border); color: var(--text); }
+/* Selected (accent, solid), this activity finished on the unit (blue, dashed)
+   and unit complete (green, from the shared tile) must never look alike, and
+   selected wins when a unit is more than one of them. */
+.cw-add-units { --cw-activity-done: #6aa9e0; }
+.cw-add-units .unit-tiles .jp-unit-card[data-activity-done=true] .jp-unit-pick > button:first-child {
+  border: 1px dashed var(--cw-activity-done); background: color-mix(in srgb, var(--surface), var(--cw-activity-done) 10%);
+}
+.cw-add-units .unit-tiles .jp-unit-card[data-activity-done=true] .jp-unit-status { color: var(--cw-activity-done); }
+.cw-add-units .unit-tiles .jp-unit-card[data-selected-unit=true] .jp-unit-pick > button:first-child {
+  border: 1px solid var(--accent); box-shadow: inset 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--surface), var(--accent) 18%);
+}
+.cw-add-units .unit-tiles .jp-unit-card[data-selected-unit=true] .jp-unit-status { color: var(--accent); }
+.cw-add-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted); }
+.cw-add-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.cw-add-legend span::before { content: ""; width: 12px; height: 12px; border-radius: 3px; border: 1px solid; }
+.cw-add-legend [data-key=selected]::before { border: 2px solid var(--accent); }
+.cw-add-legend [data-key=activity]::before { border: 1px dashed var(--cw-activity-done); }
+.cw-add-legend [data-key=complete]::before { border-color: #589478; background: color-mix(in srgb, var(--surface), #85ddb0 30%); }

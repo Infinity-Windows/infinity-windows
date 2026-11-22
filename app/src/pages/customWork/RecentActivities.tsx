@@ -1,5 +1,5 @@
 import { JobSearchSelect } from "../../components/JobSearchSelect";
-import { ChevronDown, Tractor } from "lucide-react";
+import { ChevronDown, Plus, Tractor } from "lucide-react";
 import { Fragment, useEffect, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -16,10 +16,8 @@ import { SessionCorrection } from "./SessionCorrection";
 import { QueueNotice } from "./QueueNotice";
 import { ActivityIcon } from "../installerPilot/workdayActivities";
 import { pilotActivityColor } from "../../lib/installerWorkflow/pilotActivities";
-import { UnitContributors } from "../../components/work/UnitContributors";
+import { AddActivity } from "./AddActivity";
 import "./customWork.css";
-// The contributors panel is built from the Work screen's styles.
-import "../work/work.css";
 
 const titleOf = (row: WorkSession) => row.kind === "idle"
   ? row.description.split(" — ", 1)[0]?.trim() || "Prep time"
@@ -43,6 +41,8 @@ function ActivityReview() {
   const [selectedActivities, setSelectedActivities] = useState<string[]>([]);
   const [historyId, setHistoryId] = useState("");
   const [expandedId, setExpandedId] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [unitsFor, setUnitsFor] = useState("");
   const [initialFrom] = useState(() => {
     const date = new Date();
     date.setDate(date.getDate() - 13);
@@ -146,11 +146,11 @@ function ActivityReview() {
           setHistoryId("");
         }} />
     </div>
-    {/* This list can only correct an activity somebody timed. Work nobody
-        timed is credited here instead: a unit, a stage, a past date and the
-        people who did it. Foremen lost its old door when they moved to the
-        Workday (Matt, 2026-11-21: "make sure recent activities can do that"). */}
-    <UnitContributors key={work.user ?? "signed-out"} work={work} jobId={job ?? null} canRecord />
+    {/* Work nobody timed is added here; everything below it can only
+        correct an activity that already exists. */}
+    {adding ? <AddActivity work={work} jobs={jobs.data ?? []} job={job} onClose={() => setAdding(false)}
+        people={(profiles.data ?? []).filter(profile => !profile.retired_at && (profile.role === "installer" || profile.role === "foreman"))} />
+      : <button type="button" className="cw-add-activity-open" onClick={() => setAdding(true)}><Plus size={16} aria-hidden="true" />Add activity</button>}
     {workers.length > 0 && <div className="cw-activity-filters">
       <FilterTags label="Activity" choices={activities.map(name => ({ id: name, label: name }))}
         selected={selectedActivities} onChange={setSelectedActivities} />
@@ -220,8 +220,15 @@ function ActivityReview() {
                     {row.workday_machinery_started_at && " · Running"}</dd></div>}
                 </dl>
                 {row.review_required && <p className="cw-activity-warning">Time or job attribution needs review.</p>}
-                <SessionCorrection row={row} lead onSave={data => work.command("session", data)}
-                  onSaveMachinery={data => work.command("machinery_correction", data)} onCancel={collapse} />
+                {/* Units go on a finished job activity; the form shares its time between them. */}
+                {unitsFor === row.id
+                  ? <AddActivity work={work} jobs={[]} people={[]} existing={row} onClose={() => setUnitsFor("")} />
+                  : <>
+                    {row.ended_at && row.project_id && <button type="button" className="cw-add-activity-open"
+                      onClick={() => setUnitsFor(row.id)}>{row.unit_id ? "Change or add units" : "Add units"}</button>}
+                    <SessionCorrection row={row} lead onSave={data => work.command("session", data)}
+                      onSaveMachinery={data => work.command("machinery_correction", data)} onCancel={collapse} />
+                  </>}
                 <details open={historyId === row.id} onToggle={event => {
                   if (event.currentTarget.open) setHistoryId(row.id);
                   else setHistoryId(current => current === row.id ? "" : current);
