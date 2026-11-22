@@ -57,7 +57,11 @@ export function AddActivity({ work, jobs, people, job: startJob, existing, onClo
   const floorScroll = useRef<HTMLDivElement>(null);
   const [visibleFloor, setVisibleFloor] = useState<string>();
   // Opening id → whether the activity was finished on it.
-  const [chosen, setChosen] = useState<Record<string, boolean>>({});
+  // An activity that already has a unit opens with that unit selected, in the
+  // state it was left in, so it can be finished here too (Matt, 2026-11-21).
+  const existingOpening = existing?.unit_id ? work.units.find(unit => unit.id === existing.unit_id)?.opening_id ?? undefined : undefined;
+  const [chosen, setChosen] = useState<Record<string, boolean>>(() => existingOpening
+    ? { [existingOpening]: Boolean(existing!.workday_done_at || existing!.outcome === "finished") } : {});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const unitWork = Boolean(existing) || UNIT_ACTIVITIES.includes(activity);
@@ -94,7 +98,9 @@ export function AddActivity({ work, jobs, people, job: startJob, existing, onClo
     return diagram ? <img alt="" src={`data:image/svg+xml,${encodeURIComponent(diagram)}`} />
       : <UnitKindIcon kind={opening.unit_details?.kind ?? resolved?.kind} size={30} />;
   }
-  const picked = (openings.data ?? []).filter(opening => opening.id in chosen);
+  // The unit the activity already has stays first: it keeps the original record.
+  const picked = (openings.data ?? []).filter(opening => opening.id in chosen)
+    .sort((a, b) => Number(b.id === existingOpening) - Number(a.id === existingOpening));
   const seconds = existing
     ? Math.round((Date.parse(existing.ended_at!) - Date.parse(existing.started_at)) / 1000)
     : Math.round((Date.parse(ended) - Date.parse(started)) / 1000);
@@ -216,13 +222,14 @@ export function AddActivity({ work, jobs, people, job: startJob, existing, onClo
                 const activityDone = !complete && Boolean(activity) && unitState.activityDone(opening.id, activity);
                 return <UnitTile key={opening.id} code={opening.opening_code} picture={picture(opening)} done={complete}
                   codeExtra={complete ? <Check size={12} aria-label="Unit complete" /> : undefined}
-                  status={selected ? "Selected" : complete ? "Unit complete" : activityDone ? `${activity} finished` : undefined}
+                  status={selected ? chosen[opening.id] ? "Selected · finished" : "Selected" : complete ? "Unit complete" : activityDone ? `${activity} finished` : undefined}
                   card={{ "data-selected-unit": selected, "data-activity-done": activityDone }}
                   pick={{ "aria-label": `Add unit ${opening.opening_code}`, "aria-pressed": selected,
                     onClick: () => setChosen(current => {
                       const next = { ...current };
+                      // Selecting a unit says it was worked, not that it was finished.
                       if (selected) delete next[opening.id];
-                      else next[opening.id] = true;
+                      else next[opening.id] = false;
                       return next;
                     }) }} />;
               })}</div>
@@ -235,14 +242,17 @@ export function AddActivity({ work, jobs, people, job: startJob, existing, onClo
             <span data-key="activity">{activity || "Activity"} finished</span>
             <span data-key="complete">Unit complete</span>
           </p>
-          {/* Each chosen unit says whether the activity was finished on it; tap to change. */}
-          {picked.length > 0 && <div className="cw-add-chosen" aria-label="Chosen units">
-            {picked.map(opening => <button type="button" key={opening.id} aria-pressed={chosen[opening.id]}
-              aria-label={`${opening.opening_code}: ${chosen[opening.id] ? "finished" : "not finished"}`}
-              onClick={() => setChosen(current => ({ ...current, [opening.id]: !current[opening.id] }))}>
-              {chosen[opening.id] && <Check size={13} aria-hidden="true" />}{opening.opening_code}
-              <span>{chosen[opening.id] ? "Finished" : "Not finished"}</span>
-            </button>)}
+          {/* Finishing is its own tap on each chosen unit: nothing is finished by default. */}
+          {picked.length > 0 && <div className="cw-add-finish">
+            <strong>Was {activity || "the activity"} finished on these units? Tap each one that was.</strong>
+            <div className="cw-add-chosen" aria-label="Chosen units">
+              {picked.map(opening => <button type="button" key={opening.id} aria-pressed={chosen[opening.id]}
+                aria-label={`${opening.opening_code}: ${chosen[opening.id] ? "finished" : "not finished"}`}
+                onClick={() => setChosen(current => ({ ...current, [opening.id]: !current[opening.id] }))}>
+                {opening.opening_code}
+                <span>{chosen[opening.id] ? <><Check size={13} aria-hidden="true" />Finished</> : "Mark finished"}</span>
+              </button>)}
+            </div>
           </div>}
           {picked.length > 1 && seconds > 0 && <p className="muted">
             {picked.length} units share the time evenly: {clockText(Math.round(seconds / picked.length))} each.

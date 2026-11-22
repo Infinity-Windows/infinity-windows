@@ -233,8 +233,9 @@ function ActivityReview() {
                 {unitsFor === row.id
                   ? <AddActivity work={work} jobs={[]} people={[]} existing={row} onClose={() => setUnitsFor("")} />
                   : <>
-                    {row.ended_at && row.project_id && <button type="button" className="cw-add-activity-open"
-                      onClick={() => setUnitsFor(row.id)}>{row.unit_id ? "Change or add units" : "Add units"}</button>}
+                    {/* A unit that is not one of the job's openings cannot be shown in the picker, so it is not offered. */}
+                    {row.ended_at && row.project_id && (!row.unit_id || units.get(row.unit_id)?.opening_id) && <button type="button" className="cw-add-activity-open"
+                      onClick={() => setUnitsFor(row.id)}>{row.unit_id ? "Units and finished" : "Add units"}</button>}
                     <SessionCorrection row={row} lead onSave={data => work.command("session", data)}
                       onSaveMachinery={data => work.command("machinery_correction", data)} onCancel={collapse} />
                     {/* Offered only where the database can archive (20261130220000). */}

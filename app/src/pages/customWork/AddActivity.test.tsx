@@ -93,7 +93,7 @@ describe("AddActivity", () => {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
     await press("Add unit 1-1");
     await press("Add unit 1-2");
-    await press("1-2: finished"); // 1-2 was not finished
+    await press("1-1: not finished"); // nothing is finished until it is tapped
     await save();
     expect(sent[0].map(command => command.action)).toEqual(["unit", "crew_activity"]);
     expect(sent[0][0].data).toMatchObject({ opening_id: "o-2", project_id: "job-1", label: "1-2" });
@@ -123,6 +123,20 @@ describe("AddActivity", () => {
     await press("Add unit 1-1");
     await save();
     expect(sent[0]).toEqual([{ action: "crew_activity",
-      data: { replace_id: "s-1", revision: 4, activity: "Sealing", units: [{ unit_id: "unit-1", finished: true }] } }]);
+      data: { replace_id: "s-1", revision: 4, activity: "Sealing", units: [{ unit_id: "unit-1", finished: false }] } }]);
+  });
+
+  it("opens an activity that has a unit with that unit selected, so it can be finished", async () => {
+    const sent: Sent[] = [];
+    await mount(sent, { id: "s-2", revision: 2, kind: "unit", stage: "Flashing", project_id: "job-1", unit_id: "unit-1",
+      outcome: "partial", started_at: "2026-11-20T15:00:00Z", ended_at: "2026-11-20T16:00:00Z" } as WorkSession);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(host!.querySelector('button[aria-label="Add unit 1-1"]')?.getAttribute("aria-pressed")).toBe("true");
+    await press("1-1: not finished");
+    await press("Add unit 1-2");
+    await save();
+    expect(sent[0].at(-1)!.data).toMatchObject({ replace_id: "s-2", revision: 2, activity: "Flashing" });
+    expect((sent[0].at(-1)!.data.units as { finished: boolean }[]).map(unit => unit.finished)).toEqual([true, false]);
+    expect((sent[0].at(-1)!.data.units as { unit_id: string }[])[0].unit_id).toBe("unit-1");
   });
 });

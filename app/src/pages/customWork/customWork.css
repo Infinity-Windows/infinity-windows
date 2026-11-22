@@ -636,3 +636,8 @@
 }
 .cw-archive { margin: 0 0 10px; padding: 14px; border-radius: 12px; }
 .cw-archive > p { margin: 0; font-size: .8rem; }
+.cw-add-finish { display: grid; gap: 6px; }
+.cw-add-finish > strong { font-size: .85rem; }
+.cw-add-chosen button span { display: inline-flex; align-items: center; gap: 4px; }
+.cw-add-chosen button[aria-pressed=false] span { color: var(--accent); font-weight: 600; text-decoration: underline; }
+.cw-add-chosen button[aria-pressed=true] span { color: #85ddb0; }
