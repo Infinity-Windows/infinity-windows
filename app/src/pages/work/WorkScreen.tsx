@@ -420,7 +420,6 @@ export function WorkScreen() {
         <HeadsUps items={notices} />
         {/* What a foreman had on the old Work screen and still needs. */}
         {lead && <LeadRow role={effectiveRole} />}
-        {lead && <Link className="ws-btn" to="/activities">{es ? "Actividades recientes" : "Recent activities"}</Link>}
       </> : <>
       <TodayCard
         meId={profileId}

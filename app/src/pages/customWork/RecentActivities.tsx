@@ -16,7 +16,10 @@ import { SessionCorrection } from "./SessionCorrection";
 import { QueueNotice } from "./QueueNotice";
 import { ActivityIcon } from "../installerPilot/workdayActivities";
 import { pilotActivityColor } from "../../lib/installerWorkflow/pilotActivities";
+import { UnitContributors } from "../../components/work/UnitContributors";
 import "./customWork.css";
+// The contributors panel is built from the Work screen's styles.
+import "../work/work.css";
 
 const titleOf = (row: WorkSession) => row.kind === "idle"
   ? row.description.split(" — ", 1)[0]?.trim() || "Prep time"
@@ -143,6 +146,11 @@ function ActivityReview() {
           setHistoryId("");
         }} />
     </div>
+    {/* This list can only correct an activity somebody timed. Work nobody
+        timed is credited here instead: a unit, a stage, a past date and the
+        people who did it. Foremen lost its old door when they moved to the
+        Workday (Matt, 2026-11-21: "make sure recent activities can do that"). */}
+    <UnitContributors key={work.user ?? "signed-out"} work={work} jobId={job ?? null} canRecord />
     {workers.length > 0 && <div className="cw-activity-filters">
       <FilterTags label="Activity" choices={activities.map(name => ({ id: name, label: name }))}
         selected={selectedActivities} onChange={setSelectedActivities} />
