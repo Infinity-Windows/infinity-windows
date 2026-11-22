@@ -80,12 +80,12 @@ Deno.serve(withSentry("review-cad-opening", async req => {
   } catch (error) {
     // Caught here, so withSentry never sees it; report it or it is invisible.
     await reportCaughtError("review-cad-opening", req, error);
-    // The cause goes to the person too. It is a provider status or a timeout,
-    // never the drawing or a key, and it is what tells a limit from an outage.
+    // The cause goes to the person too: a provider's reason or a timeout,
+    // which is what tells a limit from an outage.
     const cause = error instanceof Error
       ? error.name === "TimeoutError" ? "timed out" : error.message.replace(/^OpenAI review failed: /, "")
       : "unknown";
-    return reply({ error: `AI review could not complete (${cause.slice(0, 80)}).` }, 502);
+    return reply({ error: `AI review could not complete (${cause.slice(0, 240)}).` }, 502);
   } finally {
     if (usage) await settleAiSpend(meter, gate.reservationId, usage, model);
     else await releaseAiSpend(meter, gate.reservationId, "review_failed", false);

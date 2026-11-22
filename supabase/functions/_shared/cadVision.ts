@@ -3,14 +3,10 @@ import { requireOpenAI, type OpenAiUsage } from "./openai.ts";
 import { CAD_VISION_MODEL } from "./cadReviewPrompt.mts";
 export { CAD_VISION_MODEL };
 
-// On its first day on production (2026-11-22) every drawing came back as a 502
-// and nothing said why. This model reasons before it answers, and that
-// reasoning is paid for out of max_output_tokens: at 1024 with no effort set,
-// it could spend the whole allowance thinking and return no answer at all, or
-// still be thinking when a 30 second limit cut it off. So the effort is set
-// low (reading labelled dimensions off one drawing is not a hard problem),
-// the allowance and the wait are both raised, and a reply with no answer says
-// what the provider reported instead of only that it failed.
+// The model reasons before it answers and that comes out of max_output_tokens,
+// so the effort is low and the allowance roomy. A failure carries the
+// provider's own reason: on production (2026-11-22) every drawing came back
+// as a bare 502 and nothing said why.
 export async function requestCadVision(instructions: string, context: unknown, images: readonly string[]) {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -26,13 +22,18 @@ export async function requestCadVision(instructions: string, context: unknown, i
       input: [{
         role: "user",
         content: [
-          { type: "input_text", text: JSON.stringify(context) },
+          // A json_object reply is refused unless the message itself says JSON.
+          { type: "input_text", text: `Context, as JSON: ${JSON.stringify(context)}` },
           ...images.map(image_url => ({ type: "input_image", image_url, detail: "high" })),
         ],
       }],
     }),
   });
-  if (!response.ok) return { status: response.status, text: null, usage: null, failure: `provider ${response.status}` };
+  if (!response.ok) {
+    const said = (await response.json().catch(() => null))?.error?.message;
+    return { status: response.status, text: null, usage: null,
+      failure: `provider ${response.status}${typeof said === "string" ? `: ${said}` : ""}` };
+  }
   const result = await response.json();
   const usage: OpenAiUsage | null = result.usage ? {
     inputTokens: result.usage.input_tokens ?? null,
