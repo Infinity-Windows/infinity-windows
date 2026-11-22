@@ -64,7 +64,7 @@ Deno.serve(withSentry("review-cad-opening", async req => {
     if (drawing) {
       const reading = await requestCadVision(CAD_DEFINITION_INSTRUCTIONS, cadDefinitionContext(body), [drawing]);
       usage = reading.usage;
-      if (!reading.text) throw new Error("OpenAI review failed");
+      if (!reading.text) throw new Error(`OpenAI review failed: ${reading.failure}`);
       return reply({ ...cleanCadDefinition(parseJsonLoose(reading.text) as Record<string, unknown> | null), provider: "openai" });
     }
     const completion = await requestCadVision(
@@ -73,14 +73,19 @@ Deno.serve(withSentry("review-cad-opening", async req => {
       [plan!, ...evidence.map(item => item.image)],
     );
     usage = completion.usage;
-    if (!completion.text) throw new Error("OpenAI review failed");
+    if (!completion.text) throw new Error(`OpenAI review failed: ${completion.failure}`);
     const answer = parseJsonLoose(completion.text) as { key?: unknown; reason?: unknown } | null;
     const key = candidates.find(item => item.key === answer?.key)?.key ?? null;
     return reply({ key, reason: typeof answer?.reason === "string" ? answer.reason.slice(0, 400) : "AI could not establish a match.", provider: "openai" });
   } catch (error) {
     // Caught here, so withSentry never sees it; report it or it is invisible.
     await reportCaughtError("review-cad-opening", req, error);
-    return reply({ error: "AI review could not complete." }, 502);
+    // The cause goes to the person too. It is a provider status or a timeout,
+    // never the drawing or a key, and it is what tells a limit from an outage.
+    const cause = error instanceof Error
+      ? error.name === "TimeoutError" ? "timed out" : error.message.replace(/^OpenAI review failed: /, "")
+      : "unknown";
+    return reply({ error: `AI review could not complete (${cause.slice(0, 80)}).` }, 502);
   } finally {
     if (usage) await settleAiSpend(meter, gate.reservationId, usage, model);
     else await releaseAiSpend(meter, gate.reservationId, "review_failed", false);
