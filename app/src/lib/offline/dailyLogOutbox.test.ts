@@ -25,7 +25,7 @@ vi.mock("../supabase", () => ({
 const getDailyLog = vi.fn();
 vi.mock("../dailyLogs", () => ({
   getDailyLog: (projectId: string, logDate: string) => getDailyLog(projectId, logDate),
-  isStaleDailyLogError: (e: { code?: string }) => e?.code === "40001",
+  isStaleDailyLogError: (e: { code?: string }) => e?.code === "PT409",
 }));
 
 const { createShiftResolver, createSupabaseHandlers } = await import("./outboxHandlers");
@@ -130,7 +130,7 @@ describe("a daily log that waited for signal", () => {
       id: "log-1", project_id: "black22", log_date: "2026-09-05", revision: 1,
       headline: "Office", notes: "Office work", day_flow: null, reflection: null, weather: "Rain",
     });
-    rpc.mockResolvedValueOnce({ error: { code: "40001", message: "changed" } })
+    rpc.mockResolvedValueOnce({ error: { code: "PT409", message: "changed" } })
       .mockResolvedValueOnce({ error: null });
     await drain();
     expect(rpc).toHaveBeenCalledTimes(2);
