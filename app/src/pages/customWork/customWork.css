@@ -588,11 +588,6 @@
 .cw-add-job .job-search-select { margin: 0; }
 .cw-add-units { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px 12px 12px; border: 1px solid var(--border); border-radius: 10px; }
 .cw-add-units legend { padding: 0 6px; color: var(--muted); font-size: .8rem; font-weight: 600; }
-.cw-add-units > input {
-  box-sizing: border-box; width: 100%; min-height: 44px; padding: 9px 12px;
-  border: 1px solid var(--border); border-radius: 10px;
-  background: var(--card-raised, var(--surface)); color: var(--text); font: inherit;
-}
 .cw-add-find { grid-template-columns: minmax(0, 1fr); margin: 0; }
 .cw-add-find input {
   box-sizing: border-box; width: 100%; min-height: 44px; margin: 0; padding: 9px 12px;
