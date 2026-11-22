@@ -746,6 +746,80 @@ run
 assert_rc 0
 assert_lacks "definer-without-grant"
 
+new_case "one grant naming two functions covers both"
+base_commit
+cat >"$root/supabase/migrations/20300101000000_pair.sql" <<'SQL'
+create function public.get_plan(p_id uuid) returns jsonb language sql stable
+security definer set search_path = public, pg_temp as $$ select '{}'::jsonb; $$;
+create function public.save_plan(p_id uuid, p_data jsonb) returns jsonb language sql
+security definer set search_path = public, pg_temp as $$ select p_data; $$;
+revoke all on function public.get_plan(uuid),
+  public.save_plan(uuid, jsonb) from public, anon;
+grant execute on function public.get_plan(uuid),
+  public.save_plan(uuid, jsonb) to authenticated;
+SQL
+head_commit "Let a foreman lay out the week"
+run
+assert_rc 0
+assert_lacks "definer-without-grant"
+
+new_case "a rebuild of a function granted earlier in the same change is green"
+base_commit
+cat >"$root/supabase/migrations/20300101000000_born.sql" <<'SQL'
+create function public.save_plan(p_id uuid) returns uuid language sql
+security definer set search_path = public, pg_temp as $$ select p_id; $$;
+revoke all on function public.save_plan(uuid) from public, anon;
+grant execute on function public.save_plan(uuid) to authenticated;
+SQL
+cat >"$root/supabase/migrations/20300102000000_rebuilt.sql" <<'SQL'
+create or replace function public.save_plan(p_id uuid) returns uuid language sql
+security definer set search_path = public, pg_temp as $$ select p_id; $$;
+SQL
+head_commit "Let foremen be put on the plan"
+run
+assert_rc 0
+assert_lacks "definer-without-grant"
+
+new_case "a rebuild in the same change of a function nobody granted is still reported"
+base_commit
+cat >"$root/supabase/migrations/20300101000000_born.sql" <<'SQL'
+create function public.save_plan(p_id uuid) returns uuid language sql
+security definer set search_path = public, pg_temp as $$ select p_id; $$;
+SQL
+cat >"$root/supabase/migrations/20300102000000_rebuilt.sql" <<'SQL'
+create or replace function public.save_plan(p_id uuid) returns uuid language sql
+security definer set search_path = public, pg_temp as $$ select p_id; $$;
+SQL
+head_commit "Let foremen be put on the plan"
+run
+assert_rc 1
+assert_has "20300101000000_born.sql:1  [definer-without-grant]"
+assert_has "20300102000000_rebuilt.sql:1  [definer-without-grant]"
+
+new_case "a later migration in the same change may be the one that adds the partner guard"
+base_commit
+cat >"$root/supabase/migrations/20300101000000_receipts.sql" <<'SQL'
+create table public.receipts (id uuid primary key, actor_id uuid not null);
+alter table public.receipts enable row level security;
+revoke all on public.receipts from public, anon, authenticated;
+grant select (id, actor_id) on public.receipts to authenticated;
+create policy receipts_own on public.receipts
+  for select to authenticated using (actor_id = auth.uid());
+SQL
+head_commit "Keep a receipt of each unit edit"
+run
+assert_rc 1
+assert_has "policy-without-partner-guard"
+cat >"$root/supabase/migrations/20300102000000_fence.sql" <<'SQL'
+drop policy if exists receipts_own on public.receipts;
+create policy receipts_own on public.receipts
+  for select to authenticated using (not public.is_partner_user() and actor_id = auth.uid());
+SQL
+head_commit "Keep builder logins out of edit receipts"
+run
+assert_rc 0
+assert_lacks "policy-without-partner-guard"
+
 # ---------------------------------------------------------------------------
 # Migration version numbers — the 2026-09-06 collision
 # ---------------------------------------------------------------------------

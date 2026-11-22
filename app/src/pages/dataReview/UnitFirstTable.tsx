@@ -1,3 +1,4 @@
+import { formatApiError } from "../../lib/errors";
 import {SkeletonList} from "../../components/ui/States";
 import {unitDisplay} from "./unitDisplay";
 import {TablePage} from "./TablePage";
@@ -228,7 +229,7 @@ export function UnitFirstTable({ jobs, jobNames, rows, reviewRows, active }: { r
 
  const error = [inventory, units, contexts, phases].find(query => query.isLoadingError)?.error;
 
- if(error) return <p role="alert">Unit inventory or progress could not load completely: {String(error)}</p>;
+ if(error) return <p role="alert">Unit inventory or progress could not load completely: {formatApiError(error)}</p>;
 
  if(inventory.isPending || units.isPending || phases.isPending || (ids.length>0 && contexts.isPending)) return <div role="status"><p>Loading units and activity records…</p><SkeletonList rows={4} /></div>;
 

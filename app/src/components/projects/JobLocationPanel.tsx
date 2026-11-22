@@ -19,7 +19,8 @@
 // someone else changed it since. That snapshot is taken once, on open, and a
 // background refetch that hands this card a fresher project must not move it —
 // otherwise the refetch would quietly turn "someone else changed this" into a
-// silent overwrite.
+// silent overwrite. A conflict reads a separate latest snapshot; only the
+// explicit "Save my changes" action may submit against that displayed version.
 
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -30,6 +31,8 @@ import "../../lib/i18n/jobLocationCatalog";
 import type { JobLocationKey } from "../../lib/i18n/jobLocationCatalog";
 import {
   invalidateJobLocation,
+  readProjectLocation,
+  isJobLocationConflict,
   parseJobCoordinates,
   saveProjectLocation,
 } from "../../lib/jobLocation";
@@ -80,12 +83,28 @@ export function JobLocationPanel({
 }) {
   const t = useT();
   const queryClient = useQueryClient();
-  // Non-null exactly while the editor is open; see the header on why it is
-  // captured once and never refreshed from props.
+  // The original snapshot stays fixed. Conflict review keeps a separate latest
+  // snapshot rather than silently rebasing an open editor.
   const [expected, setExpected] = useState<SavedLocation | null>(null);
   const [addressDraft, setAddressDraft] = useState("");
   const [gpsDraft, setGpsDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<{ latest: SavedLocation | null } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const refreshConflict = async () => {
+    setRefreshing(true);
+    setConflict({ latest: null });
+    try {
+      const latest = await readProjectLocation(project.id);
+      setConflict({ latest });
+      setError(null);
+    } catch {
+      setError(t("jobLocation.conflictReadFailed"));
+    } finally {
+      setRefreshing(false);
+    }
+  };
   // isPending only flips on the next render, so two taps inside one frame
   // would both see false. The ref closes that gap.
   const inFlight = useRef(false);
@@ -96,6 +115,7 @@ export function JobLocationPanel({
   const hasLocation = !!savedAddress || savedPoint;
 
   const save = useMutation({
+    retry: false,
     mutationFn: (input: { location: SavedLocation; expected: SavedLocation }) =>
       saveProjectLocation(project.id, input.location, input.expected),
     onSuccess: async () => {
@@ -103,27 +123,37 @@ export function JobLocationPanel({
       // shows what they saved rather than flashing the old value.
       await invalidateJobLocation(queryClient);
       setExpected(null);
+      setConflict(null);
       setError(null);
       toastSuccess(t("jobLocation.saved"));
     },
-    // The draft stays exactly as typed, so a retry is one tap.
-    onError: (e) => setError(formatApiError(e)),
+    // Keep the draft intact. A conflict refreshes facts, never the write itself.
+    onError: async (e) => {
+      if (isJobLocationConflict(e)) await refreshConflict();
+      else setError(formatApiError(e));
+    },
     onSettled: () => {
       inFlight.current = false;
     },
   });
 
-  const busy = save.isPending;
+  const busy = save.isPending || refreshing;
 
   const openEditor = () => {
+    setConflict(null);
     setExpected(saved);
     setAddressDraft(saved.address ?? "");
     setGpsDraft(pointText(saved));
     setError(null);
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (!isLead || !expected || inFlight.current) return;
+    if (conflict && !conflict.latest) {
+      inFlight.current = true;
+      try { await refreshConflict(); } finally { inFlight.current = false; }
+      return;
+    }
     let point: { latitude: number | null; longitude: number | null };
     try {
       point = parseJobCoordinates(gpsDraft);
@@ -134,7 +164,8 @@ export function JobLocationPanel({
     const address = addressDraft.trim() || null;
     setError(null);
     inFlight.current = true;
-    save.mutate({ location: { address, ...point }, expected });
+    // Only an explicit conflict-review click can use the displayed newer snapshot.
+    save.mutate({ location: { address, ...point }, expected: conflict?.latest ?? expected });
   };
 
   const copy = async () => {
@@ -211,7 +242,7 @@ export function JobLocationPanel({
       )}
 
       {isLead && editing && (
-        <form className="job-location-form" onSubmit={(event) => { event.preventDefault(); submit(); }}>
+        <form className="job-location-form" onSubmit={(event) => { event.preventDefault(); if (!conflict) void submit(); }}>
           <div className="job-location-field">
             <label className="field-label" htmlFor={`job-location-address-${project.id}`}>
               {t("jobLocation.address")}
@@ -252,6 +283,20 @@ export function JobLocationPanel({
           </div>
           <p className="muted job-location-hint">{t("jobLocation.blankHint")}</p>
 
+          {conflict && (
+            <div className="job-location-conflict" role="status" aria-live="polite">
+              <p>{t("jobLocation.conflictNotice")}</p>
+              {conflict.latest && (
+                <dl className="job-location-facts">
+                  <dt>{t("jobLocation.currentAddress")}</dt>
+                  <dd>{conflict.latest.address ?? t("jobLocation.noAddress")}</dd>
+                  <dt>{t("jobLocation.currentGps")}</dt>
+                  <dd>{hasPoint(conflict.latest) ? pointText(conflict.latest) : t("jobLocation.noGps")}</dd>
+                </dl>
+              )}
+            </div>
+          )}
+
           {error && (
             <p className="error job-location-error" role="alert">
               {error}
@@ -260,11 +305,14 @@ export function JobLocationPanel({
 
           <div className="job-location-actions">
             <button
-              type="submit"
+              type={conflict ? "button" : "submit"}
+              onClick={conflict ? () => void submit() : undefined}
               className="button-like active-pill job-location-save"
               disabled={busy}
             >
-              {busy ? t("jobLocation.saving") : t("jobLocation.save")}
+              {refreshing ? t("jobLocation.checking") : busy ? t("jobLocation.saving") : conflict
+                ? t(conflict.latest ? "jobLocation.saveMyChanges" : "jobLocation.checkLocation")
+                : t("jobLocation.save")}
             </button>
             <button
               type="button"
@@ -284,6 +332,7 @@ export function JobLocationPanel({
               disabled={busy}
               onClick={() => {
                 setExpected(null);
+                setConflict(null);
                 setError(null);
               }}
             >

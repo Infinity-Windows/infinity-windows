@@ -320,6 +320,24 @@ fi
 # under the cursor is a rebuild rather than a birth.
 already_on_master() { printf '%s\n' "$master_functions" | grep -qxF "$1"; }
 
+# The same question asked of THIS change. A branch that ships many migrations
+# at once (the Workday release, #769, had twenty-four) gives a function its
+# grant in the migration where it is born and rebuilds it in later ones, none
+# of which master has seen yet. The files are read in version order, so a name
+# lands here before any later rebuild of it is looked at.
+granted_in_change=""
+granted_earlier() { printf '%s\n' "$granted_in_change" | grep -qxF "$1"; }
+
+# Every policy this change creates, for the table rule below: a later migration
+# in the same change may be the one that puts the partner guard on a table an
+# earlier one made (20261130180000 did that for 20261130060000, which was
+# already on the live database and could not be edited).
+change_policies=""
+for f in ${new_migrations[@]+"${new_migrations[@]}"}; do
+  change_policies="$change_policies
+$(awk -f "$AWK_SQL" <(file_at_head "$f") | grep -E 'create policy ')"
+done
+
 for f in ${new_migrations[@]+"${new_migrations[@]}"}; do
   stmts="$(awk -f "$AWK_SQL" <(file_at_head "$f"))"
 
@@ -357,7 +375,7 @@ for f in ${new_migrations[@]+"${new_migrations[@]}"}; do
     # nobody. Anything a crew login can reach needs the partner guard.
     if printf '%s\n' "$stmts" | grep -E 'grant .* on (table )?(public\.)?'"$short"' to' | grep -q 'authenticated' ||
        ! printf '%s\n' "$stmts" | grep -E 'revoke .* on (table )?(public\.)?'"$short"' from' | grep -q 'authenticated'; then
-      printf '%s\n' "$stmts" | grep -E 'create policy .* on (public\.)?'"$short"'[ (]' | grep -qF 'not public.is_partner_user()' ||
+      printf '%s\n' "$change_policies" | grep -E 'create policy .* on (public\.)?'"$short"'[ (]' | grep -qF 'not public.is_partner_user()' ||
         report "$f:$ln" policy-without-partner-guard \
           "No policy on \`$short\` carries \`not public.is_partner_user()\`, so a builder's portal login is inside the wall." "$LAW_RLS"
     fi
@@ -389,12 +407,19 @@ for f in ${new_migrations[@]+"${new_migrations[@]}"}; do
         continue
       fi
       already_on_master "$short" && continue
+      granted_earlier "$short" && continue
     fi
 
-    if ! printf '%s\n' "$stmts" | grep -E 'grant execute on function (public\.)?'"$short"'\(' | grep -q 'authenticated'; then
-      printf '%s\n' "$stmts" | grep -E 'revoke .* on function (public\.)?'"$short"'\(' | grep -q 'authenticated' ||
-        report "$f:$ln" definer-without-grant \
-          "\`$short\` is SECURITY DEFINER and the migration never says who may execute it — neither a grant to authenticated nor a revoke from it." "$LAW_DEFINER"
+    # One statement may name several functions (`grant execute on function
+    # public.a(uuid), public.b(uuid, jsonb) to authenticated`), so the name is
+    # looked for anywhere in the list, not only first.
+    if printf '%s\n' "$stmts" | grep -E 'grant execute on function (.*[ ,])?(public\.)?'"$short"'\(' | grep -q 'authenticated' ||
+       printf '%s\n' "$stmts" | grep -E 'revoke .* on function (.*[ ,])?(public\.)?'"$short"'\(' | grep -q 'authenticated'; then
+      granted_in_change="$granted_in_change
+$short"
+    else
+      report "$f:$ln" definer-without-grant \
+        "\`$short\` is SECURITY DEFINER and the migration never says who may execute it — neither a grant to authenticated nor a revoke from it." "$LAW_DEFINER"
     fi
   done < <(printf '%s\n' "$stmts" | grep -E $'\t''create (or replace )?function ')
 done

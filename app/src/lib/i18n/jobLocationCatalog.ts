@@ -53,6 +53,13 @@ export const JOB_LOCATION_CATALOG = {
   "jobLocation.save": { en: "Save location", es: "Guardar ubicación" },
   "jobLocation.saving": { en: "Saving…", es: "Guardando…" },
   "jobLocation.cancel": { en: "Cancel", es: "Cancelar" },
+  "jobLocation.conflictNotice": { en: "Location changed since you opened it. Your draft is preserved. Review the saved location before saving your changes.", es: "La ubicación cambió desde que la abriste. Tu borrador se conserva. Revisa la ubicación guardada antes de guardar tus cambios." },
+  "jobLocation.currentAddress": { en: "Current saved address", es: "Dirección guardada actual" },
+  "jobLocation.currentGps": { en: "Current saved GPS", es: "GPS guardado actual" },
+  "jobLocation.saveMyChanges": { en: "Save my changes", es: "Guardar mis cambios" },
+  "jobLocation.checkLocation": { en: "Check saved location", es: "Consultar ubicación guardada" },
+  "jobLocation.checking": { en: "Checking saved location…", es: "Consultando ubicación guardada…" },
+  "jobLocation.conflictReadFailed": { en: "Couldn't load the saved location. Your draft is preserved. Check it again before saving.", es: "No se pudo cargar la ubicación guardada. Tu borrador se conserva. Consúltala de nuevo antes de guardar." },
   "jobLocation.saved": { en: "Location saved", es: "Ubicación guardada" },
   "jobLocation.error.pair": {
     en: "Enter latitude and longitude as two numbers separated by a comma, like 40.7608, -111.8910.",
