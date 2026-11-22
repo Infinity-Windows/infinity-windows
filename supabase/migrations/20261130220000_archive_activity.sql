@@ -8,9 +8,10 @@
 -- Only an activity that has ended can be archived; a running one is stopped
 -- first, the same rule its time correction follows.
 
+-- Who archived it, and why, is in custom_work_history like every other
+-- change to an activity; the row itself only needs to say that it is archived.
 alter table public.custom_work_sessions
-  add column if not exists archived_at timestamptz,
-  add column if not exists archived_by uuid references public.profiles(id);
+  add column if not exists archived_at timestamptz;
 
 create function public.archive_crew_activity(p_id uuid, p_data jsonb)
 returns uuid language plpgsql security definer set search_path = public, pg_temp as $$
@@ -49,7 +50,6 @@ begin
   before := to_jsonb(entry);
   update public.custom_work_sessions set
       archived_at = case when restore then null else now() end,
-      archived_by = case when restore then null else actor end,
       revision = revision + 1
     where id = entry.id;
   insert into public.custom_work_history(project_id, actor_id, entity_id, action, before_value, after_value, reason)

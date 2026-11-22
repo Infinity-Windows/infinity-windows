@@ -51,9 +51,9 @@ begin
 
   perform pg_temp.dry_run_as_system();
   perform pg_temp.dry_run_check('the activity is archived once, by the foreman',
-    (select archived_at is not null and archived_by = foreman from public.custom_work_sessions where id = first_id)
+    (select archived_at is not null from public.custom_work_sessions where id = first_id)
     and (select count(*) from public.custom_work_history where entity_id = first_id and action = 'archived'
-      and before_value->>'archived_at' is null and reason = 'Dry run duplicate') = 1, first_id::text);
+      and actor_id = foreman and before_value->>'archived_at' is null and reason = 'Dry run duplicate') = 1, first_id::text);
   perform pg_temp.dry_run_check('new work can take an archived activity''s time',
     exists (select 1 from public.custom_work_sessions where id = second_id and archived_at is null), second_id::text);
   perform pg_temp.dry_run_check('archiving leaves the paid shift untouched',
