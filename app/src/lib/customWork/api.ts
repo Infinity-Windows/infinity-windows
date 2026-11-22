@@ -96,12 +96,15 @@ export async function listWorkSessions(job?: string | null, profileId?: string, 
   const read = (columns: string) => allRows<WorkSession>("custom_work_sessions", columns, job, profileId, unitId, scope);
   // Newest columns first; each step back is a database one migration behind.
   const workday = SESSION_COLS + ",workday_done_at,workday_machinery_ms,workday_machinery_started_at";
-  const sets = [workday + ",workday_machinery_spans", workday, SESSION_COLS];
+  const spans = workday + ",workday_machinery_spans";
+  const sets = [spans + ",archived_at", spans, workday, SESSION_COLS];
   for (let behind = sessionColumnsBehind; behind < sets.length - 1; behind++) {
     try {
       const rows = await read(sets[behind]);
       sessionColumnsBehind = behind;
-      return rows;
+      // An archived activity is out of every list and total. One place, so no
+      // screen has to remember to leave it out.
+      return rows.filter(row => !row.archived_at);
     } catch (error) {
       if (!isMissingColumn(error)) throw error;
     }
@@ -158,6 +161,7 @@ const DIRECT_RPC_ACTIONS: Partial<Record<WorkCommand["action"], string>> = {
   plan_unit_lead: "take_plan_unit_lead",
   crew_record: "record_crew_work",
   crew_activity: "save_crew_activity",
+  archive_activity: "archive_crew_activity",
   stage_contributors: "record_stage_contributors",
   correct_stage_contributors: "correct_stage_contributors",
 };

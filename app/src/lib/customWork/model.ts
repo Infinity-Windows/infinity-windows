@@ -94,6 +94,10 @@ export interface WorkSession {
    * oldest first. Absent until 20261130150000 is applied; empty on activities
    * recorded before it, which kept only the total. */
   workday_machinery_spans?: MachineTimer[];
+  /** Set when a foreman archived the activity. Absent until 20261130220000 is
+   * applied, and then the app offers no archive. Archived activities are not
+   * listed or counted: listWorkSessions leaves them out. */
+  archived_at?: string | null;
   outcome: "finished" | "partial" | "blocked" | "rework" | null;
   delay_reason: string;
   started_at: string;
@@ -122,7 +126,7 @@ export interface WorkHistory {
 }
 export type MachineTimer = { on: string; off: string | null };
 export type WorkAction =
-  "machinery_correction" | "unit" | "unit_create" | "link" | "start" | "stop" | "workday_activity" | "plan_activity_done" | "plan_unit_lead" | "session" | "type" | "crew_record" | "stage_contributors" | "correct_stage_contributors" | "crew_activity";
+  "machinery_correction" | "unit" | "unit_create" | "link" | "start" | "stop" | "workday_activity" | "plan_activity_done" | "plan_unit_lead" | "session" | "type" | "crew_record" | "stage_contributors" | "correct_stage_contributors" | "crew_activity" | "archive_activity";
 export interface WorkCommand {
   id: string;
   userId: string;

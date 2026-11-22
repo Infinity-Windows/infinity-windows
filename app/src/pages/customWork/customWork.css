@@ -628,3 +628,11 @@
 .cw-add-legend [data-key=selected]::before { border: 2px solid var(--accent); }
 .cw-add-legend [data-key=activity]::before { border: 1px dashed var(--cw-activity-done); }
 .cw-add-legend [data-key=complete]::before { border-color: #589478; background: color-mix(in srgb, var(--surface), #85ddb0 30%); }
+/* A unit chip with a check: the activity was finished on that unit in this timer. */
+.cw-activity-unit[data-finished] { display: inline-flex; align-items: center; gap: 3px; border-color: #589478; color: #85ddb0; }
+.cw-archive-open {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: 0 0 10px; padding: 8px 14px;
+  border: 1px solid var(--border); border-radius: 10px; background: transparent; color: var(--muted); font: inherit; font-weight: 600;
+}
+.cw-archive { margin: 0 0 10px; padding: 14px; border-radius: 12px; }
+.cw-archive > p { margin: 0; font-size: .8rem; }

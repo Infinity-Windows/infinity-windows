@@ -1,5 +1,5 @@
 import { JobSearchSelect } from "../../components/JobSearchSelect";
-import { ChevronDown, Plus, Tractor } from "lucide-react";
+import { Archive, Check, ChevronDown, Plus, Tractor } from "lucide-react";
 import { Fragment, useEffect, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -25,6 +25,8 @@ const titleOf = (row: WorkSession) => row.kind === "idle"
 const TIME = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 const DAY = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
 const dayKey = (iso: string) => new Date(iso).toDateString();
+/** The activity was finished on its unit in this timer: marked done on the Workday, or ended as finished. */
+const finishedOn = (row: WorkSession) => Boolean(row.unit_id && (row.workday_done_at || row.outcome === "finished"));
 const timeOf = (iso: string) => TIME.format(new Date(iso));
 
 export function RecentActivities() {
@@ -200,7 +202,13 @@ function ActivityReview() {
                     <button type="button" className="cw-activity-toggle" aria-expanded={expanded}
                       aria-controls={expanded ? detailsId : undefined} aria-label={`${title} for ${personName}, ${new Date(row.started_at).toLocaleString()}`}
                       onClick={event => { event.stopPropagation(); toggle(); }}>{title}</button>
-                    {unit && <span className="cw-activity-unit">{unit}</span>}
+                    {/* Whether the activity was finished on the unit in this timer, on the
+                        row itself (Matt, 2026-11-21). A running one has no answer yet. */}
+                    {unit && <span className="cw-activity-unit" data-finished={finishedOn(row) || undefined}
+                      title={finishedOn(row) ? `${title} finished on ${unit}` : row.ended_at ? `${title} not finished on ${unit}` : undefined}>
+                      {finishedOn(row) && <Check size={12} aria-hidden="true" />}{unit}
+                      {row.ended_at && <span className="sr-only">{finishedOn(row) ? " finished" : " not finished"}</span>}
+                    </span>}
                     {machinery && <span className="cw-activity-flag" title="Machinery time recorded"><Tractor size={14} aria-hidden="true" /><span className="sr-only">Machinery</span></span>}
                     {row.review_required && <span className="cw-activity-flag" data-tone="warn">Needs review</span>}
                   </span>
@@ -216,6 +224,7 @@ function ActivityReview() {
                   <div><dt>Started</dt><dd>{new Date(row.started_at).toLocaleString()}</dd></div>
                   <div><dt>Ended</dt><dd>{row.ended_at ? new Date(row.ended_at).toLocaleString() : "Still running"}</dd></div>
                   {row.outcome && <div><dt>Outcome</dt><dd>{row.outcome}</dd></div>}
+                  {unit && row.ended_at && <div><dt>{title}</dt><dd>{finishedOn(row) ? "Finished on this unit" : "Not finished on this unit"}</dd></div>}
                   {machinery && <div><dt>Machinery</dt><dd>{clockText(Math.round((row.workday_machinery_ms ?? 0) / 1000))}
                     {row.workday_machinery_started_at && " · Running"}</dd></div>}
                 </dl>
@@ -228,6 +237,9 @@ function ActivityReview() {
                       onClick={() => setUnitsFor(row.id)}>{row.unit_id ? "Change or add units" : "Add units"}</button>}
                     <SessionCorrection row={row} lead onSave={data => work.command("session", data)}
                       onSaveMachinery={data => work.command("machinery_correction", data)} onCancel={collapse} />
+                    {/* Offered only where the database can archive (20261130220000). */}
+                    {row.ended_at && row.archived_at !== undefined && <ArchiveActivity
+                      onArchive={reason => work.command("archive_activity", { id: row.id, revision: row.revision, reason }).then(collapse)} />}
                   </>}
                 <details open={historyId === row.id} onToggle={event => {
                   if (event.currentTarget.open) setHistoryId(row.id);
@@ -289,4 +301,33 @@ function CorrectionHistory({ rows, names }: { rows: WorkHistory[]; names: Map<st
         <p key={field}>{title} · {value(field, before?.[field])} → {value(field, after?.[field])}</p>)}
     </li>;
   })}</ul>;
+}
+
+/** Takes a wrong activity out of the list and the totals. It asks why, because
+ * the reason is all a later reader of the history has. */
+function ArchiveActivity({ onArchive }: { onArchive: (reason: string) => Promise<unknown> }) {
+  const [asking, setAsking] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  if (!asking) return <button type="button" className="cw-archive-open" onClick={() => setAsking(true)}>
+    <Archive size={15} aria-hidden="true" />Archive activity
+  </button>;
+  return <section className="cw-card cw-correction cw-archive" aria-label="Archive activity">
+    <h3>Archive this activity</h3>
+    <p className="muted cw-correction-wide">It leaves this list and the totals. The timecard is not changed.</p>
+    <label className="cw-correction-wide">
+      Reason
+      <input value={reason} maxLength={1000} onChange={event => setReason(event.target.value)} />
+    </label>
+    {error && <p role="alert" className="cw-correction-wide">{error}</p>}
+    <div className="cw-actions cw-correction-wide">
+      <button type="button" disabled={busy} onClick={() => setAsking(false)}>Cancel</button>
+      <button type="button" className="cw-correction-save" disabled={busy || reason.trim().length < 3} onClick={() => {
+        setBusy(true);
+        setError("");
+        onArchive(reason.trim()).catch(error => { setError(formatApiError(error)); setBusy(false); });
+      }}>{busy ? "Archiving…" : "Archive"}</button>
+    </div>
+  </section>;
 }
