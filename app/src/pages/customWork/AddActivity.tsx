@@ -79,8 +79,14 @@ export function AddActivity({ work, jobs, people, job: startJob, existing, onClo
     const floor = unitFloor(opening) ?? "Unspecified floor";
     byFloor.set(floor, [...(byFloor.get(floor) ?? []), opening]);
   }
+  // Within a floor the units still to do come first; ones this activity is
+  // finished on, then whole units that are complete, sit at the end (Matt,
+  // 2026-11-21). The sort is stable, so each group keeps its unit order.
+  const rank = (opening: ProjectOpening) => unitState.complete(opening.id) ? 2
+    : activity && unitState.activityDone(opening.id, activity) ? 1 : 0;
   const floors = [...byFloor].sort(([left], [right]) =>
-    Number(left === "Unspecified floor") - Number(right === "Unspecified floor") || right.localeCompare(left, undefined, { numeric: true }));
+    Number(left === "Unspecified floor") - Number(right === "Unspecified floor") || right.localeCompare(left, undefined, { numeric: true }))
+    .map(([floor, units]) => [floor, [...units].sort((a, b) => rank(a) - rank(b))] as const);
   function picture(opening: ProjectOpening) {
     const mark = unitSourceMark(opening);
     const resolved = mark ? resolveMarkConfig(mark, specIndex, byMark) : null;
