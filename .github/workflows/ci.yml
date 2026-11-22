@@ -336,10 +336,15 @@ jobs:
         run: |
           npm run e2e -- job-location.spec.ts
           npm run e2e -- job-location.spec.ts --browser=webkit
-      # Home unit creation, job handoff, and the phone keyboard viewport are
-      # release paths for the crew; keep them in the PR browser gate.
-      - run: npm run e2e -- new-design-work.spec.ts
-      - run: npx playwright test --browser webkit new-design-work.spec.ts -g "New unit stays within the phone"
+      # PAUSED 2026-11-22 (Matt: "pause that failing test until we update them
+      # for our new workday"). new-design-work.spec.ts signs in as an installer
+      # or a foreman and asserts the Work screen, and since the Workday release
+      # both of them land on the Workday instead, so every case waits for a
+      # screen that never comes. Home unit creation, job handoff and the phone
+      # keyboard viewport are still release paths for the crew: rewrite the
+      # spec against the Workday, then put these two steps back.
+      # - run: npm run e2e -- new-design-work.spec.ts
+      # - run: npx playwright test --browser webkit new-design-work.spec.ts -g "New unit stays within the phone"
       # Expired sign-ins and shared-phone queues need their own browser gate:
       # they can lose a saved punch or send it as the next person even while
       # the ordinary clock screen tests remain green.
