@@ -174,7 +174,9 @@ const SCOPE_COUNT_COLS =
   "project_id, openings, installed, windows, doors, door_sliders, door_french, door_bifold, door_swing, door_other, unknown_units";
 /** Curtain walls joined the view in 20261130140000. Asked for first; a database
  * a migration behind answers "no such column" and is read without it. */
-const SCOPE_COUNT_COLS_NOW = SCOPE_COUNT_COLS + ", curtain_walls";
+const SCOPE_COUNT_COLS_WALLS = SCOPE_COUNT_COLS + ", curtain_walls";
+/** Storefronts joined it in 20261130250000, guarded the same way. */
+const SCOPE_COUNT_COLS_NOW = SCOPE_COUNT_COLS_WALLS + ", storefronts";
 
 /** A job with no openings at all still has a row to show: all zeroes. */
 function emptyScope(projectId: string): ScopeCounts {
@@ -221,6 +223,9 @@ export async function listScopeCounts(): Promise<Record<string, ScopeCounts>> {
   let { data, error } = await supabase
     .from("project_scope_counts")
     .select(SCOPE_COUNT_COLS_NOW);
+  if (error && isMissingColumn(error, "storefronts")) {
+    ({ data, error } = await supabase.from("project_scope_counts").select(SCOPE_COUNT_COLS_WALLS));
+  }
   if (error && isMissingColumn(error, "curtain_walls")) {
     ({ data, error } = await supabase.from("project_scope_counts").select(SCOPE_COUNT_COLS));
   }
@@ -239,6 +244,7 @@ export async function getScopeCounts(projectId: string): Promise<ScopeCounts> {
     .eq("project_id", projectId)
     .maybeSingle();
   let { data, error } = await read(SCOPE_COUNT_COLS_NOW);
+  if (error && isMissingColumn(error, "storefronts")) ({ data, error } = await read(SCOPE_COUNT_COLS_WALLS));
   if (error && isMissingColumn(error, "curtain_walls")) ({ data, error } = await read(SCOPE_COUNT_COLS));
   if (error) {
     if (isMissingTable(error, "project_scope_counts")) {

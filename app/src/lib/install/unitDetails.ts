@@ -6,14 +6,16 @@ import { normalizeMarkCode } from "../fitview/adapter";
 
 // What a unit on a job can be. Curtain walls joined windows and doors on
 // 2026-11-20 (Matt): Building 3's shop CAD has four, and with only two types
-// they could not be put on the job at all. save_unit_details holds the same
-// list (20261130100000); change them together.
-export const UNIT_KINDS = ["window", "door", "curtain_wall"] as const;
+// they could not be put on the job at all. Storefronts joined on 2026-11-22
+// (Ammon). save_unit_details holds the same list (20261130250000); change
+// them together.
+export const UNIT_KINDS = ["window", "door", "curtain_wall", "storefront"] as const;
 export type UnitKind = typeof UNIT_KINDS[number];
 export const isUnitKind = (value: unknown): value is UnitKind => UNIT_KINDS.some(kind => kind === value);
 export function unitKindLabel(kind: UnitKind, spanish = false) {
   return kind === "door" ? (spanish ? "Puerta" : "Door")
     : kind === "curtain_wall" ? (spanish ? "Muro cortina" : "Curtain wall")
+    : kind === "storefront" ? (spanish ? "Frente de tienda" : "Storefront")
     : (spanish ? "Ventana" : "Window");
 }
 

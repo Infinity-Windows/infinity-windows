@@ -108,12 +108,20 @@ export function PhotoFeed({
   kind = "photo",
   initialCapture = false,
   toolbarExtra,
+  receiptsHidden = false,
 }: {
   projectId: string | null;
   selectedJobCode: string | null;
   kind?: "photo" | "receipt";
   initialCapture?: boolean;
   toolbarExtra?: ReactNode;
+  /**
+   * This person adds receipts but does not read them back (Ammon,
+   * 2026-11-22: "everyone should be able to upload them, just not see them
+   * after"; supervisors and owners do). The list is not asked for and not
+   * drawn; Add receipt stays.
+   */
+  receiptsHidden?: boolean;
 }) {
   const isReceipt = kind === "receipt";
   const t = useT();
@@ -138,7 +146,7 @@ export function PhotoFeed({
   const receipts = useQuery({
     queryKey: ["receipts-feed", projectId ?? "all"],
     queryFn: () => listReceipts({ projectId }),
-    enabled: isReceipt,
+    enabled: isReceipt && !receiptsHidden,
   });
   // The 30-day recoverable trash (slice 3) — loaded only when a lead opens it.
   const trash = useQuery({
@@ -186,6 +194,7 @@ export function PhotoFeed({
     [receipts.data],
   );
 
+  const sentOnly = isReceipt && receiptsHidden;
   const isLoading = isReceipt ? receipts.isLoading : photos.isLoading;
   const isError = isReceipt ? receipts.isError : photos.isError;
   const isEmpty = isReceipt ? receiptGroups.length === 0 : groups.length === 0;
@@ -208,7 +217,7 @@ export function PhotoFeed({
           {isReceipt ? <ReceiptIcon size={16} aria-hidden /> : <Camera size={16} aria-hidden />}{" "}
           {isReceipt ? t("feed.addReceipt") : t("feed.addPhoto")}
         </button>
-        {!inTrash && <button type="button" className="action-btn" onClick={() => setExporting(true)}><Download size={16} aria-hidden /> {lang === "es" ? (isReceipt ? "Exportar recibos" : "Exportar fotos") : (isReceipt ? "Export receipts" : "Export photos")}</button>}
+        {!inTrash && !sentOnly && <button type="button" className="action-btn" onClick={() => setExporting(true)}><Download size={16} aria-hidden /> {lang === "es" ? (isReceipt ? "Exportar recibos" : "Exportar fotos") : (isReceipt ? "Export receipts" : "Export photos")}</button>}
         {canCurate && (
           <button
             type="button"
@@ -294,7 +303,10 @@ export function PhotoFeed({
           label={isReceipt ? t("feed.receiptLoadError") : t("feed.photoLoadError")}
         />
       )}
-      {!inTrash && !isLoading && !isError && isEmpty && (
+      {sentOnly && <p className="muted" role="status">{lang === "es"
+        ? "Los recibos que agregas van a la oficina. Aquí no se muestran después de enviarlos."
+        : "Receipts you add go to the office. They are not shown here after they are sent."}</p>}
+      {!inTrash && !sentOnly && !isLoading && !isError && isEmpty && (
         <EmptyState
           icon={isReceipt ? <ReceiptIcon size={22} /> : <ImageIcon size={22} />}
           title={isReceipt ? t("feed.noReceiptsTitle") : t("feed.noPhotosTitle")}
@@ -369,7 +381,7 @@ export function PhotoFeed({
           </section>
         ))}
 
-      {!inTrash && !isLoading && !isError && isReceipt &&
+      {!inTrash && !sentOnly && !isLoading && !isError && isReceipt &&
         receiptGroups.map((group) => (
           <section key={group.key} className="photos-day">
             <h2 className="photos-day-label">{group.label}</h2>

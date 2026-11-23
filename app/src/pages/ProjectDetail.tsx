@@ -52,6 +52,7 @@ import { normalizeMarkCode } from "../lib/fitview/adapter";
 import { unitParts } from "../lib/warehouse/unitParts";
 import { isForemanPlus, isOwner, isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { canAccess } from "../lib/nav";
 import { listProjectAssignments } from "../lib/schedule/api";
 import { listVehicleLinksForProject } from "../lib/vehicles/api";
 import { vehicleTitle } from "../lib/vehicles/display";
@@ -151,7 +152,10 @@ export function ProjectDetail() {
   useLayoutEffect(() => { window.scrollTo({ top: 0, behavior: "instant" }); }, [projectId]);
   const [searchParams, setSearchParams] = useSearchParams();
   // Read before the tab is resolved: which tabs a URL may open depends on it.
-  const { effectiveRole, isLoading: rolePending } = useEffectiveRole();
+  const { effectiveRole, isLoading: rolePending, grants } = useEffectiveRole();
+  // As on the Photos page: receipts are read back only by the people who may
+  // open the office Receipts table (Ammon, 2026-11-22).
+  const seesReceipts = canAccess(effectiveRole, "/receipts", grants);
   const isLead = isForemanPlus(effectiveRole);
   const partner = useIsPartnerUser();
   const canPlan = isLead && partner.data === false;
@@ -510,7 +514,8 @@ export function ProjectDetail() {
           projectId={projectId}
           selectedJobCode={project?.job_code ?? null}
           kind={photoKind}
-          toolbarExtra={<PhotoKindTabs kind={photoKind} onChange={setPhotoKind} />}
+          receiptsHidden={!seesReceipts}
+          toolbarExtra={seesReceipts && <PhotoKindTabs kind={photoKind} onChange={setPhotoKind} />}
         />
       )}
 

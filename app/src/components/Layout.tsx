@@ -452,7 +452,7 @@ export function Layout() {
               row carries the "Clocked in 7:02" badge on the left — the door
               to break / clock out from any screen now that the bar has no
               Clock tab. */}
-          {isNewDesign ? <SteelHeader onOpenMenu={openMenu} menuOpen={menuOpen} /> :
+          {isNewDesign ? <SteelHeader /> :
             <div className="sync-strip"><SyncStatusPill /></div>}
           {previewingPerson ? (
             <div className="view-as-banner" role="status">

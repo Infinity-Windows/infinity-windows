@@ -1,6 +1,11 @@
 import { unitSvg, type Mechanism, type UnitConfig } from "../modelstudio/units";
 import type { UnitDetails } from "./unitDetails";
 
+// A curtain wall or a storefront has no preset and no schematic: its bays are
+// whatever the shop drawing says.
+const framed = (kind: UnitDetails["kind"]): kind is "curtain_wall" | "storefront" =>
+  kind === "curtain_wall" || kind === "storefront";
+
 const presets: Record<string, Mechanism[]> = {
   "Fixed": ["fixed"],
   "Two fixed panels": ["fixed", "fixed"],
@@ -11,15 +16,14 @@ const presets: Record<string, Mechanism[]> = {
 };
 
 export function unitDefinitionPresets(kind: UnitDetails["kind"]) {
-  // A curtain wall has no preset: its bays are whatever the shop drawing says.
-  return kind && kind !== "curtain_wall" ? Object.keys(presets).filter(label =>
+  return kind && !framed(kind) ? Object.keys(presets).filter(label =>
     kind === "door" ? label.endsWith("door") : !label.endsWith("door")) : [];
 }
 
 export function unitDefinitionDiagram(details: UnitDetails | undefined, width = 220, height = 140) {
   const kind = details?.kind;
   const label = details?.configuration;
-  if (!kind || kind === "curtain_wall" || !label || !Object.hasOwn(presets, label)) return null;
+  if (!kind || framed(kind) || !label || !Object.hasOwn(presets, label)) return null;
   const mechanisms = presets[label];
   // Equal panes are schematic; drawing geometry and dimensions are recorded separately.
   const y = details?.height ?? 40;

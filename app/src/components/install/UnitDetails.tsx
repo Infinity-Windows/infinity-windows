@@ -14,6 +14,7 @@ import type { ProjectOpening } from "../../lib/install/types";
 import { isUnitKind, trainingDrawing, UNIT_KINDS, unitFloor, unitKindLabel, unitSourceMark, type UnitDetails as Details, type UnitDetailsWrite } from "../../lib/install/unitDetails";
 import { refreshUnitDetails, saveUnitDetails } from "../../lib/install/unitDetailsApi";
 import { unitPicture } from "../../lib/install/unitDefinitionDiagram";
+import { optionsWith, unitConfigurations } from "../../lib/install/unitVocabulary";
 import { UnitKindIcon } from "./UnitKindIcon";
 import { specInsetOutsetOf } from "../../lib/install/unitFactsCard";
 import { catalogByMarkFrom, resolveMarkConfig } from "../../lib/modelstudio/fromProject";
@@ -25,6 +26,11 @@ import { supabase } from "../../lib/supabase";
 import { isNetworkError } from "../../lib/offline/outbox-core";
 import "./unitDetails.css";
 
+// The configurations are stored in English, as the Unit Builder writes them.
+const CONFIGURATION_ES: Record<string, string> = {
+  "Fixed": "Fijo", "Two fixed panels": "Dos paneles fijos", "Sliding + fixed": "Corrediza + fijo",
+  "Casement": "Abatible", "Swing door": "Puerta abatible", "Sliding door": "Puerta corrediza",
+};
 const length = (inches: number | null | undefined) => inches == null ? "—" : formatInchesMm(inches * MM_PER_INCH) || "—";
 const dimensions = (width: number | null | undefined, height: number | null | undefined) =>
   width != null || height != null ? `${length(width)} × ${length(height)}` : null;
@@ -368,7 +374,10 @@ export function UnitDetailsPanel({ projectId, opening, onCreated, createOffline 
         <label>{text("Material", "Material")}<input value={form.details.material ?? ""} placeholder={material ?? undefined} onChange={event => update({ material: event.target.value || null })} /></label>
         {/* No Face field: the drawing import never sets one and nobody reads
             it (Matt, 2026-11-20). A value already stored is left as it is. */}
-        {opening && <><DimensionFields width={form.details.width == null ? null : form.details.width * MM_PER_INCH}
+        {/* Asked when a unit is created too, not only on a later edit: the
+            person adding it in the field is the one standing in front of it
+            (Ammon, 2026-11-22). Every one of them is optional. */}
+        <DimensionFields width={form.details.width == null ? null : form.details.width * MM_PER_INCH}
           height={form.details.height == null ? null : form.details.height * MM_PER_INCH}
           labels={{ legend: text("Dimensions", "Dimensiones"), width: text("Width", "Ancho"),
             height: text("Height", "Alto"), fraction: text("Fraction", "Fracción"), inches: text("Inches", "Pulgadas") }}
@@ -377,7 +386,18 @@ export function UnitDetailsPanel({ projectId, opening, onCreated, createOffline 
           const value = event.target.value;
           update({ basis: value === "unit" || value === "rough" || value === "drawing" ? value : null });
         }}><option value="">{basisLabel(null)}</option>{(["unit", "rough", "drawing"] as const).map(value =>
-          <option key={value} value={value}>{basisLabel(value)}</option>)}</select></label></>}
+          <option key={value} value={value}>{basisLabel(value)}</option>)}</select></label>
+        {/* Fixed or operable, in the Unit Builder's own words so the two
+            screens save the same values. A curtain wall or storefront has no
+            list; whatever is already stored stays selectable. */}
+        {(() => {
+          const options = optionsWith(unitConfigurations(form.details.kind), form.details.configuration);
+          return options.length > 0 && <label>{text("Configuration", "Configuración")}
+            <select value={form.details.configuration ?? ""} onChange={event => update({ configuration: event.target.value || null })}>
+              <option value="">—</option>
+              {options.map(value => <option key={value} value={value}>{lang === "es" ? CONFIGURATION_ES[value] ?? value : value}</option>)}
+            </select></label>;
+        })()}
         {opening && <label className="unit-details-reason">{text("Reason (optional)", "Motivo (opcional)")}
           <input maxLength={500} value={reason} onChange={event => setReason(event.target.value)} />
         </label>}
