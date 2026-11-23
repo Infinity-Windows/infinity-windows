@@ -150,6 +150,36 @@ describe("useWork.command", () => {
     expect(queue[0].error).toContain("Your current work changed");
   });
 
+  it("gives a refused activity add back to the foreman's form and queues nothing", async () => {
+    const s = await mount();
+    sendWorkCommand.mockRejectedValueOnce(new Error("These times are outside the hours this person was clocked in on this job. Correct the timecard first."));
+    let thrown: unknown = null;
+    await act(async () => {
+      try {
+        await s.commandMany([{ action: "crew_activity", data: { profile_id: "worker-b", project_id: "job-1", activity: "Cleanup" } }]);
+      } catch (e) {
+        thrown = e;
+      }
+    });
+    expect(String((thrown as Error)?.message)).toContain("outside the hours");
+    expect(readWorkQueue("worker-a")).toEqual([]);
+  });
+
+  it("gives a refused archive back to the form too", async () => {
+    const s = await mount();
+    sendWorkCommand.mockRejectedValueOnce(new Error("This activity changed. Refresh and try again."));
+    let thrown: unknown = null;
+    await act(async () => {
+      try {
+        await s.command("archive_activity", { id: "s-1", revision: 1, reason: "wrong job" });
+      } catch (e) {
+        thrown = e;
+      }
+    });
+    expect(String((thrown as Error)?.message)).toContain("This activity changed");
+    expect(readWorkQueue("worker-a")).toEqual([]);
+  });
+
   it("sends and clears an accepted request", async () => {
     const s = await mount();
     await act(async () => {

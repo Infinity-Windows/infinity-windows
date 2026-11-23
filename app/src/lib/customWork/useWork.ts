@@ -16,6 +16,9 @@ import {
 import { previewCommands, type WorkAction, type WorkCommand, type WorkSession, type WorkUnit } from "./model";
 import { subscribeSynced, todaysSignatureOnPhone } from "../offline/outbox";
 
+/** Sent from a foreman's form in Recent activities, never from a tap in the field. */
+const DESK_ACTIONS: ReadonlySet<WorkAction> = new Set(["crew_activity", "archive_activity"]);
+
 export function useWork(projectId?: string, recentFrom?: number) {
   const clock = useClock();
   const qc = useQueryClient();
@@ -180,6 +183,21 @@ export function useWork(projectId?: string, recentFrom?: number) {
     clock.shift?.break_started_at,
     sync,
   ]);
+  // A foreman adding or archiving an activity is at a form with everything
+  // still in it, so a refusal there has nothing to keep for review either.
+  // Left queued, it closed the form as if it had saved and put "Work needs
+  // review" on the foreman's own account, with export-and-remove the only
+  // way out (seen on production, 2026-11-22). The refusal goes back to the
+  // form instead. Offline nothing has been refused yet, so the request waits
+  // in the queue like any other.
+  const refuseAtForm = useCallback(async (ids: string[]) => {
+    if (!user) return;
+    const refused = readWorkQueue(user).filter((c) => ids.includes(c.id) && c.error);
+    for (const c of refused) await dropWorkCommand(user, c.id);
+    // The last refusal is the activity's own; one before it is a unit record
+    // made for it, and that reason is the one that explains both.
+    if (refused.length) throw new Error(refused[0].error);
+  }, [user]);
   const command = useCallback(
     async (action: WorkAction, data: Record<string, unknown>, options?: { background: boolean }) => {
       if (!user) throw new Error("Sign in before saving work.");
@@ -190,6 +208,7 @@ export function useWork(projectId?: string, recentFrom?: number) {
         return;
       }
       await sync();
+      if (DESK_ACTIONS.has(action)) await refuseAtForm([id]);
       // A refused request normally stays queued, with its error, for review
       // (queue.ts) — the captured times are what a foreman reviews. The one
       // refusal with nothing to review is the toolbox signature: a unit or
@@ -205,7 +224,7 @@ export function useWork(projectId?: string, recentFrom?: number) {
         throw new Error(refused);
       }
     },
-    [user, sync, afterOutbox],
+    [user, sync, afterOutbox, refuseAtForm],
   );
   /** Dependent changes saved together before any network wait (see
    * enqueueWorkBatch) — "Unit complete" is a stop plus the complete mark. */
@@ -215,20 +234,23 @@ export function useWork(projectId?: string, recentFrom?: number) {
       options?: { background: boolean },
     ) => {
       if (!user) throw new Error("Sign in before saving work.");
-      await enqueueWorkBatch(
-        list.map((x) => ({
-          id: crypto.randomUUID(),
-          userId: user,
-          afterOutbox: afterOutbox(),
-          action: x.action,
-          data: x.data,
-          ...(x.intent ? { intent: x.intent } : {}),
-        })),
-      );
-      if (options?.background) void sync().catch(e => setQueueError(formatApiError(e)));
-      else await sync();
+      const batch = list.map((x) => ({
+        id: crypto.randomUUID(),
+        userId: user,
+        afterOutbox: afterOutbox(),
+        action: x.action,
+        data: x.data,
+        ...(x.intent ? { intent: x.intent } : {}),
+      }));
+      await enqueueWorkBatch(batch);
+      if (options?.background) {
+        void sync().catch(e => setQueueError(formatApiError(e)));
+        return;
+      }
+      await sync();
+      if (batch.some((c) => DESK_ACTIONS.has(c.action))) await refuseAtForm(batch.map((c) => c.id));
     },
-    [user, sync, afterOutbox],
+    [user, sync, afterOutbox, refuseAtForm],
   );
   const preview = useMemo(
     () => previewCommands(units.data ?? [], sessions.data ?? [], queue),
