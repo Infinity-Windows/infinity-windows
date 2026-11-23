@@ -32,7 +32,7 @@ import { PipelineLine } from "../components/projects/PipelineLine";
 import { ReadinessBadge } from "../components/projects/ReadinessBadge";
 import { gcCheckinsLatestKey, latestGcCheckins } from "../lib/gc";
 import { needsCall, sortProjectsForList } from "../lib/pipeline";
-import { MessagesSquare } from "lucide-react";
+import { MessagesSquare, Search } from "lucide-react";
 import type { Project } from "../lib/types";
 
 type ModeChoice = "data" | "tracking" | "both";
@@ -182,7 +182,18 @@ export function Projects() {
     });
   }, [serverRows]);
   const rows = pending ?? serverRows;
-  const canOrder = isForemanPlus(effectiveRole);
+  // Find a job by its code, name, address or customer. The list had grown past
+  // a phone screen with no way to reach a job but scrolling (Matt, 2026-11-22).
+  const [search, setSearch] = useState("");
+  const needle = search.trim().toLowerCase();
+  const shown = needle
+    ? rows.filter((p) => [p.job_code, p.name, p.address, p.customer_name]
+        .some((field) => field?.toLowerCase().includes(needle)))
+    : rows;
+  // Moving a card means "one place up in the whole list". In a filtered list
+  // the neighbour on screen is not the neighbour in the order, so the order
+  // controls rest while a search is on.
+  const canOrder = isForemanPlus(effectiveRole) && !needle;
 
   const saveOrder = useMutation({
     mutationFn: (ids: string[]) => setProjectsOrder(ids),
@@ -448,6 +459,13 @@ export function Projects() {
         </div>
       )}
       {message && <p className="scanner-hint">{message}</p>}
+      {(projects.data?.length ?? 0) > 0 && (
+        <label className="jobs-search">
+          <Search size={18} aria-hidden />
+          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)}
+            aria-label={t("jobs.search.label")} placeholder={t("jobs.search.label")} enterKeyHint="search" autoComplete="off" />
+        </label>
+      )}
       <div className="home-projects">
         {projects.isLoading && <SkeletonList rows={4} />}
         {projects.isError && (
@@ -468,7 +486,7 @@ export function Projects() {
         )}
         {!projects.isLoading &&
           !projects.isError &&
-          rows.map((p, index) => {
+          shown.map((p, index) => {
           const c = countFor(p.id);
           const chatUnread = unread.data?.[p.id] ?? 0;
           const pctColor =
@@ -639,6 +657,9 @@ export function Projects() {
             </Link>
           );
         })}
+        {!projects.isLoading && !projects.isError && needle && shown.length === 0 && (
+          <p className="muted" role="status">{t("jobs.search.none")}</p>
+        )}
         {!projects.isLoading && !projects.isError && projects.data?.length === 0 && (
           <EmptyState
             icon={<LayoutGrid size={22} />}

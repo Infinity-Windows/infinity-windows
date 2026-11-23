@@ -3,18 +3,26 @@ import { useState, type CSSProperties } from "react";
 import { AgendaUnitDetails, type AgendaUnit } from "./AgendaUnitDetails";
 import { isUnitComplete } from "../../lib/customWork/complete";
 import { pilotActivityColor } from "../../lib/installerWorkflow/pilotActivities";
-import { ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronRight } from "lucide-react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useLanguage } from "../../lib/i18n";
 import type { PlannedJob } from "../../lib/installerWorkflow/sharedPlan";
 import { addDaysISO } from "../../lib/schedule/dates";
 import { coversPlanSlot, planBoundary, type PlanBlock } from "../../lib/installerWorkflow/jobPlan";
 import { ActivityIcon, activityLabel } from "../installerPilot/workdayActivities";
+import type { ScheduleAssignment } from "../../lib/schedule/types";
 
-export function AssignedPlan({ profileId, today, plan, previewSessions, previewUnitCompletion, liveWork }: {
+export function AssignedPlan({ profileId, today, plan, scheduled = [], previewSessions, previewUnitCompletion, liveWork }: {
   profileId: string;
   today: string;
   plan: UseQueryResult<PlannedJob[]>;
+  /**
+   * This person's published schedule for the same two weeks. A job on the
+   * schedule that nobody has laid out on the Plan yet still belongs here, or
+   * the list reads "no assigned work" to someone who is booked (Matt,
+   * 2026-11-22). A job with planned work showing is not repeated.
+   */
+  scheduled?: readonly ScheduleAssignment[];
   previewSessions?: readonly WorkSession[];
   previewUnitCompletion?: Record<string, boolean>;
   liveWork?: { sessions: readonly WorkSession[]; units: readonly WorkUnit[] };
@@ -33,10 +41,11 @@ export function AssignedPlan({ profileId, today, plan, previewSessions, previewU
     </section>
   );
   const periods = [
-    { label: es ? "Hoy" : "Today", through: today, jobs: new Map<string, PlannedJob>() },
-    { label: es ? "Próximos días" : "Next few days", through: addDaysISO(today, 3), jobs: new Map<string, PlannedJob>() },
-    { label: es ? "Restante" : "Remaining", through, jobs: new Map<string, PlannedJob>() },
+    { label: es ? "Hoy" : "Today", through: today, jobs: new Map<string, PlannedJob>(), booked: new Map<string, ScheduleAssignment[]>() },
+    { label: es ? "Próximos días" : "Next few days", through: addDaysISO(today, 3), jobs: new Map<string, PlannedJob>(), booked: new Map<string, ScheduleAssignment[]>() },
+    { label: es ? "Restante" : "Remaining", through, jobs: new Map<string, PlannedJob>(), booked: new Map<string, ScheduleAssignment[]>() },
   ];
+  const planned = new Set<string>();
   for (const job of plan.data ?? []) {
     for (const block of job.blocks) {
       if (block.start < today) continue;
@@ -45,16 +54,27 @@ export function AssignedPlan({ profileId, today, plan, previewSessions, previewU
       const group = period.jobs.get(job.projectId) ?? { ...job, blocks: [] };
       group.blocks.push(block);
       period.jobs.set(job.projectId, group);
+      planned.add(job.projectId);
     }
   }
+  for (const entry of scheduled) {
+    if (!entry.project_id || !entry.project || planned.has(entry.project_id)) continue;
+    if (entry.status !== "published" || entry.end_date < today) continue;
+    // A booking already under way belongs to today, as it does on the Workday.
+    const day = entry.start_date < today ? today : entry.start_date;
+    const period = periods.find(period => day <= period.through);
+    if (!period) continue;
+    period.booked.set(entry.project_id, [...(period.booked.get(entry.project_id) ?? []), entry]);
+  }
 
-  const agenda = periods.filter(period => period.jobs.size > 0);
+  const agenda = periods.filter(period => period.jobs.size > 0 || period.booked.size > 0);
   if (!agenda.length) return <section className="ws-card" aria-label={title}>
     <h2 className="ws-h2">{title}</h2>
     <p className="ws-meta">{plan.isLoading ? (es ? "Cargando…" : "Loading…")
       : (es ? "Sin trabajo asignado para las próximas dos semanas." : "No assigned work in the next two weeks.")}</p>
   </section>;
   const dayLabel = new Intl.DateTimeFormat(lang, { weekday: "short", month: "short", day: "numeric" });
+  const timeLabel = new Intl.DateTimeFormat(lang, { hour: "numeric", minute: "2-digit" });
   const unitsLabel = (count: number) => es ? (count === 1 ? "unidad" : "unidades") : (count === 1 ? "unit" : "units");
   const byStart = (a: PlanBlock, b: PlanBlock) =>
     a.start.localeCompare(b.start) || planBoundary(a, "start") - planBoundary(b, "start");
@@ -69,7 +89,7 @@ export function AssignedPlan({ profileId, today, plan, previewSessions, previewU
   return (
     <section className="ws-card ws-upcoming-plan" aria-label={title}>
       <h2 className="ws-h2">{title}</h2>
-      {agenda.map(({ label, through, jobs }) => (
+      {agenda.map(({ label, through, jobs, booked }) => (
         <section className="ws-plan-date" key={through}>
           <h3 className="ws-plan-date-label">{label}</h3>
           <div className="ws-plan-jobs">{[...jobs.values()].map(job => (
@@ -140,7 +160,28 @@ export function AssignedPlan({ profileId, today, plan, previewSessions, previewU
                 );
               })}
             </section>
-          ))}</div>
+          ))}{[...booked.values()].map(entries => {
+            const { project, project_id: projectId } = entries[0];
+            return <section className="ws-plan-job" key={projectId} aria-label={project!.job_code}>
+              <h4>{project!.name || project!.job_code}</h4>
+              {entries.map(entry => {
+                const day = (iso: string) => dayLabel.format(new Date(iso + "T12:00:00"));
+                const from = entry.start_date < today ? today : entry.start_date;
+                const [hour, minute] = entry.start_time?.split(":").map(Number) ?? [];
+                return <article className="ws-plan-entry" key={entry.id}>
+                  <div className="ws-plan-row">
+                    <span className="ws-plan-icon"><CalendarDays size={16} aria-hidden="true" /></span>
+                    <strong>{es ? "Programado" : "Scheduled"}</strong>
+                    <span className="ws-plan-meta">
+                      {(from !== today || entry.end_date !== today) && <time dateTime={from}>
+                        {entry.end_date > from ? `${day(from)} – ${day(entry.end_date)}` : day(from)}</time>}
+                      {Number.isFinite(hour) && <span>{timeLabel.format(new Date(2000, 0, 1, hour, minute || 0))}</span>}
+                    </span>
+                  </div>
+                </article>;
+              })}
+            </section>;
+          })}</div>
         </section>
       ))}
       {unit && <AgendaUnitDetails unit={unit} profileId={profileId} onClose={() => setUnit(null)}

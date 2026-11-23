@@ -73,7 +73,7 @@ export const INCLUDED_UPDATE_IDS = [
   '2026-10-20-clock-refresh-recovery',
   // The Workday release (20261130230000): one note for everyone, one for foremen and above.
   '2026-11-22-new-look-workday', '2026-11-22-plan-and-activities',
-  '2026-11-22-workday-tidy',
+  '2026-11-22-workday-tidy', '2026-11-23-job-search-upcoming',
 ] as const;
 export interface AppUpdate {
   id: string; published_on: string; audience: number[]; kind: 'fix' | 'improvement';

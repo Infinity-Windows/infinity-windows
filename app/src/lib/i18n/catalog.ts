@@ -2381,6 +2381,8 @@ export const CATALOG = {
     es: "¿En qué trabajo está el problema?",
   },
   "capture.job.change": { en: "Change", es: "Cambiar" },
+  "jobs.search.label": { en: "Search jobs", es: "Buscar obras" },
+  "jobs.search.none": { en: "No job matches that search.", es: "Ninguna obra coincide con esa búsqueda." },
   "capture.job.find": { en: "Find a job", es: "Buscar un trabajo" },
   "capture.job.hideList": { en: "Hide job list", es: "Ocultar la lista" },
   "capture.job.search": { en: "Search jobs…", es: "Buscar trabajos…" },
