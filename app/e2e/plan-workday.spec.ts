@@ -292,8 +292,8 @@ test("Building 3 shared plan reaches the installer's Work tab and Workday in uni
   await expect(sealingCard).toHaveCount(1);
   const remove = sealingCard.getByRole("button", { name: "Delete Sealing" });
   if (!await remove.isVisible()) await sealingCard.locator(".jp-event-body").click();
-  page.once("dialog", dialog => dialog.accept());
   await remove.click();
+  await page.getByRole("alertdialog", { name: "Delete from the plan" }).getByRole("button", { name: "Delete", exact: true }).click();
   await expect(sealingCard).toHaveCount(0);
   expect(savedBlocks.some(value => value.id === sealing.id)).toBe(false);
 

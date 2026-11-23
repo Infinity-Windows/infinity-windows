@@ -485,8 +485,8 @@ test("planner moves a bundle, pulls out an activity, and deletes from the card",
   await expect(bundle.getByRole("button", { name: "Edit Flashing", exact: true })).toBeVisible();
   await expect(bundle.getByRole("button", { name: "Edit Sealing", exact: true })).toBeHidden();
   await expect(bundle.getByRole("button", { name: "Sealing", exact: true })).toHaveAttribute("aria-pressed", "true");
-  page.once("dialog", dialog => dialog.accept());
   await page.getByRole("button", { name: "Delete Flashing", exact: true }).click();
+  await page.getByRole("alertdialog", { name: "Delete from the plan" }).getByRole("button", { name: "Delete", exact: true }).click();
   await expect.poll(read).toMatchObject([{ activity: "Sealing" }]);
   await page.getByRole("button", { name: /^Sealing ·/ }).click();
   await expect(page.getByRole("button", { name: "Edit Sealing", exact: true })).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
