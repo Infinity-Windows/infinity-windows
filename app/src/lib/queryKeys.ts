@@ -75,6 +75,7 @@ export const QUERY_KEY_ROOTS: QueryKeyRootEntry[] = [
   { root: "customWorkOpening", offline: true, why: "Keep field work available during a signal loss." },
   { root: "customWorkRoster", offline: true, why: "Keep field work available during a signal loss." },
   { root: "customWorkRosterAll", offline: false },
+  { root: "customWorkTestPeople", offline: false },
 
   { root: "laborStatsJobs", offline: false },
   { root: "jobLaborTargets", offline: false },
