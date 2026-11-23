@@ -17,7 +17,10 @@ const IMAGE = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1600"
 async function useReceiptViewerFixtures(page: Page, office = false, pdf = false, missing = false, spanish = false) {
   // Fixture setup is an async browser helper, not a React hook.
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  await useSupabaseFixtures(page, { role: office ? "supervisor" : "installer", language: spanish ? "es" : "en" });
+  // A supervisor on both doors: since 2026-11-22 the folder's receipt list is
+  // read only by whoever may open the office table, and installers add
+  // receipts without seeing them afterwards.
+  await useSupabaseFixtures(page, { role: "supervisor", language: spanish ? "es" : "en" });
   await hideWrongProjectBanner(page);
   const signed: string[] = [];
   await page.addInitScript(() => {

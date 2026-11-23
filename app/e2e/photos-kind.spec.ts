@@ -7,6 +7,12 @@
 // the crew had bought for it. House style (receipts.spec.ts): mocked routes,
 // real UI, and assert the URL a tap actually writes, because the URL is what
 // survives a reload and what somebody pastes into the job chat.
+//
+// Since 2026-11-22 the toggle and the list are for whoever may open the office
+// Receipts table (supervisors, owners, the cost grant). Installers and foremen
+// still add receipts here but do not read them back (Ammon: "everyone should be
+// able to upload them, just not see them after"), so the reading tests sign in
+// as a supervisor and the last three pin what the crew sees instead.
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -98,7 +104,7 @@ const tab = (page: Page, name: "Photos" | "Receipts") =>
 test("pick a job on the Photos page, then switch to that job's receipts", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   await hideWrongProjectBanner(page);
-  await useSupabaseFixtures(page, { role: "foreman" });
+  await useSupabaseFixtures(page, { role: "supervisor" });
   await usePhotoStorage(page);
   await useFeedRows(page);
 
@@ -113,7 +119,7 @@ test("pick a job on the Photos page, then switch to that job's receipts", async 
   await tab(page, "Receipts").click();
 
   // BOTH parameters: the job survives the toggle. Losing it here would drop a
-  // foreman from "BLACK22's receipts" to "everybody's receipts" without saying
+  // supervisor from "BLACK22's receipts" to "everybody's receipts" without saying
   // so, which is the kind of quiet widening that money screens must not do.
   await expect(page).toHaveURL(new RegExp(`project=${BLACK22.projectId}`));
   await expect(page).toHaveURL(/kind=receipt/);
@@ -136,7 +142,7 @@ test("the same toggle on the job's own Photos tab, and a reload comes back to it
 }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await hideWrongProjectBanner(page);
-  await useSupabaseFixtures(page, { role: "foreman" });
+  await useSupabaseFixtures(page, { role: "supervisor" });
   await usePhotoStorage(page);
   await useFeedRows(page);
 
@@ -168,30 +174,39 @@ test("the /photos?kind=receipt&capture=1 deep link still opens the receipt sheet
   await useFeedRows(page);
 
   // The Capture button's own door into this page. It predates the toggle and
-  // has to keep working exactly as it did — the toggle just shows where it
-  // landed you.
+  // has to keep working exactly as it did, for an installer too: adding a
+  // receipt is everyone's, only reading them back is the office's.
   await page.goto("/photos?kind=receipt&capture=1");
   await expect(page.getByRole("heading", { name: "Add a receipt" })).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
-  await expect(tab(page, "Receipts")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("button", { name: /Add receipt/ })).toBeVisible();
+  await expect(tab(page, "Receipts")).toHaveCount(0);
 });
 
-test("an installer's empty receipts list says these are only their own", async ({ page }) => {
-  await useSupabaseFixtures(page, { role: "installer" });
-  await usePhotoStorage(page);
-  await page.route("**/rest/v1/receipts**", (r) => json(r, [], 0));
+for (const role of ["installer", "foreman"] as const) {
+  test(`${role === "installer" ? "an installer" : "a foreman"} adds receipts but is not shown them afterwards`, async ({ page }) => {
+    await useSupabaseFixtures(page, { role });
+    await usePhotoStorage(page);
+    // Rows exist and row security would hand them over. The screen still does
+    // not ask for them or draw them.
+    let asked = 0;
+    await page.route("**/rest/v1/receipts**", (r) => {
+      asked += 1;
+      return json(r, [receiptRow(1, "Home Depot", 4212)], 1);
+    });
 
-  await page.goto(`/photos?project=${BLACK22.projectId}&kind=receipt`);
+    await page.goto(`/photos?project=${BLACK22.projectId}&kind=receipt`);
 
-  // The receipts table's RLS hands an installer their OWN uploads and nothing
-  // else, so an empty list here does not mean the job has no receipts. Saying
-  // that out loud is the difference between "there are none" and "there are
-  // none of yours".
-  await expect(page.getByText("You only see receipts you added.")).toBeVisible();
-});
+    await expect(page.getByText("Receipts you add go to the office.", { exact: false })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Add receipt/ })).toBeVisible();
+    await expect(page.getByText("Home Depot")).toHaveCount(0);
+    await expect(tab(page, "Receipts")).toHaveCount(0);
+    expect(asked).toBe(0);
+  });
+}
 
-test("a foreman's empty receipts list does not, because they see them all", async ({ page }) => {
-  await useSupabaseFixtures(page, { role: "foreman" });
+test("a supervisor's empty receipts list says there are none", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
   await usePhotoStorage(page);
   await page.route("**/rest/v1/receipts**", (r) => json(r, [], 0));
 
