@@ -3529,6 +3529,21 @@ button:disabled {
   flex: none;
 }
 
+/* The Jobs page search: one full-width field above the list, tall enough to
+   tap and 16px so an iPhone does not zoom the page when it takes focus. */
+.jobs-search {
+  display: flex; align-items: center; gap: 8px; margin: 8px 0 12px;
+  padding: 0 12px; min-height: 44px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--card); color: var(--muted);
+}
+/* The ring goes on the whole field. The input's own ring, drawn inside it,
+   read as a second box around the text. */
+.jobs-search:focus-within { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 2px; }
+html .jobs-search input:focus-visible { outline: 0; }
+.jobs-search input {
+  flex: 1; min-width: 0; margin: 0; padding: 10px 0; border: 0; outline: 0;
+  background: transparent; color: var(--text); font-size: 16px;
+}
 .home-projects {
   display: flex;
   flex-direction: column;
