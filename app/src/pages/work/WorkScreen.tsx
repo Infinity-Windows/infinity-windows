@@ -62,12 +62,11 @@ import { headsUps } from "../../lib/work/headsUps";
 import { pendingWorkPhotos } from "../../lib/work/pendingWorkPhotos";
 import { chooseNextUp } from "../../lib/work/nextUp";
 import { unitWorkLocked, type StartDayInput } from "../../lib/work/startDay";
-import { pickTodayEntries } from "../../lib/work/today";
+import { myPublishedInWindow, pickTodayEntries } from "../../lib/work/today";
 import { WorkdayJobs } from "./WorkdayJobs";
 import { WorkdayProject } from "../installerPilot/NativeInstallerDay";
 import { PLAN_OPEN, planBoundary } from "../../lib/installerWorkflow/jobPlan";
-import { supabase } from "../../lib/supabase";
-import { readMyPlanWindow, readPublishedPlan } from "../../lib/installerWorkflow/sharedPlan";
+import { listPlanJobsFor, readMyPlanWindow, readPublishedPlan } from "../../lib/installerWorkflow/sharedPlan";
 import { AssignedPlan } from "./AssignedPlan";
 import "./work.css";
 
@@ -130,6 +129,17 @@ export function WorkScreen() {
     refetchOnReconnect: "always",
   });
   const planThrough = addDaysISO(today, 13);
+  // Upcoming work covers two weeks, a week past the Today card's window, so it
+  // reads its own copy of the published schedule through the Plan's last day.
+  // Viewing as a person reads that person's schedule; viewing as a bare role
+  // has nobody to read it for.
+  const upcomingFor = preview ? previewPerson?.id ?? null : profileId;
+  const upcomingSchedule = useQuery({
+    queryKey: ["workSchedule", upcomingFor, today, planThrough],
+    queryFn: () => listMyPublished(upcomingFor!, today, planThrough),
+    enabled: installer && Boolean(upcomingFor),
+    refetchInterval: 60_000,
+  });
   const installerPlan = useQuery({
     queryKey: ["myInstallerPlan", profileId, today, planThrough, undefined],
     queryFn: () => readMyPlanWindow(today, planThrough),
@@ -141,22 +151,20 @@ export function WorkScreen() {
     queryKey: ["previewInstallerJobs", previewPerson?.id, today, planThrough],
     enabled: installer && Boolean(previewPerson),
     queryFn: async () => {
+      // The person's real published Plan, read only: every job whose Plan
+      // names them, QA login or not. It used to read the test jobs alone, so
+      // a real foreman or installer always previewed as having no work (Matt,
+      // 2026-11-22). Anything tapped in a preview stays in the simulator.
       const person = previewPerson!;
-      const { data: profile, error: profileError } = await supabase.from("profiles")
-        .select("is_test").eq("id", person.id).single();
-      if (profileError) throw profileError;
-      if (!profile.is_test) return [];
-      const { data: jobs, error } = await supabase.from("projects").select("id,job_code,name")
-        .eq("is_test", true).is("deleted_at", null);
-      if (error) throw error;
+      const jobs = await listPlanJobsFor(person.id);
       return Promise.all(jobs.map(async job => {
-        const blocks = (await readPublishedPlan(job.id, person.id))
+        const blocks = (await readPublishedPlan(job.projectId, person.id))
           .filter(block => block.start <= planThrough && block.end >= today);
         const assignedIds = new Set(blocks.flatMap(block => block.openingIds));
-        const openings = assignedIds.size ? await listOpenings(job.id).catch(() => []) : [];
+        const openings = assignedIds.size ? await listOpenings(job.projectId).catch(() => []) : [];
         const unitLabels = Object.fromEntries(openings.filter(opening => assignedIds.has(opening.id))
           .map(opening => [opening.id, opening.opening_code]));
-        return { projectId: job.id, jobCode: job.job_code, jobName: job.name, blocks, unitLabels };
+        return { ...job, blocks, unitLabels };
       }));
     },
     refetchInterval: 15000,
@@ -429,6 +437,7 @@ export function WorkScreen() {
             <WorkdayJobs profileId={profileId} onChoose={chooseJob} />
           </section>}
         <div id="work-upcoming"><AssignedPlan profileId={profileId} today={today} plan={preview ? previewPlan : installerPlan}
+          scheduled={upcomingFor ? myPublishedInWindow(upcomingSchedule.data ?? [], upcomingFor, today, planThrough) : []}
           previewSessions={preview ? simulator.sessions : undefined}
           previewUnitCompletion={preview ? simulator.unitCompletion : undefined}
           liveWork={preview ? undefined : work} /></div>

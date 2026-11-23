@@ -4,6 +4,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import { expect, it, vi } from "vitest";
 import type { PlanBlock } from "../../lib/installerWorkflow/jobPlan";
 import type { PlannedJob } from "../../lib/installerWorkflow/sharedPlan";
+import type { ScheduleAssignment } from "../../lib/schedule/types";
 import { AssignedPlan } from "./AssignedPlan";
 
 vi.mock("../../lib/i18n", () => ({ useLanguage: () => ({ lang: "en" }) }));
@@ -33,4 +34,28 @@ it("groups blocks by start day regardless of their end date", () => {
   expect(groups.map(group => group.querySelector("h3")?.textContent)).toEqual(["Today", "Next few days", "Remaining"]);
   expect(groups.map(group => Array.from(group.querySelectorAll("article strong"), row => row.textContent)))
     .toEqual([["Setting frame", "Flashing"], ["Sealing"], ["Staging"]]);
+});
+
+it("lists a scheduled job nobody has planned yet, and not one whose planned work already shows", () => {
+  const booking = (id: string, projectId: string, name: string, start: string, end: string) => ({
+    id, project_id: projectId, project: { job_code: name.toUpperCase(), name }, status: "published",
+    start_date: start, end_date: end, start_time: "07:00:00", members: [{ profile_id: "installer" }],
+  }) as unknown as ScheduleAssignment;
+  const plan = {
+    data: [{
+      projectId: "planned-job", jobCode: "PLANNED", jobName: "Planned job", unitLabels: {},
+      blocks: [{ id: "b", activity: "Sealing", kind: "unit", start: "2026-11-20", end: "2026-11-20", openingIds: [], installerIds: [] }],
+    }],
+  } as unknown as UseQueryResult<PlannedJob[]>;
+  const markup = renderToStaticMarkup(<AssignedPlan profileId="installer" today="2026-11-19" plan={plan} scheduled={[
+    booking("s1", "planned-job", "Planned job", "2026-11-19", "2026-11-21"),
+    booking("s2", "booked-job", "Booked job", "2026-11-25", "2026-11-26"),
+    booking("s3", "far-job", "Far job", "2026-12-10", "2026-12-10"),
+  ]} />);
+  const container = document.createElement("div");
+  container.innerHTML = markup;
+  const jobs = Array.from(container.querySelectorAll(".ws-plan-job"), job =>
+    [job.querySelector("h4")?.textContent, ...Array.from(job.querySelectorAll("article strong"), row => row.textContent)]);
+  expect(jobs).toEqual([["Planned job", "Sealing"], ["Booked job", "Scheduled"]]);
+  expect(Array.from(container.querySelectorAll(".ws-plan-job")).at(-1)?.querySelector("time")?.textContent).toMatch(/Nov 25.*Nov 26/);
 });

@@ -54,6 +54,18 @@ export async function readMyPlanWindow(start: string, end: string): Promise<Plan
   return data;
 }
 
+/**
+ * The jobs whose published Plan names this person, for "view as": the blocks
+ * themselves still come from readPublishedPlan. Empty ahead of its migration
+ * (20261130270000), which is what the preview showed before it.
+ */
+export async function listPlanJobsFor(person: string): Promise<Pick<PlannedJob, "projectId" | "jobCode" | "jobName">[]> {
+  const { data, error } = await supabase.rpc("list_installer_plan_jobs", { p_installer_id: person });
+  if (isMissingFunction(error)) return [];
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
 export async function readActivityDone(project: string): Promise<ActivityDoneMark[]> {
   const { data, error } = await supabase.rpc("get_plan_activity_done", { p_project_id: project });
   if (isMissingFunction(error)) return [];
