@@ -10,7 +10,7 @@ import { AssignedPlan } from "./AssignedPlan";
 vi.mock("../../lib/i18n", () => ({ useLanguage: () => ({ lang: "en" }) }));
 vi.mock("./AgendaUnitDetails", () => ({ AgendaUnitDetails: () => null }));
 
-it("groups blocks by start day regardless of their end date", () => {
+it("groups blocks under the day they start, named by its date", () => {
   const block = (id: string, activity: PlanBlock["activity"], start: string, end: string): PlanBlock => ({
     id, activity, kind: "unit", start, end, openingIds: [], installerIds: [],
   });
@@ -31,7 +31,7 @@ it("groups blocks by start day regardless of their end date", () => {
   const container = document.createElement("div");
   container.innerHTML = markup;
   const groups = Array.from(container.querySelectorAll(".ws-plan-date"));
-  expect(groups.map(group => group.querySelector("h3")?.textContent)).toEqual(["Today", "Next few days", "Remaining"]);
+  expect(groups.map(group => group.querySelector("h3")?.textContent)).toEqual(["Today", "Sun, Nov 22", "Mon, Nov 23"]);
   expect(groups.map(group => Array.from(group.querySelectorAll("article strong"), row => row.textContent)))
     .toEqual([["Setting frame", "Flashing"], ["Sealing"], ["Staging"]]);
 });
@@ -57,5 +57,7 @@ it("lists a scheduled job nobody has planned yet, and not one whose planned work
   const jobs = Array.from(container.querySelectorAll(".ws-plan-job"), job =>
     [job.querySelector("h4")?.textContent, ...Array.from(job.querySelectorAll("article strong"), row => row.textContent)]);
   expect(jobs).toEqual([["Planned job", "Sealing"], ["Booked job", "Scheduled"]]);
-  expect(Array.from(container.querySelectorAll(".ws-plan-job")).at(-1)?.querySelector("time")?.textContent).toMatch(/Nov 25.*Nov 26/);
+  const last = Array.from(container.querySelectorAll(".ws-plan-date")).at(-1);
+  expect(last?.querySelector("h3")?.textContent).toBe("Wed, Nov 25");
+  expect(last?.querySelector(".ws-plan-meta")?.textContent).toMatch(/through Thu, Nov 26.*7:00/);
 });

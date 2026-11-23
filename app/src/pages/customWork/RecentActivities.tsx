@@ -6,6 +6,7 @@ import { useSearchParams } from "react-router-dom";
 import { listProjectsAnyStatus } from "../../lib/api";
 import { listProfilesIncludingRemoved } from "../../lib/install/api";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
+import { supabase } from "../../lib/supabase";
 import { isForemanPlus } from "../../lib/install/types";
 import { addDays, previousPayPeriod, timecardRange } from "../../lib/timeclock";
 import { formatApiError } from "../../lib/errors";
@@ -77,6 +78,23 @@ function ActivityReview() {
   }, [expandedId]);
   const jobs = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
   const profiles = useQuery({ queryKey: ["customWorkRosterAll"], queryFn: listProfilesIncludingRemoved });
+  // The QA logins and their practice activities stay off this page unless a
+  // testing job is the one being looked at. They were the only names in the
+  // Person filter, which listed whoever had recorded something and so showed
+  // none of the real crew before their first day (Matt, 2026-11-23).
+  const testPeople = useQuery({
+    queryKey: ["customWorkTestPeople"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("profiles").select("id").eq("is_test", true);
+      if (error) throw error;
+      return data.map(profile => profile.id as string);
+    },
+  });
+  const onTestJob = Boolean(job && jobs.data?.find(project => project.id === job)?.is_test);
+  const hidden = new Set(onTestJob ? [] : testPeople.data ?? []);
+  const crew = (profiles.data ?? []).filter(profile => !profile.retired_at && !hidden.has(profile.id)
+    && (profile.role === "installer" || profile.role === "foreman"));
+  const sessions = work.sessions.filter(row => !hidden.has(row.profile_id));
   const selectedHistoryRow = work.sessions.find(row => row.id === historyId);
   const history = useQuery({
     queryKey: ["customWorkHistory", work.user, selectedHistoryRow?.project_id, historyId],
@@ -86,10 +104,12 @@ function ActivityReview() {
   const names = new Map(profiles.data?.map(profile => [profile.id, profile.display_name]));
   const jobNames = new Map(jobs.data?.map(project => [project.id, project.job_code]));
   const units = new Map(work.units.map(unit => [unit.id, unit]));
-  const activities = [...new Set(work.sessions.map(titleOf))].sort();
-  const workers = [...new Set(work.sessions.map(row => row.profile_id))].sort((a, b) =>
+  const activities = [...new Set(sessions.map(titleOf))].sort();
+  // Every installer and foreman, whether or not they have recorded anything,
+  // and anyone else (a supervisor, someone since retired) who has.
+  const workers = [...new Set([...crew.map(profile => profile.id), ...sessions.map(row => row.profile_id)])].sort((a, b) =>
     (names.get(a) ?? a).localeCompare(names.get(b) ?? b));
-  const rows = work.sessions.filter(row => (!people.length || people.includes(row.profile_id))
+  const rows = sessions.filter(row => (!people.length || people.includes(row.profile_id))
     && (!selectedActivities.length || selectedActivities.includes(titleOf(row)))).sort((a, b) =>
     Date.parse(b.started_at) - Date.parse(a.started_at) || b.id.localeCompare(a.id));
   const tableFilter = work.loadingOlderSessions && heldFilter ? heldFilter : periodFilter;
@@ -151,7 +171,7 @@ function ActivityReview() {
     {/* Work nobody timed is added here; everything below it can only
         correct an activity that already exists. */}
     {adding ? <AddActivity work={work} jobs={jobs.data ?? []} job={job} onClose={() => setAdding(false)}
-        people={(profiles.data ?? []).filter(profile => !profile.retired_at && (profile.role === "installer" || profile.role === "foreman"))} />
+        people={crew} />
       : <button type="button" className="cw-add-activity-open" onClick={() => setAdding(true)}><Plus size={16} aria-hidden="true" />Add activity</button>}
     {workers.length > 0 && <div className="cw-activity-filters">
       <FilterTags label="Activity" choices={activities.map(name => ({ id: name, label: name }))}
