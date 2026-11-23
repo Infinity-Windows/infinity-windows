@@ -114,9 +114,10 @@
 .wd-detail-machinery { margin:8px 0; font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums; }
 /* On the clock / on break / off the clock: the shift, whatever the timers show. */
 .workday-simple { position:relative; }
-/* Pinned to the top right corner so it reads the same wherever the header's
-   buttons wrap to (Matt, 2026-11-20). */
-.workday-simple > .wd-clock-status { position:absolute; top:5px; right:24px; margin:0; display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; line-height:1; white-space:nowrap; color:var(--muted,#aab6bf); }
+/* Top left, on its own line above the job (Matt, 2026-11-22; it was pinned to
+   the top right corner before). In the flow rather than positioned, so it
+   lines up with the job under it at every padding the card is given. */
+.workday-simple > .wd-clock-status { margin:-10px 0 10px; display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; line-height:1; white-space:nowrap; color:var(--muted,#aab6bf); }
 .wd-clock-status > span { flex:none; width:8px; height:8px; border-radius:50%; background:currentColor; }
 .workday-simple > .wd-clock-status[data-state="working"] { color:#3ecf8e; }
 .workday-simple > .wd-clock-status[data-state="break"] { color:var(--accent,#fa843e); }

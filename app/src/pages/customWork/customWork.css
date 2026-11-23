@@ -586,6 +586,14 @@
 .cw-add-activity > p { margin: 0; font-size: .8rem; }
 .cw-add-job { min-width: 0; }
 .cw-add-job .job-search-select { margin: 0; }
+/* The job search beside the form's own fields: the same label, height, fill
+   and single focus ring as the selects next to it (Matt, 2026-11-22). */
+.cw-add-job .field-label { display: block; margin: 0 0 4px; color: var(--muted); font-size: .8rem; font-weight: 600; }
+.cw-add-job .job-search-control { min-height: 44px; box-sizing: border-box; padding-inline-start: 12px; border-radius: 10px; background: var(--card-raised, var(--surface)); }
+.cw-add-job .job-search-control:focus-within { outline-offset: 1px; }
+.cw-add-job .job-search-control input { min-height: 42px; padding-block: 8px; font-size: 1rem; color: var(--text); }
+.cw-add-job .job-search-control input:focus-visible { outline: none; box-shadow: none; }
+.cw-add-job .job-search-control > button { min-height: 42px; }
 .cw-add-units { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px 12px 12px; border: 1px solid var(--border); border-radius: 10px; }
 .cw-add-units legend { padding: 0 6px; color: var(--muted); font-size: .8rem; font-weight: 600; }
 .cw-add-find { grid-template-columns: minmax(0, 1fr); margin: 0; }
