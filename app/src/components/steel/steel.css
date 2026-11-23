@@ -34,14 +34,13 @@ html[data-design="new"] .app-rail { background: #12171b; }
 .steel-brand { display: flex; justify-content: center; padding: 14px; }
 .steel-brand img { width: 142px; height: 76px; object-fit: cover; mix-blend-mode: screen; }
 .steel-header {
-  display: flex; align-items: center; gap: 12px; min-height: 60px;
-  padding: 8px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
+  display: flex; align-items: center; gap: 12px; min-height: calc(60px + env(safe-area-inset-top, 0px));
+  /* This header is the topmost row on a phone, so clearing the status bar is
+     its job, as it was the sync strip's before it. Without it the whole row,
+     logo included, sat under the phone's time and battery (Ammon,
+     2026-11-22). */
+  padding: calc(8px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
   background: #12171b; border-bottom: 1px solid var(--border);
-}
-.steel-menu {
-  display: grid; place-items: center; flex: none; width: 44px; height: 44px;
-  border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--text);
-  padding: 0; margin: 0; align-self: center; line-height: 1;
 }
 .steel-header-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); }
 .steel-mobile-brand { display: none; }
@@ -118,7 +117,6 @@ html[data-design="new"] .ws-saved-unit { padding: 12px 0; border-bottom: 1px sol
 }
 @media (min-width: 860px) {
   html[data-design="new"] { --nav-width: 216px; }
-  .steel-menu { display: none; }
 }
 @media (max-width: 420px) {
   .steel-header-title { display: none; }
@@ -127,9 +125,6 @@ html[data-design="new"] .ws-saved-unit { padding: 12px 0; border-bottom: 1px sol
   .steel-header-status .sync-pill { min-width: 44px; min-height: 44px; justify-content: center; }
   .steel-work-heading h1 { font-size: 25px; }
 }
-/* Respect the app's explicit Phone/desktop layout preference too. */
-html[data-design="new"][data-display-layout="phone"] .steel-menu { display: grid; }
-html[data-design="new"][data-display-layout="desktop"] .steel-menu { display: none; }
 @media (prefers-reduced-motion: reduce) {
   html[data-design="new"] .work-screen * { scroll-behavior: auto; }
   html[data-design="new"] .menu-drawer { animation: none; }

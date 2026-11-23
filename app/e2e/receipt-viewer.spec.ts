@@ -15,9 +15,12 @@ const receipt = {
 const IMAGE = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1600" viewBox="0 0 800 1600"><rect width="800" height="1600" fill="white"/><g font-family="monospace" fill="black" text-anchor="middle"><text x="400" y="150" font-size="64">SAMPLE RECEIPT</text><text x="400" y="280" font-size="40">Shell</text><text x="400" y="400" font-size="32">Sep 4, 2026</text><text x="400" y="700" font-size="40">Fuel: $42.10</text><text x="400" y="1100" font-size="28">Thank you</text><text x="400" y="1450" font-size="24">Test fixture only</text></g></svg>`;
 
 async function useReceiptViewerFixtures(page: Page, office = false, pdf = false, missing = false, spanish = false) {
+  // A supervisor on both doors: since 2026-11-22 the folder's receipt list is
+  // read only by whoever may open the office table, and installers add
+  // receipts without seeing them afterwards.
   // Fixture setup is an async browser helper, not a React hook.
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  await useSupabaseFixtures(page, { role: office ? "supervisor" : "installer", language: spanish ? "es" : "en" });
+  await useSupabaseFixtures(page, { role: "supervisor", language: spanish ? "es" : "en" });
   await hideWrongProjectBanner(page);
   const signed: string[] = [];
   await page.addInitScript(() => {

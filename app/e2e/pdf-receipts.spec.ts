@@ -285,7 +285,9 @@ test("a PDF that will not open says so by name, and files nothing", async ({ pag
 });
 
 test("the feed tags a PDF receipt and offers the original", async ({ page }) => {
-  await useSupabaseFixtures(page, { role: "installer" });
+  // A supervisor: the feed's receipt list is not shown to installers or
+  // foremen since 2026-11-22.
+  await useSupabaseFixtures(page, { role: "supervisor" });
   await hideWrongProjectBanner(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ colorScheme: "light" });

@@ -60,6 +60,10 @@
 .jp-scope { display: block; font-size: 10px; line-height: 1.4; color: var(--text-secondary, var(--muted)); overflow-wrap: anywhere; }
 .jp-card-content { display: flex; flex-direction: column; gap: 8px; min-width: 0; max-width: 100%; }
 .jp-calendar { min-width: 0; }
+.jp-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 12px; background: var(--surface); }
+.jp-confirm > p { flex: 1 1 12rem; margin: 0; font-weight: 600; }
+.job-planner .jp-confirm > button { min-height: 44px; margin: 0; padding: 8px 16px; }
+.job-planner .jp-confirm > button[data-danger] { border-color: var(--accent); background: var(--accent); color: #151b20; font-weight: 650; }
 .jp-calendar-heading { margin-bottom: 10px; flex-wrap: wrap; }
 .job-planner .jp-back-to-calendar { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 5px 11px; font-size: 12px; }
 .jp-calendar-heading > small { margin-left: auto; font-size: 10px; }

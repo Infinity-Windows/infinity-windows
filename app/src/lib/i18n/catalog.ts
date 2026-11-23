@@ -1497,6 +1497,8 @@ export const CATALOG = {
   "scope.doors.many": { en: "{n} doors", es: "{n} puertas" },
   "scope.curtainWalls.one": { en: "{n} curtain wall", es: "{n} muro cortina" },
   "scope.curtainWalls.many": { en: "{n} curtain walls", es: "{n} muros cortina" },
+  "scope.storefronts.one": { en: "{n} storefront", es: "{n} frente de tienda" },
+  "scope.storefronts.many": { en: "{n} storefronts", es: "{n} frentes de tienda" },
   "scope.stories.one": { en: "{n} story", es: "{n} piso" },
   "scope.stories.many": { en: "{n} stories", es: "{n} pisos" },
   // A tracking job has no openings by design — nobody uploads plans for a
@@ -2374,6 +2376,10 @@ export const CATALOG = {
     en: "Which job is this log for?",
     es: "¿De qué trabajo es este registro?",
   },
+  "capture.job.pickForProblem": {
+    en: "Which job is the problem on?",
+    es: "¿En qué trabajo está el problema?",
+  },
   "capture.job.change": { en: "Change", es: "Cambiar" },
   "capture.job.find": { en: "Find a job", es: "Buscar un trabajo" },
   "capture.job.hideList": { en: "Hide job list", es: "Ocultar la lista" },
@@ -2402,6 +2408,11 @@ export const CATALOG = {
   "capture.tile.dailyLogHint": {
     en: "Log today's progress and notes",
     es: "Anota el avance y las notas de hoy",
+  },
+  "capture.tile.problem": { en: "Report a problem", es: "Reportar un problema" },
+  "capture.tile.problemHint": {
+    en: "Something blocked, damaged or missing",
+    es: "Algo bloqueado, dañado o faltante",
   },
   "capture.tile.gallery": { en: "Open gallery", es: "Abrir la galería" },
   "capture.tile.galleryHint": {

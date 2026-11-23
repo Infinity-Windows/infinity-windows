@@ -1,4 +1,4 @@
-import { Boxes, BrushCleaning, ClipboardCheck, HardHat, Package, Timer, Truck, Warehouse, Wrench } from "lucide-react";
+import { Boxes, BrushCleaning, ClipboardCheck, Hammer, HardHat, Package, Timer, Truck, Warehouse, Wrench } from "lucide-react";
 /** A shared opening silhouette with a different symbol for each installation task. */
 export function ActivityIcon({ activity }: { activity: string }) {
  const opening = ["RO checked", "Flashing", "Setting frame", "Sealing", "QC / adjustments", "RO framing"].includes(activity);
@@ -11,6 +11,6 @@ export function ActivityIcon({ activity }: { activity: string }) {
    {activity === "QC / adjustments" && <path d="m11 16 4 4 7-8" strokeWidth="2.5"/>}
    {activity === "RO framing" && <path d="M11 9h10v16H11zM8 11h3m10 0h3M8 23h3m10 0h3"/>}
  </svg>;
- const Icon = activity === "Waiting / blocked" ? Timer : activity === "Cleanup" ? BrushCleaning : /delivery|Travel/.test(activity) ? Truck : /Warehouse|yard/.test(activity) ? Warehouse : /Loading|Unloading|Hauling|Container|Staging/.test(activity) ? Boxes : /Safety|Training|planning|Consulting/.test(activity) ? ClipboardCheck : /Repair|Problem/.test(activity) ? Wrench : activity === "Setup" ? HardHat : Package;
+ const Icon = activity === "Waiting / blocked" ? Timer : activity === "Cleanup" ? BrushCleaning : /delivery|Travel/.test(activity) ? Truck : /Warehouse|yard/.test(activity) ? Warehouse : /Loading|Unloading|Hauling|Container|Staging/.test(activity) ? Boxes : /Safety|Training|planning|Consulting/.test(activity) ? ClipboardCheck : /Repair|Problem/.test(activity) ? Wrench : /Cutting/.test(activity) ? Hammer : activity === "Setup" ? HardHat : Package;
  return <Icon size={36} aria-hidden="true" />;
 }

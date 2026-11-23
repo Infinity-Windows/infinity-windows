@@ -518,7 +518,9 @@ export function MarkedPlanPreview({ drafts, cadSource, cadPdf, projectId, existi
                     data-ai={aiRun?.working.includes(row.key) ? "working" : aiRun?.queued.includes(row.key) ? "queued" : undefined}
                     onClick={() => reviewing?.key === row.key ? setReviewing(undefined) : openEvidence(row.opening)}>
                     <strong>{row.mark}</strong>
-                    <span className="ub-count" data-tone={tone}
+                    {/* Plain text, as the Finish list reads; only an opening
+                        that needs attention keeps the pill (Matt, 2026-11-22). */}
+                    <span className={tone === "warn" ? "ub-count" : "cad-plan-state"} data-tone={tone}
                       title={row.match?.itemNumber ? `CAD item ${row.match.itemNumber}` : row.match?.linework && !row.review ? "Linework supported" : undefined}>
                       {row.review?.manualDefinition?.kind ? `${unitKindLabel(row.review.manualDefinition.kind)} · Defined by hand` : row.drawing ? `${row.review ? "Confirmed" : "Suggested"} · ${row.drawing.label}`
                         : aiDraft ? `AI suggests · ${aiDraft.label}` : aiAnswers[row.key] ? "AI found no match" : drafts.length ? "CAD match unclear" : "Plan opening"}</span>

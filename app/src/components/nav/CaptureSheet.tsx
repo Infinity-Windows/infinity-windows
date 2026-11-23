@@ -19,10 +19,11 @@
 //    nobody why. The question has no "no job" answer for a photo: an
 //    attachment must hang off something (attachments_target), and a photo that
 //    hangs off nothing is a row the database refuses — see TILES below.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   Camera,
   FolderOpen,
   NotebookPen,
@@ -48,6 +49,11 @@ import { useNearbyJob } from "../../lib/capture/useNearbyJob";
 import { projectIdFromPath } from "../../lib/capture/routeJob";
 import { readLastCaptureJob, writeLastCaptureJob } from "../../lib/capture/lastJob";
 
+// Its strings live in the Work screens' own catalog, which the entry chunk has
+// no room for, so the sheet comes with its chunk when the tile is tapped.
+const ReportProblemSheet = lazy(() =>
+  import("../work/ReportProblemSheet").then((m) => ({ default: m.ReportProblemSheet })));
+
 function todayLocalISO(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -63,9 +69,9 @@ interface CaptureSheetProps {
 }
 
 /** Which flow is on screen instead of the tile grid. */
-type Flow = "photo" | "receipt" | "dailyLog" | "photoDone" | null;
+type Flow = "photo" | "receipt" | "dailyLog" | "problem" | "photoDone" | null;
 
-type TileKey = "photo" | "receipt" | "daily-log" | "gallery" | "scan";
+type TileKey = "photo" | "receipt" | "daily-log" | "problem" | "gallery" | "scan";
 
 interface CaptureTile {
   key: TileKey;
@@ -94,7 +100,9 @@ interface CaptureTile {
 }
 
 /**
- * The five things a person captures in the field, in the order they happen.
+ * The things a person captures in the field, in the order they happen.
+ * Report a problem joined them on 2026-11-22, when its button left the
+ * Workday: it files the same issue the unit sheet does, and needs a job.
  *
  * Daily logs are available to installers and above. Partner access remains
  * blocked by the app boundary and by the database read and write checks.
@@ -120,6 +128,13 @@ const TILES: CaptureTile[] = [
     hintKey: "capture.tile.dailyLogHint",
     Icon: NotebookPen,
     dailyLogOnly: true,
+    job: "required",
+  },
+  {
+    key: "problem",
+    labelKey: "capture.tile.problem",
+    hintKey: "capture.tile.problemHint",
+    Icon: AlertTriangle,
     job: "required",
   },
   {
@@ -299,6 +314,7 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
     if (key === "photo") return setFlow("photo");
     if (key === "receipt") return setFlow("receipt");
     if (key === "daily-log") return setFlow("dailyLog");
+    if (key === "problem") return setFlow("problem");
     if (key === "gallery") {
       navigate(pid ? `/photos?project=${pid}` : "/photos");
       return onClose();
@@ -334,7 +350,7 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
   // answer). If something ever does, this reads as no flow at all and the
   // picker comes back: a repeated question beats a camera with nowhere to save.
   const activeFlow: Flow =
-    (flow === "dailyLog" || flow === "photo") && !projectId ? null : flow;
+    (flow === "dailyLog" || flow === "photo" || flow === "problem") && !projectId ? null : flow;
 
   // ---- The flows, each replacing the tile grid rather than stacking on it --
 
@@ -378,6 +394,14 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
         jobLabel={jobLabel ?? selected?.name ?? ""}
         onClose={onClose}
       />
+    );
+  }
+
+  if (activeFlow === "problem" && projectId) {
+    return (
+      <Suspense fallback={null}>
+        <ReportProblemSheet open onClose={onClose} projectId={projectId} />
+      </Suspense>
     );
   }
 
@@ -447,6 +471,8 @@ export function CaptureSheet({ open, onClose, role }: CaptureSheetProps) {
                     ? t("capture.job.forJob")
                     : pending === "daily-log"
                       ? t("capture.job.pickForLog")
+                      : pending === "problem"
+                        ? t("capture.job.pickForProblem")
                       : pending
                         ? t("capture.job.pickForPhoto")
                         : t("capture.job.which")}

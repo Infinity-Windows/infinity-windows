@@ -453,8 +453,19 @@
 }
 
 .ws-workday-jobs { display: grid; gap: 8px; justify-items: start; }
-.ws-workday-job-picker { display: grid; gap: 8px; width: min(100%, 32rem); max-height: 24rem; overflow: auto; padding: 8px; border: 1px solid var(--border); border-radius: 10px; }
+/* A column whose rows never shrink. As a grid with a max-height, an iPhone
+   squeezed every job down to its minimum height once the list was taller than
+   the box, and a name on two lines ran out of its button and under the next
+   one (Ammon's screenshot of the WATTS job, 2026-11-22). */
+.ws-workday-job-picker { display: flex; flex-direction: column; gap: 8px; width: min(100%, 32rem); max-height: 24rem; overflow: auto; padding: 8px; border: 1px solid var(--border); border-radius: 10px; }
+.ws-workday-job-picker > * { flex: none; }
+.ws-workday-job-picker .ws-saved-unit { height: auto; }
 .ws-workday-job-picker input { width: 100%; }
+/* A job in the picker is a bordered button, so its name needs room inside the
+   border. The new design strips the side padding from saved-unit rows (they
+   are plain list lines elsewhere), which left a long job name pressed against
+   both edges of its button (Ammon, 2026-11-22). */
+html[data-design="new"] .ws-workday-job-picker .ws-saved-unit { padding: 10px 14px; align-items: center; text-align: center; }
 .ws-workday-job-picker a[aria-current="page"] { border-color: var(--accent); }
 
 .ws-today-jobs { gap:8px; }

@@ -737,14 +737,23 @@ export function menuForRole(
   const out: MenuSection[] = [];
   // A foreman on the new design works from the Workday like an installer
   // does, so the same two changes apply: Current Work is gone and Servicing
-  // sits at the bottom of its section. My Work stays for now (Matt,
-  // 2026-11-21: "leave it showing").
+  // sits at the bottom of its section. My Work goes too: Work is the one door
+  // a foreman needs, and two rows with nearly one name read as a mistake. My
+  // Schedule moves up out of the folded Fleet section to sit right under
+  // Work, where an installer finds it (Ammon, 2026-11-22). The /my-work page
+  // itself is untouched and still opens by its address.
   const worksUnits = design === "new" && role === "foreman";
+  const schedule = MENU_ITEM_BY_PATH.get("/my-schedule");
   for (const section of MENU_DEF) {
-    const rows = worksUnits && section.items.some((it) => it.to === "/service")
-      ? [...section.items.filter((it) => it.to !== "/current-work" && it.to !== "/service"),
-        ...section.items.filter((it) => it.to === "/service")]
-      : section.items;
+    const top = section.items.some((it) => it.to === "/service");
+    const rows = !worksUnits ? section.items
+      : top ? [
+          ...section.items.filter((it) => it.to === "/"),
+          ...(schedule ? [schedule] : []),
+          ...section.items.filter((it) => !["/", "/current-work", "/service", "/my-work"].includes(it.to ?? "")),
+          ...section.items.filter((it) => it.to === "/service"),
+        ]
+      : section.items.filter((it) => it.to !== "/my-schedule");
     const items = rows
       .filter((it) => design === "new" || it.to !== "/summary")
       .filter((it) => !it.to || canAccess(role, it.to, grants))

@@ -34,6 +34,8 @@ export interface ScopeCounts {
   /** Absent from a database before 20261130140000, and from counts a phone
    * saved for offline before then: read it as zero. */
   curtain_walls?: number;
+  /** The same, from 20261130250000. */
+  storefronts?: number;
 }
 
 /** One piece of the line: a catalog key plus the number to drop into it. */
@@ -82,6 +84,10 @@ export function scopeLineParts(
   const curtainWalls = counts?.curtain_walls ?? 0;
   if (curtainWalls > 0) {
     parts.push({ key: plural("scope.curtainWalls", curtainWalls), n: curtainWalls });
+  }
+  const storefronts = counts?.storefronts ?? 0;
+  if (storefronts > 0) {
+    parts.push({ key: plural("scope.storefronts", storefronts), n: storefronts });
   }
   const stories = opts.stories;
   if (stories != null && stories > 0) {

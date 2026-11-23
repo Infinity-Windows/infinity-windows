@@ -176,6 +176,10 @@ function Planner({ project, account, latestSharedPlan }: {
   const defaultScheduleDate = isSunday(today) ? shiftPlanDate(today, 1) : today;
   const firstWorkDay = isSunday(today) ? shiftPlanDate(today, 1) : today;
   const [blocks, setBlocks] = useState(() => latestSharedPlan.blocks);
+  // Asked on the page, not with window.confirm: an installed app or embedded
+  // browser can swallow that box, and then the bin did nothing at all (the
+  // same thing QueueNotice met; seen here on 2026-11-22).
+  const [deleting, setDeleting] = useState<PlanBlock[] | null>(null);
   const [draft, setDraft] = useState<WorkConfig>({ activity: "", installerIds: [], openingIds: [] });
   const [buildBy, setBuildBy] = useState<"activity" | "unit" | null>(null);
   const [bundleActivities, setBundleActivities] = useState<string[]>([]);
@@ -510,8 +514,7 @@ function Planner({ project, account, latestSharedPlan }: {
     if (await save(blocks.map(value => updates.get(value.id) ?? value), edit.members)) closeDetails();
   }
   async function remove(members: PlanBlock[]) {
-    const label = members.length === 1 ? members[0].activity : `${members.length} activities`;
-    if (!window.confirm(`Delete ${label}?`)) return;
+    setDeleting(null);
     const ids = new Set(members.map(block => block.id));
     if (await save(blocks.filter(block => !ids.has(block.id)), savedMembers(members))) {
       if (edit?.members.some(block => ids.has(block.id))) closeDetails();
@@ -1066,6 +1069,11 @@ function Planner({ project, account, latestSharedPlan }: {
     </UnitDetailsDialog>}
     {(error || loadError) && <p role="alert">{error || formatApiError(loadError)}</p>}
     {sharedBusy && <p role="status">Saving plan...</p>}
+    {deleting && <div className="jp-confirm" role="alertdialog" aria-label="Delete from the plan">
+      <p>Delete {deleting.length === 1 ? deleting[0].activity : `${deleting.length} activities`}?</p>
+      <button type="button" data-danger onClick={() => void remove(deleting)}>Delete</button>
+      <button type="button" onClick={() => setDeleting(null)}>Keep</button>
+    </div>}
     <section className="jp-calendar" aria-label="Work calendar" inert={sharedBusy}>
       <section className="jp-composer" ref={composerRef} aria-label={edit ? editingBundle ? "Edit bundle" : "Edit activity" : "Plan an activity"}
         onKeyDown={event => { if (edit && event.key === "Escape" && !event.defaultPrevented) closeDetails(); }}>
@@ -1213,7 +1221,7 @@ function Planner({ project, account, latestSharedPlan }: {
                       <Pencil size={13} aria-hidden="true" />
                     </button>
                     <button type="button" className="jp-stack-edit" aria-label="Delete bundle" title="Delete bundle"
-                      onClick={() => void remove(group)}><Trash2 size={13} aria-hidden="true" /></button>
+                      onClick={() => setDeleting(group)}><Trash2 size={13} aria-hidden="true" /></button>
                   </div>}
                   {group.map((item, index) => {
                     const isFront = index === 0;
@@ -1232,7 +1240,7 @@ function Planner({ project, account, latestSharedPlan }: {
                           <button type="button" className="jp-stack-edit" aria-label={"Edit " + item.activity}
                             disabled={isEditing([item])} onClick={() => openDetails(item)}><Pencil size={13} aria-hidden="true" /></button>
                           <button type="button" className="jp-stack-edit" aria-label={"Delete " + item.activity}
-                            onClick={() => void remove([item])}><Trash2 size={13} aria-hidden="true" /></button>
+                            onClick={() => setDeleting([item])}><Trash2 size={13} aria-hidden="true" /></button>
                         </div>}
                       </div>
                       {isFront && <div className="jp-event-body jp-stack-body"
@@ -1254,7 +1262,7 @@ function Planner({ project, account, latestSharedPlan }: {
                 <button type="button" className="jp-event-edit" aria-label={"Edit " + block.activity} disabled={isEditing([block])}
                   onClick={() => openDetails(block)}><Pencil size={14} aria-hidden="true" /></button>
                 <button type="button" className="jp-event-edit" aria-label={"Delete " + block.activity}
-                  onClick={() => void remove([block])}><Trash2 size={14} aria-hidden="true" /></button>
+                  onClick={() => setDeleting([block])}><Trash2 size={14} aria-hidden="true" /></button>
               </div>}
               {resizeHandle(block, "end")}
             </article>;

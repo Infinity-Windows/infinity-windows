@@ -341,7 +341,18 @@ export function WorkScreen() {
         switchToProject: true, workdaySwitch: true,
         workdayStart: { label: label ?? (es ? "Obra seleccionada" : "Selected job"), onReady: enter },
       });
-    } else enter();
+    } else {
+      enter();
+      // Off the clock, choosing the job is the start of the paid day: the
+      // sheet asks for today's Toolbox Talk and the clock-in straight away,
+      // instead of waiting for the first unit or activity to be tapped
+      // (Ammon, 2026-11-22: "there's no official clock in start"). Closing the
+      // sheet leaves the job open to look at, and the first tap asks again.
+      if (!preview && clockKnown && !clock.verification.recoveryRequired && shift?.status !== "open") openClockGlobally({
+        projectId: project, costCodeId: null, note: null, mode: null, stayOnPage: true, switchToProject: true,
+        workdayStart: { label: label ?? (es ? "Obra seleccionada" : "Selected job"), onReady: () => undefined },
+      });
+    }
   };
   const unitForProblem =
     nextUp.kind === "running" || nextUp.kind === "next"
@@ -367,9 +378,13 @@ export function WorkScreen() {
         <a href="#work-upcoming" className="ws-work-upcoming"><CalendarDays size={17} aria-hidden="true" />{es ? "Próximos trabajos" : "Upcoming work"}</a>
       </header>}
       <LiveSummonsStrip />
-        {installer && <QuickButtons key={`work-tools:${selectedJob ?? "no-job"}`} role={effectiveRole} jobId={selectedJob}
-          jobLabel={selectedJob === jobId ? jobLabel : null} shift={shift} work={work}
-          unit={selectedJob === jobId ? unitForProblem : null} locked={locked} now={now} workday preview={preview} />}
+      {/* No Take supplies / Daily log / Report a problem row on the Workday.
+          Before a job was picked a tap could only answer "Start your day
+          first", in a preview they were switched off, and either way they
+          filled the top of the screen (Ammon, 2026-11-22: "I don't even want
+          them there, they should all just be inside that capture button").
+          Daily log and Report a problem are tiles on the Capture sheet;
+          Supplies is a row in the menu. */}
       {!installer && <ClockStrip
         key={profileId}
         profileId={profileId}

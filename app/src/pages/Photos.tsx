@@ -9,6 +9,7 @@ import { PhotoKindTabs } from "../components/photos/PhotoKindTabs";
 import { useClock } from "../lib/clockContext";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { isForemanPlus } from "../lib/install/types";
+import { canAccess } from "../lib/nav";
 import { useT } from "../lib/i18n";
 
 export function Photos() {
@@ -17,7 +18,9 @@ export function Photos() {
   const projectId = params.get("project");
   const kind = params.get("kind") === "receipt" ? "receipt" : "photo";
   const initialCapture = params.get("capture") === "1";
-  const { effectiveRole, isLoading: roleLoading } = useEffectiveRole();
+  const { effectiveRole, isLoading: roleLoading, grants } = useEffectiveRole();
+  // Who reads receipts back is who may open the office Receipts table.
+  const seesReceipts = canAccess(effectiveRole, "/receipts", grants);
   const isLead = isForemanPlus(effectiveRole);
   const { shift } = useClock();
 
@@ -145,9 +148,13 @@ export function Photos() {
         selectedJobCode={selectedJobCode}
         kind={kind}
         initialCapture={initialCapture}
+        receiptsHidden={!seesReceipts}
         toolbarExtra={
           <>
-            <PhotoKindTabs kind={kind} onChange={setKind} />
+            {/* Without the tab a person who cannot read receipts still reaches
+                Add receipt: the Capture sheet's tile, and the reminder link
+                that opens this page straight on it. */}
+            {seesReceipts && <PhotoKindTabs kind={kind} onChange={setKind} />}
             <select
               className="photos-filter"
               value={projectId ?? ""}

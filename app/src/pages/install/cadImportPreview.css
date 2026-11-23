@@ -262,6 +262,7 @@
 .cad-import .cad-plan-open:hover { background: var(--card-raised); }
 .cad-plan-open strong { min-width: 5ch; font-size: 15px; font-variant-numeric: tabular-nums; }
 .cad-plan-open small { color: var(--muted); font-size: 12px; font-weight: 500; }
+.cad-plan-state { color: var(--muted); font-size: 13px; font-weight: 400; }
 .cad-plan-open .cad-plan-duplicate { color: var(--warn); font-weight: 600; }
 .cad-plan-meta { display: flex; align-items: center; gap: 10px; font-size: 12px; }
 .cad-plan-meta a { white-space: nowrap; }

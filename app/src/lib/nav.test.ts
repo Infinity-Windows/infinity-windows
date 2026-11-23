@@ -160,11 +160,16 @@ describe("bottomBarForRole (phone bottom bar)", () => {
       }
     });
 
-    it("shortens a foreman's first section like an installer's: no Current Work, Servicing last, My Work kept", () => {
-      const first = menuForRole("foreman", undefined, "new")[0].items.map((i) => i.to);
+    it("shortens a foreman's first section like an installer's: Work then My Schedule, no Current Work or My Work, Servicing last", () => {
+      const menu = menuForRole("foreman", undefined, "new");
+      const first = menu[0].items.map((i) => i.to);
       expect(first).not.toContain("/current-work");
-      expect(first).toContain("/my-work");
+      expect(first).not.toContain("/my-work");
+      expect(first.slice(0, 2)).toEqual(["/", "/my-schedule"]);
       expect(first.at(-1)).toBe("/service");
+      // Moved, not copied: one My Schedule row in the whole drawer.
+      expect(menu.flatMap((s) => s.items).filter((i) => i.to === "/my-schedule")).toHaveLength(1);
+      expect(menuForRole("supervisor", undefined, "new")[0].items.map((i) => i.to)).toContain("/my-work");
       expect(menuForRole("foreman")[0].items.map((i) => i.to)).toContain("/current-work");
       expect(menuForRole("supervisor", undefined, "new")[0].items.map((i) => i.to)).toContain("/current-work");
     });

@@ -6,7 +6,9 @@ import { formatApiError } from "../../lib/errors";
 
 export function QueueNotice({ work }: { work: WorkStore }) {
   const [error, setError] = useState("");
-  const [exported, setExported] = useState(false);
+  // Which queue was exported, not just that one was: a change refused after
+  // the export is not in that file, and Remove must not be offered for it.
+  const [exportedQueue, setExportedQueue] = useState("");
   // Asked on the page, not with window.confirm: an installed app or embedded
   // browser can swallow that box, and then the button did nothing at all
   // (Matt, 2026-11-20: "isn't giving me a confirm. It didn't clear out").
@@ -26,6 +28,8 @@ export function QueueNotice({ work }: { work: WorkStore }) {
       </p>
     );
   if (!work.queue.length) return error ? <p role="alert">{error}</p> : null;
+  const queueKey = work.queue.map((c) => c.id).join();
+  const exported = exportedQueue === queueKey;
   const awaitingShiftReview = workAwaitingShiftReview(work.queue);
   const pendingCount = work.queue.length - awaitingShiftReview.size;
   const refusal = work.queue.find((c) => c.error && !awaitingShiftReview.has(c.id))?.error;
@@ -67,7 +71,7 @@ export function QueueNotice({ work }: { work: WorkStore }) {
             a.download = "forge-pending-work.json";
             a.click();
             URL.revokeObjectURL(url);
-            setExported(true);
+            setExportedQueue(queueKey);
           }}
         >
           Export pending work
