@@ -596,21 +596,21 @@ html[data-design="new"] .ws-workday-job-picker .ws-saved-unit { padding: 10px 14
 }
 .ws-upcoming-plan .ws-plan-date {
   display:grid;
-  grid-template-columns:110px minmax(0,1fr);
+  grid-template-columns:7.5rem minmax(0,1fr);
   align-items:start;
   gap:12px;
-  padding:8px 0;
+  padding:10px 0;
 }
 .ws-upcoming-plan .ws-plan-date + .ws-plan-date { border-top:1px solid var(--border); }
+/* The day, plain and on one line, level with the first job's name. */
 .ws-plan-date-label {
   justify-self:start;
   margin:0;
-  padding:4px 7px;
-  border-radius:5px;
-  background:var(--surface);
-  color:var(--muted);
+  padding:4px 0;
+  color:var(--text-secondary, var(--muted));
   font-size:16px;
-  font-weight:650;
+  font-weight:700;
+  white-space:nowrap;
 }
 .ws-plan-jobs { display:grid; min-width:0; gap:8px; }
 .ws-plan-job h4 { margin:0 0 3px; padding:4px 0 4px 8px; border-inline-start:2px solid var(--accent); font-size:16px; font-weight:700; color:var(--text); }

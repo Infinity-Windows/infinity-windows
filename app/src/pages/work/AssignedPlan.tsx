@@ -40,16 +40,20 @@ export function AssignedPlan({ profileId, today, plan, scheduled = [], previewSe
       <button className="ws-btn" onClick={() => void plan.refetch()}>{es ? "Reintentar" : "Retry"}</button>
     </section>
   );
-  const periods = [
-    { label: es ? "Hoy" : "Today", through: today, jobs: new Map<string, PlannedJob>(), booked: new Map<string, ScheduleAssignment[]>() },
-    { label: es ? "Próximos días" : "Next few days", through: addDaysISO(today, 3), jobs: new Map<string, PlannedJob>(), booked: new Map<string, ScheduleAssignment[]>() },
-    { label: es ? "Restante" : "Remaining", through, jobs: new Map<string, PlannedJob>(), booked: new Map<string, ScheduleAssignment[]>() },
-  ];
+  // One section per day, named by its date down the left. The list used to be
+  // cut into "Today / Next few days / Remaining", which made a person read
+  // every row's own date to learn when anything was (Matt, 2026-11-23).
+  const days = new Map<string, { jobs: Map<string, PlannedJob>; booked: Map<string, ScheduleAssignment[]> }>();
+  const dayOf = (day: string) => {
+    if (day > through) return null;
+    if (!days.has(day)) days.set(day, { jobs: new Map(), booked: new Map() });
+    return days.get(day)!;
+  };
   const planned = new Set<string>();
   for (const job of plan.data ?? []) {
     for (const block of job.blocks) {
       if (block.start < today) continue;
-      const period = periods.find(period => block.start <= period.through);
+      const period = dayOf(block.start);
       if (!period) continue;
       const group = period.jobs.get(job.projectId) ?? { ...job, blocks: [] };
       group.blocks.push(block);
@@ -62,12 +66,12 @@ export function AssignedPlan({ profileId, today, plan, scheduled = [], previewSe
     if (entry.status !== "published" || entry.end_date < today) continue;
     // A booking already under way belongs to today, as it does on the Workday.
     const day = entry.start_date < today ? today : entry.start_date;
-    const period = periods.find(period => day <= period.through);
+    const period = dayOf(day);
     if (!period) continue;
     period.booked.set(entry.project_id, [...(period.booked.get(entry.project_id) ?? []), entry]);
   }
 
-  const agenda = periods.filter(period => period.jobs.size > 0 || period.booked.size > 0);
+  const agenda = [...days].sort(([a], [b]) => a.localeCompare(b)).map(([day, group]) => ({ day, ...group }));
   if (!agenda.length) return <section className="ws-card" aria-label={title}>
     <h2 className="ws-h2">{title}</h2>
     <p className="ws-meta">{plan.isLoading ? (es ? "Cargando…" : "Loading…")
@@ -75,6 +79,9 @@ export function AssignedPlan({ profileId, today, plan, scheduled = [], previewSe
   </section>;
   const dayLabel = new Intl.DateTimeFormat(lang, { weekday: "short", month: "short", day: "numeric" });
   const timeLabel = new Intl.DateTimeFormat(lang, { hour: "numeric", minute: "2-digit" });
+  const dayName = (iso: string) => dayLabel.format(new Date(iso + "T12:00:00"));
+  // The section already says the first day; a row only adds where it ends.
+  const until = (end: string) => `${es ? "hasta" : "through"} ${dayName(end)}`;
   const unitsLabel = (count: number) => es ? (count === 1 ? "unidad" : "unidades") : (count === 1 ? "unit" : "units");
   const byStart = (a: PlanBlock, b: PlanBlock) =>
     a.start.localeCompare(b.start) || planBoundary(a, "start") - planBoundary(b, "start");
@@ -89,9 +96,9 @@ export function AssignedPlan({ profileId, today, plan, scheduled = [], previewSe
   return (
     <section className="ws-card ws-upcoming-plan" aria-label={title}>
       <h2 className="ws-h2">{title}</h2>
-      {agenda.map(({ label, through, jobs, booked }) => (
-        <section className="ws-plan-date" key={through}>
-          <h3 className="ws-plan-date-label">{label}</h3>
+      {agenda.map(({ day, jobs, booked }) => (
+        <section className="ws-plan-date" key={day}>
+          <h3 className="ws-plan-date-label"><time dateTime={day}>{day === today ? (es ? "Hoy" : "Today") : dayName(day)}</time></h3>
           <div className="ws-plan-jobs">{[...jobs.values()].map(job => (
             <section className="ws-plan-job" key={job.projectId} aria-label={job.jobCode}>
               <h4>{job.jobName || job.jobCode}</h4>
@@ -121,7 +128,7 @@ export function AssignedPlan({ profileId, today, plan, scheduled = [], previewSe
                   <span className="ws-plan-icon"><ActivityIcon activity={block.activity} /></span>
                   <strong>{activityLabel(block.activity, es)}</strong>
                   <span className="ws-plan-meta">
-                    {block.start !== today && <time dateTime={block.start}>{dayLabel.format(new Date(block.start + "T12:00:00"))}</time>}
+                    {block.end > block.start && <span>{until(block.end)}</span>}
                     {timing && <span>{timing}</span>}
                     {count > 0 && <span>{count} {unitsLabel(count)}</span>}
                     {roles.map(({ name, units }) => units.length > 0 && <span key={name}>{name} {units.length}</span>)}
@@ -165,7 +172,6 @@ export function AssignedPlan({ profileId, today, plan, scheduled = [], previewSe
             return <section className="ws-plan-job" key={projectId} aria-label={project!.job_code}>
               <h4>{project!.name || project!.job_code}</h4>
               {entries.map(entry => {
-                const day = (iso: string) => dayLabel.format(new Date(iso + "T12:00:00"));
                 const from = entry.start_date < today ? today : entry.start_date;
                 const [hour, minute] = entry.start_time?.split(":").map(Number) ?? [];
                 return <article className="ws-plan-entry" key={entry.id}>
@@ -173,8 +179,7 @@ export function AssignedPlan({ profileId, today, plan, scheduled = [], previewSe
                     <span className="ws-plan-icon"><CalendarDays size={16} aria-hidden="true" /></span>
                     <strong>{es ? "Programado" : "Scheduled"}</strong>
                     <span className="ws-plan-meta">
-                      {(from !== today || entry.end_date !== today) && <time dateTime={from}>
-                        {entry.end_date > from ? `${day(from)} – ${day(entry.end_date)}` : day(from)}</time>}
+                      {entry.end_date > from && <span>{until(entry.end_date)}</span>}
                       {Number.isFinite(hour) && <span>{timeLabel.format(new Date(2000, 0, 1, hour, minute || 0))}</span>}
                     </span>
                   </div>
