@@ -6,6 +6,7 @@ import { getProjectWindows, listProjects } from "./api";
 import {
   downloadPlanset,
   findSpecsPlansetFor,
+  getRealProfile,
   getTypeBrainStats,
   listElevationViews,
   listMarkSpecs,
@@ -13,7 +14,7 @@ import {
   listPlanOutlines,
   listPlansets,
 } from "./install/api";
-import type { Planset } from "./install/types";
+import { isForemanPlus, type Planset } from "./install/types";
 import { saveJobOffline, type JobPackProgress, type JobPackResult } from "./offline/jobPack";
 import { OFFLINE_KEY_ROOTS } from "./queryKeys";
 import { toastError } from "./toast";
@@ -279,6 +280,14 @@ export async function prefetchWarehousePack(): Promise<void> {
     const { listScheduledMarks } = await import("./warehouse/warehouseCards");
     const { listLocations } = await import("./api");
 
+    // The problem list is a foreman's: list_issues refuses an installer, so
+    // asking for one at every sign-in only wrote a permission error to the
+    // database log for each installer who opened the app (about twenty on the
+    // crew's first morning, 2026-11-23). The signed-in person's own role, not
+    // a previewed one: the server judges the real login.
+    const me = await getRealProfile().catch(() => null);
+    const seesIssues = isForemanPlus(me?.role ?? null);
+
     await Promise.all([
       queryClient.prefetchQuery({ queryKey: ["projects"], queryFn: listProjects }),
       queryClient.prefetchQuery({
@@ -289,7 +298,9 @@ export async function prefetchWarehousePack(): Promise<void> {
         queryKey: ["storageContainers"],
         queryFn: listContainers,
       }),
-      queryClient.prefetchQuery({ queryKey: ["issues"], queryFn: listIssues }),
+      ...(seesIssues
+        ? [queryClient.prefetchQuery({ queryKey: ["issues"], queryFn: listIssues })]
+        : []),
       // Racks and staging bays. Without these the warehouse page still answers
       // "where is it" offline, but a staged package answers "on a shelf"
       // instead of "staged for BLACK22" — the generic sentence F6 was raised to
