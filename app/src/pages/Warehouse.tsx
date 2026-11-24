@@ -21,7 +21,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { listLocations, listProjects, listProjectsAnyStatus } from "../lib/api";
 import { formatApiError } from "../lib/errors";
-import { isSupervisorPlus } from "../lib/install/types";
+import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { Explain } from "../components/ui/Explain";
 import { FindBar } from "../components/warehouse/FindBar";
@@ -110,7 +110,10 @@ export function Warehouse() {
   const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
   const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
-  const issues = useQuery({ queryKey: ["issues"], queryFn: listIssues });
+  // Foremen and above only: list_issues refuses an installer, and the open
+  // damage it feeds below is theirs to act on. Asked unconditionally, every
+  // installer who opened this page got a refused read and its retry.
+  const issues = useQuery({ queryKey: ["issues"], queryFn: listIssues, enabled: isForemanPlus(effectiveRole) });
   const todayIso = localMidnightIso(new Date());
   const movementsToday = useQuery({
     queryKey: ["movementsSince", todayIso],

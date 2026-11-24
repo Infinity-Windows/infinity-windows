@@ -27,7 +27,10 @@ vi.mock("./storage", () => ({
   listActivePackages: async () => [],
   listContainers: async () => [],
 }));
-vi.mock("./issues", () => ({ listIssues: async () => [] }));
+const listIssues = vi.fn(async () => []);
+vi.mock("./issues", () => ({ listIssues: () => listIssues() }));
+// Who is signed in. The problem list is only asked for a foreman or above.
+let role = "foreman";
 vi.mock("./warehouse/warehouseCards", () => ({ listScheduledMarks: async () => [] }));
 vi.mock("./install/api", () => ({
   getTypeBrainStats: async () => ({}),
@@ -36,6 +39,7 @@ vi.mock("./install/api", () => ({
   // The job pack warms these too; queryClient imports it, so the mock has to
   // name it even though the warehouse pack never calls it.
   listMarkSpecs: async () => [],
+  getRealProfile: async () => ({ id: "me", role }),
 }));
 
 const { prefetchWarehousePack, queryClient } = await import("./queryClient");
@@ -53,5 +57,18 @@ describe("the warehouse pre-load", () => {
       queryClient.getQueryData(["locations"]),
       "no locations in the cache — a staged package reads 'on a shelf' offline",
     ).toEqual(LOCATIONS);
+  });
+
+  // list_issues refuses an installer, so each one signing in on the crew's
+  // first morning (2026-11-23) left a permission error in the database log.
+  it("does not ask for the problem list when an installer signs in", async () => {
+    role = "installer";
+    queryClient.clear();
+    listIssues.mockClear();
+
+    await prefetchWarehousePack();
+
+    expect(listIssues).not.toHaveBeenCalled();
+    expect(queryClient.getQueryData(["storagePackages"])).toBeDefined();
   });
 });
