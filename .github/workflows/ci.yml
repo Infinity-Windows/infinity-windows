@@ -325,6 +325,10 @@ jobs:
           node scripts/verify-values-idb.mjs
           node scripts/verify-values-idb.mjs --webkit
       - name: Dormant activity journal preserves native storage on phone browsers
+        # Reads source modules: dev server (see the step so named below).
+        env:
+          IW_E2E_BUILT: "0"
+          IW_MAP_PORT: "5184"
         run: |
           npm run e2e -- work-capture-journal.spec.ts
           npm run e2e -- work-capture-journal.spec.ts --browser=webkit
@@ -343,7 +347,21 @@ jobs:
       # file still run in order. A file that turns out to need the machine to
       # itself moves to its own step rather than this dropping back to one.
       - name: Main browser suite, four files at a time
-        run: npm run e2e -- qc-history.spec.ts monday-files.spec.ts schedule-time-conflicts.spec.ts usability-foundations.spec.ts display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts schedule-ai-review.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts crew-unit-records.spec.ts unit-contributors.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts honest-sync.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts hex-portal.spec.ts ask-reporting.spec.ts app-updates.spec.ts using-forge.spec.ts training-importer.spec.ts --workers=4
+        run: npm run e2e -- qc-history.spec.ts monday-files.spec.ts schedule-time-conflicts.spec.ts usability-foundations.spec.ts display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts schedule-ai-review.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts crew-unit-records.spec.ts unit-contributors.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts /daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts honest-sync.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts hex-portal.spec.ts ask-reporting.spec.ts app-updates.spec.ts using-forge.spec.ts --workers=4
+      # These read the app's own source modules out of the dev server
+      # (import("/src/lib/...")) to drive a store or a queue directly, and a
+      # build has no such files. They, and the two steps marked the same
+      # way, keep a dev server of their own on its own port. A new spec that
+      # does this fails at once against the build, with the module's address
+      # in the error, and belongs here.
+      # ai-daily-logs used to ride along with the long list above, matched by
+      # the name daily-logs.spec.ts, which is why that one now starts with a
+      # slash.
+      - name: Specs that read source modules, on the dev server
+        env:
+          IW_E2E_BUILT: "0"
+          IW_MAP_PORT: "5184"
+        run: npm run e2e -- ai-daily-logs.spec.ts training-importer.spec.ts
       - name: Daily-log progress reports and pre-save photo capture
         run: npm run e2e -- daily-logs-progress.spec.ts
       - run: npm run e2e -- opening-sheet.spec.ts -g "Install memo:"
@@ -380,7 +398,12 @@ jobs:
       # Expired sign-ins and shared-phone queues need their own browser gate:
       # they can lose a saved punch or send it as the next person even while
       # the ordinary clock screen tests remain green.
-      - run: npm run e2e -- offline-session.spec.ts outbox-owner.spec.ts
+      - name: Expired sign-ins and shared-phone queues, on the dev server
+        # Reads source modules: dev server (see the step so named above).
+        env:
+          IW_E2E_BUILT: "0"
+          IW_MAP_PORT: "5184"
+        run: npm run e2e -- offline-session.spec.ts outbox-owner.spec.ts
       - name: Monthly values worker and owner flows on phone browsers
         run: |
           npm run e2e -- monthly-values-reviews.spec.ts
