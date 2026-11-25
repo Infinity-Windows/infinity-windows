@@ -5,6 +5,7 @@
 // trust bug, not just a cosmetic one.
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { AssignmentEditor } from "./AssignmentEditor";
 import type { Profile } from "../../lib/install/types";
 import type { ScheduleAssignment } from "../../lib/schedule/types";
@@ -60,7 +61,7 @@ function markup(assignment: Partial<ScheduleAssignment>, others: ScheduleAssignm
     ...assignment,
   };
   return renderToStaticMarkup(
-    <AssignmentEditor
+    <MemoryRouter><AssignmentEditor
       assignment={full}
       projects={[]}
       crew={CREW}
@@ -68,7 +69,7 @@ function markup(assignment: Partial<ScheduleAssignment>, others: ScheduleAssignm
       horizon={HORIZON}
       onSave={() => {}}
       onClose={() => {}}
-    />,
+    /></MemoryRouter>,
   );
 }
 

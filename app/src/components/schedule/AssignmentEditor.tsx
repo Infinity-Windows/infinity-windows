@@ -1,7 +1,8 @@
 import { VoiceTextarea } from "../voice/VoiceTextarea";
 import { formatApiError } from "../../lib/errors";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Plane, Trash2, Truck, X } from "lucide-react";
+import { Link } from "react-router-dom";
+import { AlertTriangle, ClipboardList, Plane, Trash2, Truck, X } from "lucide-react";
 import type { Profile } from "../../lib/install/types";
 import type { Project } from "../../lib/types";
 import { INSTALLER_PALETTE } from "../../lib/install/mapDispatch";
@@ -264,7 +265,17 @@ export function AssignmentEditor({
           </button>
         </div>
 
-        <label className="field-label">Job</label>
+        {/* Scheduling a job and planning its work are done together, and the
+            plan was three taps away through Jobs (Matt, 2026-11-25). The job
+            page sends anyone who may not plan that job back to its overview. */}
+        <div className="sched-job-label">
+          <label className="field-label">Job</label>
+          {projectId && (
+            <Link className="link sched-plan-link" to={`/projects/${projectId}?tab=planner`}>
+              <ClipboardList size={14} aria-hidden /> Open job plan
+            </Link>
+          )}
+        </div>
         <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
           <option value="">— pick a job —</option>
           {projects.map((p) => (
