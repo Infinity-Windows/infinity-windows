@@ -15,6 +15,8 @@ import { useT } from "../../lib/i18n";
 // one-tap Undo.
 
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { Link2 } from "lucide-react";
 import type { Profile } from "../../lib/install/types";
 import type { ScheduleAssignment } from "../../lib/schedule/types";
 import {
@@ -105,12 +107,18 @@ export function CrewBoard({
     setSheetPerson(c.personId);
   };
 
-  const chipEl = (c: BoardChip, label: string) => {
+  // Scheduling a job and planning its work are done together, and the plan
+  // was three taps away through Jobs (Matt, 2026-11-25). The job page sends
+  // anyone who may not plan that job back to its overview.
+  const planPath = (projectId: string) => `/projects/${projectId}?tab=planner`;
+
+  const chipEl = (c: BoardChip, label: string, planLink = false) => {
     const a = byId.get(c.assignmentId);
     const movable = chipDraggable(c);
-    return (
+    const key = `${c.assignmentId}|${c.personId}|${c.day}`;
+    const chip = (
       <button
-        key={`${c.assignmentId}|${c.personId}|${c.day}`}
+        key={key}
         type="button"
         draggable={movable}
         onDragStart={(e) => {
@@ -139,6 +147,17 @@ export function CrewBoard({
             the chip), so "still draft" is what gates showing it here. */}
         {c.status === "draft" && c.createdVia === "ai" && <AiProposedChip />}
       </button>
+    );
+    if (!planLink) return chip;
+    // Beside the tag, not inside it: the tag is already a button (move, or
+    // open the editor), and a link cannot sit inside a button.
+    return (
+      <span key={key} className="cb-tag" style={a ? calendarColorStyle(a) : undefined}>
+        {chip}
+        <Link className="cb-chip-link" to={planPath(c.projectId)} aria-label={`Open the ${label} plan`} title="Open job plan">
+          <Link2 size={13} aria-hidden />
+        </Link>
+      </span>
     );
   };
 
@@ -225,7 +244,7 @@ export function CrewBoard({
                         lane.personId,
                         day,
                         (crewCells.get(`${lane.personId}|${day}`) ?? []).map((c) =>
-                          chipEl(c, jobCodeById.get(c.projectId) ?? "job"),
+                          chipEl(c, jobCodeById.get(c.projectId) ?? "job", true),
                         ),
                       ),
                     )}
@@ -233,7 +252,9 @@ export function CrewBoard({
                 ))
               : jobLanes.map((jl) => (
                   <tr key={jl.id}>
-                    <td className="cb-lane">{jl.code}</td>
+                    <td className="cb-lane">
+                      <Link className="cb-lane-link" to={planPath(jl.id)} title="Open job plan">{jl.code}</Link>
+                    </td>
                     {weekDays.map((day) => (
                       <td key={day} className="cb-cell">
                         {(jobCells.get(`${jl.id}|${day}`) ?? []).map((c) =>

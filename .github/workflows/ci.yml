@@ -293,6 +293,31 @@ jobs:
           done
           printf 'Acquire::Retries "1";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' | sudo tee /etc/apt/apt.conf.d/99forge-browser-downloads >/dev/null
           npx playwright install --with-deps chromium webkit
+      # One production build, served once, for every browser step below that
+      # uses the default config: each `npm run e2e` finds it on its port and
+      # reuses it (playwright.config.ts, IW_E2E_BUILT). Started here and not by
+      # the first step so that no step pays for the build inside its own
+      # timing, and so the server outlives the command that would have owned
+      # it. The settings are the fixture project's, the same placeholders the
+      # config gives its own server: a host that does not resolve.
+      - name: Build the app once and serve it to the browser steps
+        env:
+          VITE_SUPABASE_URL: https://e2efixture.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_e2e_fixture_not_a_secret
+          VITE_LIVE_ASK_PILOT: "true"
+        run: |
+          npx vite build --outDir node_modules/.cache/e2e-built --emptyOutDir
+          nohup npx vite preview --outDir node_modules/.cache/e2e-built --port 5183 --strictPort > "$RUNNER_TEMP/e2e-preview.log" 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --output /dev/null http://localhost:5183/; then
+              echo "IW_E2E_BUILT=1" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/e2e-preview.log"
+          echo "::error::The built app did not start on port 5183"
+          exit 1
       # Uses the existing fixture-only server, never the shared database.
       - name: Verify saved reviews preserve DB2 clock and photo access
         working-directory: .
@@ -300,6 +325,10 @@ jobs:
           node scripts/verify-values-idb.mjs
           node scripts/verify-values-idb.mjs --webkit
       - name: Dormant activity journal preserves native storage on phone browsers
+        # Reads source modules: dev server (see the step so named below).
+        env:
+          IW_E2E_BUILT: "0"
+          IW_MAP_PORT: "5184"
         run: |
           npm run e2e -- work-capture-journal.spec.ts
           npm run e2e -- work-capture-journal.spec.ts --browser=webkit
@@ -311,7 +340,28 @@ jobs:
         run: |
           npm run e2e -- work-configuration.spec.ts
           npm run e2e -- work-configuration.spec.ts --browser=webkit
-      - run: npm run e2e -- qc-history.spec.ts monday-files.spec.ts schedule-time-conflicts.spec.ts usability-foundations.spec.ts display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts schedule-ai-review.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts crew-unit-records.spec.ts unit-contributors.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts honest-sync.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts hex-portal.spec.ts ask-reporting.spec.ts app-updates.spec.ts using-forge.spec.ts training-importer.spec.ts
+      # The 33 files of the main browser suite, four at a time. Run one after
+      # another they were 14 of this job's 34 minutes (232 tests, 2026-11-23)
+      # on a runner with three cores idle. Every test replays fixtures in its
+      # own browser context, so files do not share state; the tests inside a
+      # file still run in order. A file that turns out to need the machine to
+      # itself moves to its own step rather than this dropping back to one.
+      - name: Main browser suite, four files at a time
+        run: npm run e2e -- qc-history.spec.ts monday-files.spec.ts schedule-time-conflicts.spec.ts usability-foundations.spec.ts display-layout.spec.ts trip-sheet.spec.ts travel-crew.spec.ts workflow-plans.spec.ts schedule-remove-day.spec.ts schedule-ai-review.spec.ts crew-start-bar.spec.ts crew-end-time.spec.ts crew-unit-records.spec.ts unit-contributors.spec.ts custom-work.spec.ts timecard-weekly.spec.ts unassigned-time.spec.ts project-hours.spec.ts time-entry-export.spec.ts /daily-logs.spec.ts global-capture.spec.ts photos-upload.spec.ts honest-sync.spec.ts dictation.spec.ts monthly-salary.spec.ts servicing.spec.ts time-off.spec.ts hex-portal.spec.ts ask-reporting.spec.ts app-updates.spec.ts using-forge.spec.ts --workers=4
+      # These read the app's own source modules out of the dev server
+      # (import("/src/lib/...")) to drive a store or a queue directly, and a
+      # build has no such files. They, and the two steps marked the same
+      # way, keep a dev server of their own on its own port. A new spec that
+      # does this fails at once against the build, with the module's address
+      # in the error, and belongs here.
+      # ai-daily-logs used to ride along with the long list above, matched by
+      # the name daily-logs.spec.ts, which is why that one now starts with a
+      # slash.
+      - name: Specs that read source modules, on the dev server
+        env:
+          IW_E2E_BUILT: "0"
+          IW_MAP_PORT: "5184"
+        run: npm run e2e -- ai-daily-logs.spec.ts training-importer.spec.ts
       - name: Daily-log progress reports and pre-save photo capture
         run: npm run e2e -- daily-logs-progress.spec.ts
       - run: npm run e2e -- opening-sheet.spec.ts -g "Install memo:"
@@ -348,7 +398,12 @@ jobs:
       # Expired sign-ins and shared-phone queues need their own browser gate:
       # they can lose a saved punch or send it as the next person even while
       # the ordinary clock screen tests remain green.
-      - run: npm run e2e -- offline-session.spec.ts outbox-owner.spec.ts
+      - name: Expired sign-ins and shared-phone queues, on the dev server
+        # Reads source modules: dev server (see the step so named above).
+        env:
+          IW_E2E_BUILT: "0"
+          IW_MAP_PORT: "5184"
+        run: npm run e2e -- offline-session.spec.ts outbox-owner.spec.ts
       - name: Monthly values worker and owner flows on phone browsers
         run: |
           npm run e2e -- monthly-values-reviews.spec.ts
@@ -401,6 +456,8 @@ jobs:
         env:
           VITE_LIVE_ASK_PILOT: "true"
           IW_MAP_PORT: "5199"
+          # A port and a server of its own, so it stays on the dev server.
+          IW_E2E_BUILT: "0"
         run: |
           npm run e2e -- ask-ai-issues.spec.ts maps-pane-grid.spec.ts supplies-rows.spec.ts job-model-viewer.spec.ts job-model-viewer-assign.spec.ts
           npm run e2e -- ask-ai-issues.spec.ts --browser=webkit

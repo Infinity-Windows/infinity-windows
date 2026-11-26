@@ -2,6 +2,7 @@
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { AssignmentEditor } from "./AssignmentEditor";
 import type { ScheduleAssignment } from "../../lib/schedule/types";
 
@@ -33,7 +34,7 @@ function mount(over: Partial<ScheduleAssignment> = {}) {
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
-  act(() => root!.render(<AssignmentEditor
+  act(() => root!.render(<MemoryRouter><AssignmentEditor
     assignment={{ ...assignment, ...over }} projects={[]}
     crew={[{ id: "crew", display_name: "Crew", role: "installer", active: true, skill_level: 1 }]}
     others={[{ ...assignment, id: "other" }]}
@@ -41,9 +42,15 @@ function mount(over: Partial<ScheduleAssignment> = {}) {
     vehicleBookings={[{ vehicle_id: "truck", assignment_id: "other", start_date: "2026-10-01", end_date: "2026-10-03" }]}
     horizon={{ from: "2026-09-01", to: "2026-12-31" }}
     onSave={save} onClose={() => {}}
-  />));
+  /></MemoryRouter>));
   return save;
 }
+it("links the chosen job to its plan", () => {
+  mount();
+  const link = host.querySelector<HTMLAnchorElement>("a.sched-plan-link")!;
+  expect(link.textContent).toContain("Open job plan");
+  expect(link.getAttribute("href")).toBe(`/projects/${assignment.project_id}?tab=planner`);
+});
 function button(text: string) {
   return [...host.querySelectorAll("button")].find(b => b.textContent === text)!;
 }

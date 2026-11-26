@@ -9298,6 +9298,9 @@ button.menu-fold .menu-pill-chevron { color: var(--accent); }
 }
 .sched-note-input:focus { border-color: rgba(255, 106, 26, 0.55); }
 .sched-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* The Job label with the link to that job's plan on the same line. */
+.sched-job-label { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.sched-plan-link { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; white-space: nowrap; }
 
 .sched-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 .sched-chip {
@@ -10932,6 +10935,19 @@ button.menu-fold .menu-pill-chevron { color: var(--accent); }
      own; every chip without a badge looks exactly as before. */
   position: relative;
 }
+/* By crew: a job tag with the link to that job's plan beside it, in the
+   job's own color so the pair reads as one tag. */
+.cb-tag { display: flex; align-items: stretch; gap: 2px; margin: 2px 0; }
+.cb-tag .cb-chip { margin: 0; flex: 1; min-width: 0; border-radius: 8px 3px 3px 8px; }
+.cb-chip-link {
+  display: inline-flex; align-items: center; padding: 0 7px;
+  border-radius: 3px 8px 8px 3px; color: #16100c;
+  background: var(--sched-color, oklch(0.72 0.15 var(--job-hue, 260)));
+}
+.cb-chip-link:hover, .cb-chip-link:focus-visible { filter: brightness(1.12); }
+/* By job: the job's name is the link to its plan. */
+.cb-lane-link { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.cb-lane-link:hover { color: var(--accent); }
 .cb-chip.draft { border-style: dashed; border-color: rgba(0, 0, 0, 0.45); opacity: 0.92; }
 .cb-chip.conflict { outline: 2px dashed #e4655c; outline-offset: 1px; }
 .cb-chip.movable { cursor: grab; }

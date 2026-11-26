@@ -21,6 +21,21 @@ import { defineConfig } from "@playwright/test";
 // let an escaped request reach the real project.
 const PORT = Number(process.env.IW_MAP_PORT ?? 5183);
 
+// IW_E2E_BUILT=1 serves one production build of the app instead of the dev
+// server. CI sets it. The dev server hands the browser every source module on
+// its own, hundreds of requests a page, from one Node process, and every test
+// opens a fresh browser with nothing cached: about three seconds a test before
+// it does anything, across 330 tests, and close to three times that once four
+// browsers shared that one process (measured 2026-11-25). A build is a few
+// files. It is also nearer to what a phone runs, with one deliberate
+// difference: its service worker is blocked below, because a request a worker
+// makes never reaches the fixture router and would look for the real network.
+// The installed app, worker included, has its own config (playwright.pwa.config.ts).
+// Left unset, as on a laptop, nothing changes: the dev server, reused if running.
+const BUILT = process.env.IW_E2E_BUILT === "1";
+// Beside the installed-app harness's builds, never dist/ (see that config).
+const BUILT_DIR = "node_modules/.cache/e2e-built";
+
 export default defineConfig({
   testDir: "./e2e",
   // Traces/videos for a failed run. Screenshots we keep are written explicitly
@@ -39,12 +54,16 @@ export default defineConfig({
     deviceScaleFactor: 2,
     trace: "retain-on-failure",
     video: "off",
+    ...(BUILT ? { serviceWorkers: "block" as const } : {}),
   },
   webServer: {
-    command: `npm run dev -- --port ${PORT} --strictPort`,
+    command: BUILT
+      ? `npx vite build --outDir ${BUILT_DIR} --emptyOutDir && npx vite preview --outDir ${BUILT_DIR} --port ${PORT} --strictPort`
+      : `npm run dev -- --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}/`,
     reuseExistingServer: true,
-    timeout: 120_000,
+    // The build comes first when BUILT, and a runner takes about a minute over it.
+    timeout: BUILT ? 300_000 : 120_000,
     stdout: "ignore",
     stderr: "pipe",
     // A host that does not resolve, with a placeholder key: the client is
