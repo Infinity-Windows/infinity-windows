@@ -814,6 +814,89 @@ export function draftSourcePlansetId(opts: {
   return opts.specsPlansetId ?? opts.buildingPlansetId;
 }
 
+/** What {@link findCrossDocumentMarkCollisions} found. */
+export interface CrossDocumentMarkCollision {
+  /** Base marks the incoming read shares with another document, sorted. */
+  marks: string[];
+  /** The other documents (planset ids) that already own those marks. */
+  plansetIds: string[];
+}
+
+/**
+ * Marks an incoming read shares with a DIFFERENT document of the same kind.
+ *
+ * Two specs sheets (or two building plans) that both claim mark 1 are two
+ * sets — PV 40's vinyl and aluminum CAD sets — not one document read twice,
+ * and the rest of the job (catalog types, spec links, warehouse, map, the
+ * database's one-row-per-code rule) keys on the bare mark. Until a set has its
+ * own namespace there is no safe way to hold both, so the read is refused
+ * before anything is written: nothing of the other document is deleted,
+ * skipped over or relinked.
+ *
+ * What is NOT a collision, on purpose:
+ *  - the same planset id: that is a re-read, which replaces its own drafts;
+ *  - rows with no planset_id: legacy rows are the single slot being replaced;
+ *  - the OTHER kind: a building plan's callout #1 and the CAD sheet's #1 are
+ *    the same window seen twice — plans place it, specs count and describe
+ *    it. That pairing is the whole point of loading both.
+ * Protected rows (confirmed, field work, field-added) DO collide: stepping
+ * past them silently is exactly the quiet merge of two sets this prevents.
+ */
+export function findCrossDocumentMarkCollisions(
+  existing: Pick<ExistingOpeningLite, "opening_code" | "planset_kind" | "planset_id">[],
+  drafts: Pick<DraftOpening, "opening_code">[],
+  incomingKind: PlansetKindLike,
+  incomingPlansetId: string | null,
+): CrossDocumentMarkCollision {
+  const incomingMarks = new Set(drafts.map((d) => markBase(d.opening_code)));
+  const marks = new Set<string>();
+  const plansetIds = new Set<string>();
+  for (const o of existing) {
+    if (o.planset_id == null || o.planset_id === incomingPlansetId) continue;
+    if (o.planset_kind !== incomingKind) continue;
+    const mark = markBase(o.opening_code);
+    if (!incomingMarks.has(mark)) continue;
+    marks.add(mark);
+    plansetIds.add(o.planset_id);
+  }
+  const byMark = (a: string, b: string) =>
+    a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+  return { marks: [...marks].sort(byMark), plansetIds: [...plansetIds].sort() };
+}
+
+/**
+ * What a person sees when a file shares mark numbers with another plan set on
+ * the job. Names the marks, because whoever reads it has to go and compare two
+ * sets of paperwork.
+ */
+export function crossDocumentCollisionMessage(
+  marks: string[],
+  otherDocuments: string[] = [],
+): string {
+  const list = marks.map((m) => `#${m}`).join(", ");
+  const one = marks.length === 1;
+  const where = otherDocuments.length ? ` (${otherDocuments.join(", ")})` : "";
+  return (
+    `No windows were loaded from this file. It uses mark${one ? "" : "s"} ` +
+    `${list}, which another plan set on this job${where} already uses, and ` +
+    `two sets that share a mark number can't be kept apart yet — so the ` +
+    `other set's windows were left as they were. Check with the office ` +
+    `before loading this file.`
+  );
+}
+
+/** Thrown instead of planning a save that would mix two documents' marks. */
+export class CrossDocumentMarkCollisionError extends Error {
+  readonly marks: string[];
+  readonly plansetIds: string[];
+  constructor(marks: string[], plansetIds: string[], otherDocuments: string[] = []) {
+    super(crossDocumentCollisionMessage(marks, otherDocuments));
+    this.name = "CrossDocumentMarkCollisionError";
+    this.marks = marks;
+    this.plansetIds = plansetIds;
+  }
+}
+
 /**
  * Decide what a re-extract should delete and insert, WITHOUT wiping openings
  * that belong to the other planset slot.
@@ -822,10 +905,14 @@ export function draftSourcePlansetId(opts: {
  * uploading the specs sheet after the marked building plan destroyed all the
  * building-plan openings (105 → 6 on Smith Residence). This planner instead:
  *
+ *  0. Refuses outright (CrossDocumentMarkCollisionError) when the read shares
+ *     a mark with a different document of the same kind — see
+ *     `findCrossDocumentMarkCollisions`.
  *  1. Replaces only unconfirmed drafts from a planset of the SAME kind AND the
- *     same source DOCUMENT (see `isRereadOfThisDocument` below) — a job can
- *     carry more than one specs planset at once (an addendum sheet on top of
- *     the original cut sheet), so "same kind" alone is not "the same slot".
+ *     same source DOCUMENT, by planset id — a job can carry more than one
+ *     specs planset at once (an addendum sheet on top of the original cut
+ *     sheet, or a second material set), so "same kind" is not "the same slot",
+ *     and shared mark numbers are not "the same document" either.
  *  2. CAD WINS (owner rule, settled 2026-08-21, proven on ESH-18): the signed
  *     CAD/specs planset owns unit counts. A specs save supersedes unconfirmed
  *     building-callout openings that share its marks, never the reverse — and
@@ -851,7 +938,25 @@ export function planDraftPersistence(
   // cut-sheet read, or a real schedule table). A weak detail-page read with
   // guessed qty=1 rows must never supersede building counts.
   specsAuthoritative = false,
+  // The planset row these drafts were read from. It — and nothing else —
+  // decides which existing rows are "this document's" stale drafts. Omitted
+  // means "unknown document": only legacy rows (no planset_id) then count as
+  // this slot, and every identified same-kind document is someone else's.
+  incomingPlansetId: string | null = null,
 ): DraftPersistencePlan {
+  // Refuse BEFORE deciding anything: a same-kind mark already owned by a
+  // different document is two sets claiming one mark, and every outcome the
+  // planner could pick — delete theirs, skip ours, relink — loses one of them.
+  const collision = findCrossDocumentMarkCollisions(
+    existing,
+    drafts,
+    incomingKind,
+    incomingPlansetId,
+  );
+  if (collision.marks.length > 0) {
+    throw new CrossDocumentMarkCollisionError(collision.marks, collision.plansetIds);
+  }
+
   // `field_added` is listed FIRST and stands alone (wave E): a window somebody
   // added while standing in front of it is not a draft this planner may
   // reconsider, whatever its status, whoever has or has not worked it, and
@@ -864,34 +969,23 @@ export function planDraftPersistence(
 
   const incomingMarks = new Set(drafts.map((d) => markBase(d.opening_code)));
 
-  // Stale same-kind drafts, scoped PER SOURCE DOCUMENT rather than blanket by
-  // kind (the Mad Moose lesson, 2026-09-01): "kind" used to stand in for "the
-  // one planset slot this project has of that kind", which broke the moment a
-  // job carried a second specs planset at once — an "Add" addendum sheet's
-  // 3-mark upload deleted the 7 unconfirmed openings the ORIGINAL cut sheet
-  // had placed, because both were merely "specs". A planset is being RE-READ
-  // when the incoming marks overlap anything it previously placed; a planset
-  // the incoming read never mentions is a different document and is left
-  // alone. Rows with no recorded planset_id (legacy data written before the
-  // column existed) keep the old, single-slot behaviour: grouped together and
-  // always treated as the one slot being replaced.
-  const sameKindCandidates = existing.filter(
-    (o) => !isProtected(o) && o.planset_kind === incomingKind,
+  // Stale same-kind drafts, scoped to the EXACT source document (Mad Moose,
+  // 2026-09-01, then PV 40, 2026-10-05). "Kind" used to stand in for "the one
+  // planset slot this project has of that kind", which broke the moment a job
+  // carried a second specs planset — an addendum's upload deleted the original
+  // cut sheet's drafts. The fix after that guessed a re-read from overlapping
+  // marks, and broke on PV 40: a vinyl CAD set and an aluminum CAD set both
+  // have a mark 1, so loading the aluminum set looked like a re-read of the
+  // vinyl one and deleted its whole unconfirmed group. Mark numbers say nothing
+  // about which document a row came from; the planset id does. Rows with no
+  // recorded planset_id (legacy data written before the column existed) keep
+  // the old single-slot behaviour: always treated as the slot being replaced.
+  const sameKindStale = existing.filter(
+    (o) =>
+      !isProtected(o) &&
+      o.planset_kind === incomingKind &&
+      (o.planset_id == null || o.planset_id === incomingPlansetId),
   );
-  const sameKindGroups = new Map<string, ExistingOpeningLite[]>();
-  for (const o of sameKindCandidates) {
-    const key = o.planset_id ?? "";
-    const group = sameKindGroups.get(key);
-    if (group) group.push(o);
-    else sameKindGroups.set(key, [o]);
-  }
-  const sameKindStale: ExistingOpeningLite[] = [];
-  for (const [plansetId, group] of sameKindGroups) {
-    const isRereadOfThisDocument =
-      plansetId === "" ||
-      group.some((o) => incomingMarks.has(markBase(o.opening_code)));
-    if (isRereadOfThisDocument) sameKindStale.push(...group);
-  }
 
   // ESH-18 went 31 -> 79 openings because this arrow used to point the other
   // way: hand-labeled plan callouts deleted the signed CAD's correct counts
